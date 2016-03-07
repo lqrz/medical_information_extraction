@@ -1,1 +1,7 @@
 *.model
+*.pyc
+test/.idea/*
+Tools/*
+data/*.zip
+data/word2vec/*
+data/handoverdata/*
