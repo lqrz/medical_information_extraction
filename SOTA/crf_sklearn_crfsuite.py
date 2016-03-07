@@ -11,6 +11,8 @@ import numpy as np
 from joblib import load, dump
 import re
 from collections import Counter
+from data import get_w2v_model
+import gensim
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -48,11 +50,18 @@ class CRF:
         return [self.get_sentence_labels(sentence, file_idx)
                 for file_idx, sentence in self.file_texts.iteritems()]
 
-    def get_custom_word_features(self, sentence, file_idx, word_idx):
+    def load_w2v(model_filename):
+        return gensim.models.Word2Vec.load_word2vec_format(model_filename, binary=True)
+
+    def get_custom_word_features(self, sentence, file_idx, word_idx, wv2_features=False):
         features = []
         previous_features = []
         next_features = []
         word_features = []
+
+        if wv2_features:
+            W2V_PRETRAINED_FILENAME = 'GoogleNews-vectors-negative300.bin.gz'
+            w2v_model = self.load_w2v(get_w2v_model(W2V_PRETRAINED_FILENAME))
 
         word = sentence[word_idx]
         word_lemma = self.training_data[file_idx][word_idx]['features'][0]
@@ -171,6 +180,12 @@ class CRF:
 
         else:
             features.append('EOS')
+
+        if wv2_features and w2v_model:
+            try:
+                features.extend(w2v_model[word])
+            except:
+                pass
 
         return features
 
