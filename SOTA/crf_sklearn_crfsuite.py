@@ -29,11 +29,12 @@ class CRF:
 
         self.output_model_filename = output_model_filename
         self.model = None
+
         self.w2v_features = w2v_features
-	self.w2v_model = None
-	if self.w2v_features:
+        self.w2v_model = None
+        if self.w2v_features:
             W2V_PRETRAINED_FILENAME = 'GoogleNews-vectors-negative300.bin.gz'
-	    self.w2v_model = self.load_w2v(get_w2v_model(W2V_PRETRAINED_FILENAME))
+            self.w2v_model = self.load_w2v(get_w2v_model(W2V_PRETRAINED_FILENAME))
 
 
     def get_sentence_labels(self, sentence, file_idx):
@@ -185,7 +186,7 @@ class CRF:
 
         if self.w2v_model:
             try:
-                features.extend(self.w2v_model[word])
+                features.extend([sim for sim,_ in self.w2v_model.most_similar(positive=[word], topn=5)])
             except:
                 pass
 
