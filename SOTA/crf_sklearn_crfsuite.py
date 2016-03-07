@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class CRF:
 
-    def __init__(self, training_data, training_texts, test_data, output_model_filename):
+    def __init__(self, training_data, training_texts, test_data, output_model_filename, w2v_features):
         self.training_data = training_data
         self.file_texts = training_texts
         # self.file_texts = dataset.get_training_file_sentences(training_data_filename)
@@ -29,6 +29,7 @@ class CRF:
 
         self.output_model_filename = output_model_filename
         self.model = None
+        self.w2v_features = w2v_features
 
     def get_sentence_labels(self, sentence, file_idx):
         # return [self.training_data[file_idx][j]['tag'] for j, sentence in enumerate(sentence.split(' '))]
@@ -53,13 +54,13 @@ class CRF:
     def load_w2v(model_filename):
         return gensim.models.Word2Vec.load_word2vec_format(model_filename, binary=True)
 
-    def get_custom_word_features(self, sentence, file_idx, word_idx, wv2_features=False):
+    def get_custom_word_features(self, sentence, file_idx, word_idx):
         features = []
         previous_features = []
         next_features = []
         word_features = []
 
-        if wv2_features:
+        if self.wv2_features:
             W2V_PRETRAINED_FILENAME = 'GoogleNews-vectors-negative300.bin.gz'
             w2v_model = self.load_w2v(get_w2v_model(W2V_PRETRAINED_FILENAME))
 
@@ -181,7 +182,7 @@ class CRF:
         else:
             features.append('EOS')
 
-        if wv2_features and w2v_model:
+        if self.wv2_features and w2v_model:
             try:
                 features.extend(w2v_model[word])
             except:
@@ -603,7 +604,7 @@ if __name__ == '__main__':
 
     training_data, training_texts = Dataset.get_crf_training_data(training_data_filename)
 
-    crf_model = CRF(training_data, training_texts, test_data_filename, output_model_filename)
+    crf_model = CRF(training_data, training_texts, test_data_filename, output_model_filename, w2v_features=True)
     feature_function = crf_model.get_custom_word_features
     # feature_function = crf_model.get_original_paper_word_features
 
