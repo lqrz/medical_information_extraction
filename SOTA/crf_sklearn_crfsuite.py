@@ -30,6 +30,11 @@ class CRF:
         self.output_model_filename = output_model_filename
         self.model = None
         self.w2v_features = w2v_features
+	self.w2v_model = None
+	if self.w2v_features:
+            W2V_PRETRAINED_FILENAME = 'GoogleNews-vectors-negative300.bin.gz'
+	    self.w2v_model = self.load_w2v(get_w2v_model(W2V_PRETRAINED_FILENAME))
+
 
     def get_sentence_labels(self, sentence, file_idx):
         # return [self.training_data[file_idx][j]['tag'] for j, sentence in enumerate(sentence.split(' '))]
@@ -51,7 +56,7 @@ class CRF:
         return [self.get_sentence_labels(sentence, file_idx)
                 for file_idx, sentence in self.file_texts.iteritems()]
 
-    def load_w2v(model_filename):
+    def load_w2v(self, model_filename):
         return gensim.models.Word2Vec.load_word2vec_format(model_filename, binary=True)
 
     def get_custom_word_features(self, sentence, file_idx, word_idx):
@@ -59,10 +64,6 @@ class CRF:
         previous_features = []
         next_features = []
         word_features = []
-
-        if self.wv2_features:
-            W2V_PRETRAINED_FILENAME = 'GoogleNews-vectors-negative300.bin.gz'
-            w2v_model = self.load_w2v(get_w2v_model(W2V_PRETRAINED_FILENAME))
 
         word = sentence[word_idx]
         word_lemma = self.training_data[file_idx][word_idx]['features'][0]
@@ -182,9 +183,9 @@ class CRF:
         else:
             features.append('EOS')
 
-        if self.wv2_features and w2v_model:
+        if self.w2v_model:
             try:
-                features.extend(w2v_model[word])
+                features.extend(self.w2v_model[word])
             except:
                 pass
 
