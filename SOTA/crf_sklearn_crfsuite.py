@@ -20,7 +20,8 @@ logger = logging.getLogger(__name__)
 
 class CRF:
 
-    def __init__(self, training_data, training_texts, test_data, output_model_filename, w2v_features):
+    def __init__(self, training_data, training_texts, test_data, output_model_filename,
+                 w2v_features=False, kmeans=False):
         self.training_data = training_data
         self.file_texts = training_texts
         # self.file_texts = dataset.get_training_file_sentences(training_data_filename)
@@ -37,7 +38,15 @@ class CRF:
             W2V_PRETRAINED_FILENAME = 'GoogleNews-vectors-negative300.bin.gz'
             self.w2v_model = self.load_w2v(get_w2v_model(W2V_PRETRAINED_FILENAME))
 
-        self.similar_words_cache = dict(list())
+        self.similar_words_cache = dict(list()) # this is for word2vec
+
+        self.kmeans = kmeans
+        if self.kmeans:
+            model_input = 'kmeans.model'
+            self.kmeans_model = self.load_kmeans_model(model_input)
+
+    def load_kmeans_model(self, model_filename):
+        return load(model_filename)
 
     def get_sentence_labels(self, sentence, file_idx):
         # return [self.training_data[file_idx][j]['tag'] for j, sentence in enumerate(sentence.split(' '))]
@@ -191,6 +200,14 @@ class CRF:
                 features.extend(self.get_similar_w2v_words(word,topn=5))
             except:
                 pass
+
+        if self.kmeans and self.w2v_model:
+            try:
+                cluster = self.kmeans_model.predict(self.w2v_model[word])
+            except:
+                cluster = 999
+
+            features.append(cluster)
 
         return features
 
@@ -621,14 +638,28 @@ def print_state_features(state_features):
     for (attr, label), weight in state_features:
         print("%0.6f %-8s %s" % (weight, label, attr))
 
+
+def check_params():
+    if kmeans and not w2v_features:
+        logger.error('Kmeans true and word2vec false!')
+        exit()
+
+    return 
+
 if __name__ == '__main__':
     training_data_filename = 'handoverdata.zip'
     test_data_filename = None
     output_model_filename = 'crf_trained.model'
 
+    w2v_features = True
+    kmeans = True
+
+    check_params()
+
     training_data, training_texts = Dataset.get_crf_training_data(training_data_filename)
 
-    crf_model = CRF(training_data, training_texts, test_data_filename, output_model_filename, w2v_features=True)
+    crf_model = CRF(training_data, training_texts, test_data_filename, output_model_filename,
+                    w2v_features=w2v_features, kmeans=kmeans)
     feature_function = crf_model.get_custom_word_features
     # feature_function = crf_model.get_original_paper_word_features
 
