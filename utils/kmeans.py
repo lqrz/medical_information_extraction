@@ -48,10 +48,10 @@ if __name__ == '__main__':
 
     logger.info('Filtering w2v model')
     filtered_w2v_model = filter_w2v_model(w2v_model)
-    logger.info('Remaining words: '+str(len(filtered_w2v_model.keys())))
+    logger.info('Remaining words: '+str(filtered_w2v_model.shape[0]))
 
     logger.info('Initializing KMeans model')
-    kmeans_model = KMeans(n_clusters=100, init='k-means++', n_jobs=4)
+    kmeans_model = KMeans(n_clusters=100, init='k-means++', n_jobs=1)
 
     logger.info('Training KMeans model')
     kmeans_model.fit(filtered_w2v_model)
