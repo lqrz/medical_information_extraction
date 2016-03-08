@@ -33,14 +33,14 @@ class CRF:
         self.model = None
 
         self.w2v_features = w2v_features
+        self.kmeans = kmeans
         self.w2v_model = None
-        if self.w2v_features:
+        if self.w2v_features or self.kmeans:
             W2V_PRETRAINED_FILENAME = 'GoogleNews-vectors-negative300.bin.gz'
             self.w2v_model = self.load_w2v(get_w2v_model(W2V_PRETRAINED_FILENAME))
 
         self.similar_words_cache = dict(list()) # this is for word2vec
 
-        self.kmeans = kmeans
         if self.kmeans:
             model_input = 'kmeans.model'
             self.kmeans_model = self.load_kmeans_model(model_input)
@@ -201,13 +201,13 @@ class CRF:
             except:
                 pass
 
-        if self.kmeans and self.w2v_model:
+        if self.kmeans_model and self.w2v_model:
             try:
-                cluster = self.kmeans_model.predict(self.w2v_model[word])
+                cluster = self.kmeans_model.predict(self.w2v_model[word])[0]
             except:
                 cluster = 999
 
-            features.append(cluster)
+            features.append(str(cluster))
 
         return features
 
@@ -639,22 +639,22 @@ def print_state_features(state_features):
         print("%0.6f %-8s %s" % (weight, label, attr))
 
 
-def check_params():
-    if kmeans and not w2v_features:
-        logger.error('Kmeans true and word2vec false!')
-        exit()
-
-    return 
+# def check_params():
+#     if kmeans and not w2v_features:
+#         logger.error('Kmeans true and word2vec false!')
+#         exit()
+#
+#     return
 
 if __name__ == '__main__':
     training_data_filename = 'handoverdata.zip'
     test_data_filename = None
     output_model_filename = 'crf_trained.model'
 
-    w2v_features = True
+    w2v_features = False
     kmeans = True
 
-    check_params()
+    # check_params()
 
     training_data, training_texts = Dataset.get_crf_training_data(training_data_filename)
 
