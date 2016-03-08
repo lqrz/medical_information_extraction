@@ -17,8 +17,9 @@ class Dataset:
     def __init__(self):
         pass
 
-    def get_training_file_sentences(self, file_name):
-        f = self.get_filename(file_name, self.TRAINING_SENTENCES_PATH, self.TRAINING_SENTENCES_EXTENSION)
+    @staticmethod
+    def get_training_file_sentences(file_name):
+        f = Dataset.get_filename(file_name, Dataset.TRAINING_SENTENCES_PATH, Dataset.TRAINING_SENTENCES_EXTENSION)
         # sentences = []
         training_sentences = defaultdict(list)
 
@@ -66,6 +67,8 @@ if __name__ == '__main__':
     training_data_filename = 'handoverdata.zip'
 
     dataset = Dataset()
+
+    train_sentences = Dataset.get_training_file_sentences(training_data_filename)
 
     dataset.get_training_file_sentences(training_data_filename)
 
