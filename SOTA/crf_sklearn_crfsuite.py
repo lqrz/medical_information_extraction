@@ -37,8 +37,8 @@ class CRF:
         self.w2v_model = None
         if self.w2v_features or self.kmeans:
             W2V_PRETRAINED_FILENAME = 'GoogleNews-vectors-negative300.bin.gz'
-            # self.w2v_model = self.load_w2v(get_w2v_model(W2V_PRETRAINED_FILENAME))
-            self.w2v_model = True
+            self.w2v_model = self.load_w2v(get_w2v_model(W2V_PRETRAINED_FILENAME))
+            # self.w2v_model = True
 
         self.similar_words_cache = dict(list()) # this is for word2vec
         self.word_vector_cache = dict(list()) # this is for word2vec
@@ -234,8 +234,8 @@ class CRF:
 
     @memoize
     def get_similar_w2v_words(self, word, dictionary, topn=5):
-        # return [sim for sim, _ in self.w2v_model.most_similar(positive=[word], topn=topn)]
-        return ['ej1', 'e2', 'e3']
+        return [sim for sim, _ in self.w2v_model.most_similar(positive=[word], topn=topn)]
+        # return ['ej1', 'e2', 'e3']
 
     @memoize
     def get_w2v_vector(self, word, dictionary):
@@ -674,6 +674,8 @@ if __name__ == '__main__':
     # feature_function = crf_model.get_original_paper_word_features
 
     logger.info('Extracting features with: '+feature_function.__str__())
+
+    logger.info('Using w2v_similar_words: %s and kmeans: %s' % (w2v_features, kmeans))
 
     results_accuracy = []
     results_f1 = []
