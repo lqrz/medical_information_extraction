@@ -13,6 +13,7 @@ import re
 from collections import Counter
 from data import get_w2v_model
 import gensim
+from functools import wraps
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -34,8 +35,10 @@ class CRF:
         self.w2v_model = None
         if self.w2v_features:
             W2V_PRETRAINED_FILENAME = 'GoogleNews-vectors-negative300.bin.gz'
-            self.w2v_model = self.load_w2v(get_w2v_model(W2V_PRETRAINED_FILENAME))
+            # self.w2v_model = self.load_w2v(get_w2v_model(W2V_PRETRAINED_FILENAME))
+            self.w2v_model = True
 
+        self.similar_words_cache = dict(list())
 
     def get_sentence_labels(self, sentence, file_idx):
         # return [self.training_data[file_idx][j]['tag'] for j, sentence in enumerate(sentence.split(' '))]
@@ -186,11 +189,31 @@ class CRF:
 
         if self.w2v_model:
             try:
-                features.extend([sim for sim,_ in self.w2v_model.most_similar(positive=[word], topn=5)])
+                features.extend(self.get_similar_w2v_words(word,topn=5))
             except:
                 pass
 
         return features
+
+    def dec_helper(func):
+
+        @wraps(func)
+        def wrapper(self,*args, **kwds):
+            similar_words = None
+            word = args[0].lower()
+            try:
+                similar_words = self.similar_words_cache[word]
+            except:
+                similar_words = func(self, *args, **kwds)
+                self.similar_words_cache[word] = similar_words
+            return similar_words
+
+        return wrapper
+
+    @dec_helper
+    def get_similar_w2v_words(self, word, topn=5):
+        # return [sim for sim, _ in self.w2v_model.most_similar(positive=[word], topn=topn)]
+        return ['ej1', 'e2', 'e3']
 
     def get_original_paper_word_features(self, sentence, file_idx, word_idx):
         features = []
@@ -617,7 +640,7 @@ if __name__ == '__main__':
 
     loo = LeaveOneOut(training_data.__len__())
     for i, (x_idx, y_idx) in enumerate(loo):
-        # if i+1 > 1:
+        # if i+1 > 4:
         #     break
         logger.info('Cross validation '+str(i+1)+' (train+predict)')
         # print x_idx, y_idx
@@ -628,6 +651,6 @@ if __name__ == '__main__':
         print print_state_features(Counter(crf_model.model.state_features_).most_common(20))
 
     print 'Accuracy: ', results_accuracy
-    print 'F1: ', f1_score
+    print 'F1: ', results_f1
     print 'Mean accuracy: ', np.mean(results_accuracy)
     print 'Mean f1: ', np.mean(results_f1)
