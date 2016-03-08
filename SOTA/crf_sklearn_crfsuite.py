@@ -35,8 +35,7 @@ class CRF:
         self.w2v_model = None
         if self.w2v_features:
             W2V_PRETRAINED_FILENAME = 'GoogleNews-vectors-negative300.bin.gz'
-            # self.w2v_model = self.load_w2v(get_w2v_model(W2V_PRETRAINED_FILENAME))
-            self.w2v_model = True
+            self.w2v_model = self.load_w2v(get_w2v_model(W2V_PRETRAINED_FILENAME))
 
         self.similar_words_cache = dict(list())
 
@@ -212,8 +211,8 @@ class CRF:
 
     @dec_helper
     def get_similar_w2v_words(self, word, topn=5):
-        # return [sim for sim, _ in self.w2v_model.most_similar(positive=[word], topn=topn)]
-        return ['ej1', 'e2', 'e3']
+        return [sim for sim, _ in self.w2v_model.most_similar(positive=[word], topn=topn)]
+        #return ['ej1', 'e2', 'e3']
 
     def get_original_paper_word_features(self, sentence, file_idx, word_idx):
         features = []
@@ -640,8 +639,8 @@ if __name__ == '__main__':
 
     loo = LeaveOneOut(training_data.__len__())
     for i, (x_idx, y_idx) in enumerate(loo):
-        # if i+1 > 4:
-        #     break
+#        if i+1 > 4:
+#            break
         logger.info('Cross validation '+str(i+1)+' (train+predict)')
         # print x_idx, y_idx
         crf_model.train(x_idx, feature_function, verbose=False)
