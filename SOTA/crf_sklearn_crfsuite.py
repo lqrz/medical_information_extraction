@@ -37,9 +37,11 @@ class CRF:
         self.w2v_model = None
         if self.w2v_features or self.kmeans:
             W2V_PRETRAINED_FILENAME = 'GoogleNews-vectors-negative300.bin.gz'
-            self.w2v_model = self.load_w2v(get_w2v_model(W2V_PRETRAINED_FILENAME))
+            # self.w2v_model = self.load_w2v(get_w2v_model(W2V_PRETRAINED_FILENAME))
+            self.w2v_model = True
 
         self.similar_words_cache = dict(list()) # this is for word2vec
+        self.word_vector_cache = dict(list()) # this is for word2vec
 
         if self.kmeans:
             model_input = 'kmeans.model'
@@ -197,13 +199,14 @@ class CRF:
 
         if self.w2v_model:
             try:
-                features.extend(self.get_similar_w2v_words(word,topn=5))
+                features.extend(self.get_similar_w2v_words(word, self.similar_words_cache, topn=5))
             except:
                 pass
 
         if self.kmeans_model and self.w2v_model:
             try:
-                cluster = self.kmeans_model.predict(self.w2v_model[word])[0]
+                word_vector = self.get_w2v_vector(word, self.word_vector_cache)
+                cluster = self.kmeans_model.predict(word_vector)[0]
             except:
                 cluster = 999
 
@@ -211,25 +214,32 @@ class CRF:
 
         return features
 
-    def dec_helper(func):
+    def memoize(func):
 
         @wraps(func)
-        def wrapper(self,*args, **kwds):
+        def wrapper(self, *args, **kwds):
             similar_words = None
             word = args[0].lower()
+            dictionary = args[1]
             try:
-                similar_words = self.similar_words_cache[word]
+                # similar_words = self.similar_words_cache[word]
+                similar_words = dictionary[word]
             except:
                 similar_words = func(self, *args, **kwds)
-                self.similar_words_cache[word] = similar_words
+                # self.similar_words_cache[word] = similar_words
+                dictionary[word] = similar_words
             return similar_words
 
         return wrapper
 
-    @dec_helper
-    def get_similar_w2v_words(self, word, topn=5):
-        return [sim for sim, _ in self.w2v_model.most_similar(positive=[word], topn=topn)]
-        #return ['ej1', 'e2', 'e3']
+    @memoize
+    def get_similar_w2v_words(self, word, dictionary, topn=5):
+        # return [sim for sim, _ in self.w2v_model.most_similar(positive=[word], topn=topn)]
+        return ['ej1', 'e2', 'e3']
+
+    @memoize
+    def get_w2v_vector(self, word, dictionary):
+        return self.w2v_model[word]
 
     def get_original_paper_word_features(self, sentence, file_idx, word_idx):
         features = []
@@ -651,7 +661,7 @@ if __name__ == '__main__':
     test_data_filename = None
     output_model_filename = 'crf_trained.model'
 
-    w2v_features = False
+    w2v_features = True
     kmeans = True
 
     # check_params()
