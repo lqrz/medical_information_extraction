@@ -7,6 +7,7 @@ from joblib import dump
 from data import get_w2v_model
 from data.dataset import Dataset
 from nltk import word_tokenize
+import numpy as np
 
 def load_w2v(model_filename):
     return gensim.models.Word2Vec.load_word2vec_format(model_filename, binary=True)
@@ -26,7 +27,12 @@ def filter_w2v_model(w2v_model):
         except:
             pass
 
-    return vectors
+    matrix = np.zeros((len(vectors.keys()), w2v_model.syn0.shape[1]))
+
+    for i,vec in vectors.iteritems():
+        matrix[i] = vec
+
+    return matrix
 
 
 if __name__ == '__main__':
@@ -48,7 +54,7 @@ if __name__ == '__main__':
     kmeans_model = KMeans(n_clusters=100, init='k-means++', n_jobs=4)
 
     logger.info('Training KMeans model')
-    kmeans_model.fit(w2v_model.syn0)
+    kmeans_model.fit(filtered_w2v_model)
 
     logger.info('Persisting KMeans model')
     dump(kmeans_model, model_output_filename)
