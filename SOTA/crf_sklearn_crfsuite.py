@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 class CRF:
 
     def __init__(self, training_data, training_texts, test_data, output_model_filename,
-                 w2v_features=False, kmeans=False, lda=False):
+                 w2v_features=False, kmeans_features=False, lda_features=False):
         self.training_data = training_data
         self.file_texts = training_texts
         # self.file_texts = dataset.get_training_file_sentences(training_data_filename)
@@ -33,6 +33,7 @@ class CRF:
         self.model = None
 
         # use top 5 most similar word from word2vec or kmeans (it also uses the word representation)
+        self.kmeans_features = kmeans_features
         self.w2v_features = w2v_features
         self.w2v_model = None
         if self.w2v_features or self.kmeans_features:
@@ -46,14 +47,13 @@ class CRF:
         self.word_lda_topics = dict(list()) # this is for lda assigned topics
 
         # use the kmeans cluster as feature
-        self.kmeans_features = kmeans
         self.kmeans_model = None
         if self.kmeans_features:
             model_filename = 'kmeans.model'
             self.kmeans_model = self.load_kmeans_model(model_filename)
 
         # use the lda 5 most promising topics as feature
-        self.lda_features = lda
+        self.lda_features = lda_features
         self.lda_model = None
         if self.lda_features:
             model_filename = 'wikipedia_lda.model'
@@ -707,14 +707,14 @@ if __name__ == '__main__':
 
     w2v_features = False
     kmeans = False
-    lda = False
+    lda = True
 
     # check_params()
 
     training_data, training_texts = Dataset.get_crf_training_data(training_data_filename)
 
     crf_model = CRF(training_data, training_texts, test_data_filename, output_model_filename,
-                    w2v_features=w2v_features, kmeans=kmeans, lda=lda)
+                    w2v_features=w2v_features, kmeans_features=kmeans, lda_features=lda)
     feature_function = crf_model.get_custom_word_features
     # feature_function = crf_model.get_original_paper_word_features
 
@@ -727,7 +727,7 @@ if __name__ == '__main__':
 
     loo = LeaveOneOut(training_data.__len__())
     for i, (x_idx, y_idx) in enumerate(loo):
-#        if i+1 > 4:
+#        if i+1 > 1:
 #            break
         logger.info('Cross validation '+str(i+1)+' (train+predict)')
         # print x_idx, y_idx
