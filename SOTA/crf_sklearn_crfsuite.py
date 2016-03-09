@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 class CRF:
 
     def __init__(self, training_data, training_texts, test_data, output_model_filename,
-                 w2v_features=False, kmeans=False):
+                 w2v_features=False, kmeans=False, lda=False):
         self.training_data = training_data
         self.file_texts = training_texts
         # self.file_texts = dataset.get_training_file_sentences(training_data_filename)
@@ -32,20 +32,32 @@ class CRF:
         self.output_model_filename = output_model_filename
         self.model = None
 
+        # use top 5 most similar word from word2vec or kmeans (it also uses the word representation)
         self.w2v_features = w2v_features
-        self.kmeans = kmeans
         self.w2v_model = None
-        if self.w2v_features or self.kmeans:
+        if self.w2v_features or self.kmeans_features:
             W2V_PRETRAINED_FILENAME = 'GoogleNews-vectors-negative300.bin.gz'
             self.w2v_model = self.load_w2v(get_w2v_model(W2V_PRETRAINED_FILENAME))
             # self.w2v_model = True
 
-        self.similar_words_cache = dict(list()) # this is for word2vec
-        self.word_vector_cache = dict(list()) # this is for word2vec
+        # querying word2vec is too expensive. Maintain a cache.
+        self.similar_words_cache = dict(list()) # this is for word2vec similar words
+        self.word_vector_cache = dict(list()) # this is for word2vec representations
+        self.word_lda_topics = dict(list()) # this is for lda assigned topics
 
-        if self.kmeans:
-            model_input = 'kmeans.model'
-            self.kmeans_model = self.load_kmeans_model(model_input)
+        # use the kmeans cluster as feature
+        self.kmeans_features = kmeans
+        self.kmeans_model = None
+        if self.kmeans_features:
+            model_filename = 'kmeans.model'
+            self.kmeans_model = self.load_kmeans_model(model_filename)
+
+        # use the lda 5 most promising topics as feature
+        self.lda_features = lda
+        self.lda_model = None
+        if self.lda_features:
+            model_filename = 'wikipedia_lda.model'
+            self.lda_model = load(model_filename)
 
     def load_kmeans_model(self, model_filename):
         return load(model_filename)
@@ -197,20 +209,20 @@ class CRF:
         else:
             features.append('EOS')
 
+        # word2vec features
         if self.w2v_model:
-            try:
-                features.extend(self.get_similar_w2v_words(word, self.similar_words_cache, topn=5))
-            except:
-                pass
+            similar_words = self.get_similar_w2v_words(word, self.similar_words_cache, topn=5)
+            features.extend(similar_words)
 
+        # kmeans features
         if self.kmeans_model and self.w2v_model:
-            try:
-                word_vector = self.get_w2v_vector(word, self.word_vector_cache)
-                cluster = self.kmeans_model.predict(word_vector)[0]
-            except:
-                cluster = 999
-
+            cluster = self.get_kmeans_cluster(word)
             features.append(str(cluster))
+
+        # lda features
+        if self.lda_model:
+            topics = self.get_lda_topics(word, self.word_lda_topics, topn=5)
+            features.extend(topics)
 
         return features
 
@@ -234,12 +246,44 @@ class CRF:
 
     @memoize
     def get_similar_w2v_words(self, word, dictionary, topn=5):
-        return [sim for sim, _ in self.w2v_model.most_similar(positive=[word], topn=topn)]
+        try:
+            similar_words = [sim for sim,_ in self.w2v_model.most_similar(positive=[word], topn=topn)]
+        except:
+            similar_words = []
+
+        return similar_words
         # return ['ej1', 'e2', 'e3']
 
     @memoize
     def get_w2v_vector(self, word, dictionary):
         return self.w2v_model[word]
+
+    def get_kmeans_cluster(self, word):
+        try:
+            word_vector = self.get_w2v_vector(word, self.word_vector_cache)
+            cluster = self.kmeans_model.predict(word_vector)[0]
+        except:
+            cluster = 999
+
+        return cluster
+
+    @memoize
+    def get_lda_topics(self, word, dictionary, topn=5):
+        try:
+            # esto, comparado con lda_model.id2word.token2id[word] da otro resultado (erroneo). Be careful!
+            # id2word = gensim.corpora.Dictionary()
+            # id2word.merge_with(self.lda_model.id2word)
+            # bow = id2word.doc2bow([word])
+            token_id = self.lda_model.id2word.token2id[word.lower()]
+            bow = [(token_id,1)]
+            topics = [str(topic) for topic,_ in
+                          sorted(self.lda_model.get_document_topics(bow, minimum_probability=0.),
+                                 key=lambda x: x[1], reverse=True)[:5]]
+        except:
+            n_topics = self.lda_model.num_topics
+            topics = ['999'] * n_topics
+
+        return topics
 
     def get_original_paper_word_features(self, sentence, file_idx, word_idx):
         features = []
@@ -661,15 +705,16 @@ if __name__ == '__main__':
     test_data_filename = None
     output_model_filename = 'crf_trained.model'
 
-    w2v_features = True
-    kmeans = True
+    w2v_features = False
+    kmeans = False
+    lda = False
 
     # check_params()
 
     training_data, training_texts = Dataset.get_crf_training_data(training_data_filename)
 
     crf_model = CRF(training_data, training_texts, test_data_filename, output_model_filename,
-                    w2v_features=w2v_features, kmeans=kmeans)
+                    w2v_features=w2v_features, kmeans=kmeans, lda=lda)
     feature_function = crf_model.get_custom_word_features
     # feature_function = crf_model.get_original_paper_word_features
 
