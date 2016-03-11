@@ -756,7 +756,7 @@ if __name__ == '__main__':
 
     logger.info('Extracting features with: '+feature_function.__str__())
 
-    logger.info('Using w2v_similar_words: %s and kmeans: %s' % (w2v_features, kmeans))
+    logger.info('Using w2v_similar_words: %s kmeans: %s lda: %s' % (w2v_features, kmeans, lda))
 
     results_accuracy = []
     results_f1 = []
