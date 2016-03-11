@@ -740,6 +740,8 @@ if __name__ == '__main__':
     parser.add_argument('--kmeans', action='store_true', default=False)
     parser.add_argument('--lda', action='store_true', default=False)
     parser.add_argument('--zipfeatures', action='store_true', default=False)
+    parser.add_argument('--originalfeatures', action='store_true', default=False)
+    parser.add_argument('--customfeatures', action='store_true', default=False)
 
     arguments = parser.parse_args()
 
@@ -751,6 +753,8 @@ if __name__ == '__main__':
     kmeans = arguments.kmeans
     lda = arguments.lda
     zip_features = arguments.zipfeatures
+    use_original_paper_features = arguments.originalfeatures
+    use_custom_features = arguments.customfeatures
 
     # check_params()
 
@@ -758,8 +762,11 @@ if __name__ == '__main__':
 
     crf_model = CRF(training_data, training_texts, test_data_filename, output_model_filename,
                     w2v_features=w2v_features, kmeans_features=kmeans, lda_features=lda, zip_features=zip_features)
-    # feature_function = crf_model.get_custom_word_features
-    feature_function = crf_model.get_original_paper_word_features
+
+    if use_original_paper_features:
+        feature_function = crf_model.get_original_paper_word_features
+    elif use_custom_features:
+        feature_function = crf_model.get_custom_word_features
 
     logger.info('Extracting features with: '+feature_function.__str__())
 
