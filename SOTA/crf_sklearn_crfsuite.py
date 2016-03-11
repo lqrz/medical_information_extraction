@@ -322,7 +322,8 @@ class CRF:
         return topics
 
     def get_original_paper_word_features(self, sentence, file_idx, word_idx):
-        features = []
+        # features = []
+        features = dict()
 
         word = sentence[word_idx]
         word_lemma = self.training_data[file_idx][word_idx]['features'][0]
@@ -346,293 +347,249 @@ class CRF:
 
         # Unigram
         # U01:%x[0,0]
-        features.append(word)
+        features['word'] = word
         # U06:%x[0,1]
-        features.append(word_lemma)
+        features['word_lemma'] = word_lemma
         # U11:%x[0,2]
-        features.append(word_ner)
+        features['word_ner'] = word_ner
         # U16:%x[0,3]
-        features.append(word_pos)
+        features['word_pos'] = word_pos
         # U21:%x[0,4]
-        features.append(word_parse_tree)
+        features['word_parse_tree'] = word_parse_tree
         # U26:%x[0,5]
-        features.append(word_basic_dependents)
+        features['word_dependents'] = word_basic_dependents
         # U31:%x[0,6]
-        features.append(word_basic_governors)
+        features['word_governors'] = word_basic_governors
         # U36:%x[0,8]
-        features.append(word_phrase)
+        features['word_phrase'] = word_phrase
         # U41:%x[0,9]
-        features.append(word_top_candidate_1)
+        features['word_candidate_1'] = word_top_candidate_1
         # U46:%x[0,10]
-        features.append(word_top_candidate_2)
+        features['word_candidate_2'] = word_top_candidate_2
         # U51:%x[0,11]
-        features.append(word_top_candidate_3)
+        features['word_candidate_3'] = word_top_candidate_3
         # U56:%x[0,12]
-        features.append(word_top_candidate_4)
+        features['word_candidate_4'] = word_top_candidate_4
         # U61:%x[0,13]
-        features.append(word_top_candidate_5)
+        features['word_candidate_5'] = word_top_candidate_5
         # U66:%x[0,14]
-        features.append(word_top_mapping)
+        features['word_mapping'] = word_top_mapping
         # U71:%x[0,15]
-        features.append(word_medication_score)
+        features['word_medication_score'] = word_medication_score
         # U76:%x[0,16]
-        features.append(word_location)
+        features['word_location'] = word_location
         # U80:%x[0,1]/%x[0,2]/%x[0,3]/%x[0,5]/%x[0,6]/%x[0,7]/%x[0,8]/%x[0,9]/%x[0,10]/%x[0,11]/%x[0,12]/%x[0,13]/%x[0,14]/%x[0,15]/%x[0,16]
-        features.append(
-            word_lemma + '/'+
-            word_ner + '/'+
-            word_pos + '/'+
-            word_parse_tree + '/'+
-            word_basic_dependents + '/'+
-            word_basic_governors + '/'+
-            word_unk_score + '/'+
-            word_phrase + '/'+
-            word_top_candidate_1 + '/'+
-            word_top_candidate_2 + '/'+
-            word_top_candidate_3 + '/'+
-            word_top_candidate_4 + '/'+
-            word_top_candidate_5 + '/'+
-            word_top_mapping + '/'+
-            word_medication_score + '/'+
-            word_location
-        )
+        features['word_all_features'] = '/'.join([word_lemma, word_ner, word_pos, word_parse_tree,
+            word_basic_dependents, word_basic_governors, word_unk_score, word_phrase,
+            word_top_candidate_1, word_top_candidate_2, word_top_candidate_3, word_top_candidate_4,
+            word_top_candidate_5, word_top_mapping, word_medication_score, word_location])
 
         if word_idx > 0:
             # U00:%x[-1,0]
             previous_word = sentence[word_idx-1]
-            features.append(previous_word)
+            features['previous_word'] = previous_word
             # U03:%x[-1,0]/%x[0,0]
-            features.append(previous_word +'/'+ word)
+            features['previous_word_word'] = previous_word +'/'+ word
             # U05:%x[-1,1]
-            features.append(self.training_data[file_idx][word_idx-1]['features'][0])
+            features['previous_lemma'] = self.training_data[file_idx][word_idx-1]['features'][0]
             # U10:%x[-1,2]
-            features.append(self.training_data[file_idx][word_idx-1]['features'][1])
+            features['previous_ner'] = self.training_data[file_idx][word_idx-1]['features'][1]
             # U15:%x[-1,3]
-            features.append(self.training_data[file_idx][word_idx-1]['features'][2])
+            features['previous_pos'] = self.training_data[file_idx][word_idx-1]['features'][2]
             # U20:%x[-1,4]
-            features.append(self.training_data[file_idx][word_idx-1]['features'][3])
+            features['previous_parse_tree'] = self.training_data[file_idx][word_idx-1]['features'][3]
             # U25:%x[-1,5]
-            features.append(self.training_data[file_idx][word_idx-1]['features'][4])
+            features['previous_dependents'] = self.training_data[file_idx][word_idx-1]['features'][4]
             # U30:%x[-1,6]
-            features.append(self.training_data[file_idx][word_idx-1]['features'][5])
+            features['previous_governors'] = self.training_data[file_idx][word_idx-1]['features'][5]
             # U35:%x[-1,8]
-            features.append(self.training_data[file_idx][word_idx-1]['features'][7])
+            features['previous_phrase'] = self.training_data[file_idx][word_idx-1]['features'][7]
             # U40:%x[-1,9]
-            features.append(self.training_data[file_idx][word_idx-1]['features'][8])
+            features['previous_candidate_1'] = self.training_data[file_idx][word_idx-1]['features'][8]
             # U45:%x[-1,10]
-            features.append(self.training_data[file_idx][word_idx-1]['features'][9])
+            features['previous_candidate_2'] = self.training_data[file_idx][word_idx-1]['features'][9]
             # U50:%x[-1,11]
-            features.append(self.training_data[file_idx][word_idx-1]['features'][10])
+            features['previous_candidate_3'] = self.training_data[file_idx][word_idx-1]['features'][10]
             # U55:%x[-1,12]
-            features.append(self.training_data[file_idx][word_idx-1]['features'][11])
+            features['previous_candidate_4'] = self.training_data[file_idx][word_idx-1]['features'][11]
             # U60:%x[-1,13]
-            features.append(self.training_data[file_idx][word_idx-1]['features'][12])
+            features['previous_candidate_5'] = self.training_data[file_idx][word_idx-1]['features'][12]
             # U65:%x[-1,14]
-            features.append(self.training_data[file_idx][word_idx-1]['features'][13])
+            features['previous_mapping'] = self.training_data[file_idx][word_idx-1]['features'][13]
             # U70:%x[-1,15]
-            features.append(self.training_data[file_idx][word_idx-1]['features'][14])
+            features['previous_medication_score'] = self.training_data[file_idx][word_idx-1]['features'][14]
             # U75:%x[-1,16]
-            features.append(self.training_data[file_idx][word_idx-1]['features'][15])
+            features['previous_location'] = self.training_data[file_idx][word_idx-1]['features'][15]
 
-            # TODO: uncomment
+            # TODO: uncomment? or is it included in the CRF all_possible_transitions flag?
             # Bigram
             # B
             # previous_tag = self.training_data[file_idx][word_idx-1]['tag']
             # features.append(previous_tag+'/'+word_tag)
 
             # U08:%x[-1,1]/%x[0,1]
-            features.append(
-                self.training_data[file_idx][word_idx-1]['features'][0] +'/'+
+            features['previous_lemma_lemma'] = self.training_data[file_idx][word_idx-1]['features'][0] +'/'+ \
                 word_lemma
-            )
+
             # U13:%x[-1,2]/%x[0,2]
-            features.append(
-                self.training_data[file_idx][word_idx-1]['features'][1] +'/'+
+            features['previous_ner_ner'] = self.training_data[file_idx][word_idx-1]['features'][1] +'/'+ \
                 word_ner
-            )
+
             # U18:%x[-1,3]/%x[0,3]
-            features.append(
-                self.training_data[file_idx][word_idx-1]['features'][2] +'/'+
+            features['previous_pos_pos'] = self.training_data[file_idx][word_idx-1]['features'][2] +'/'+ \
                 word_pos
-            )
+
             # U23:%x[-1,4]/%x[0,4]
-            features.append(
-                self.training_data[file_idx][word_idx-1]['features'][3] +'/'+
+            features['previous_parse_tree_parse_tree'] = self.training_data[file_idx][word_idx-1]['features'][3] +'/'+ \
                 word_parse_tree
-            )
+
             # U28:%x[-1,5]/%x[0,5]
-            features.append(
-                self.training_data[file_idx][word_idx-1]['features'][4] +'/'+
+            features['previous_dependents_dependents'] = self.training_data[file_idx][word_idx-1]['features'][4] +'/'+ \
                 word_basic_dependents
-            )
+
             # U33:%x[-1,6]/%x[0,6]
-            features.append(
-                self.training_data[file_idx][word_idx-1]['features'][5] +'/'+
+            features['previous_governors_governors'] = self.training_data[file_idx][word_idx-1]['features'][5] +'/'+ \
                 word_basic_governors
-            )
+
             # U38:%x[-1,8]/%x[0,8]
-            features.append(
-                self.training_data[file_idx][word_idx-1]['features'][7] +'/'+
+            features['previous_phrase_phrase'] = self.training_data[file_idx][word_idx-1]['features'][7] +'/'+ \
                 word_phrase
-            )
+
             # U43:%x[-1,9]/%x[0,9]
-            features.append(
-                self.training_data[file_idx][word_idx-1]['features'][8] +'/'+
+            features['previous_candidate_1_candidate_1'] = self.training_data[file_idx][word_idx-1]['features'][8] +'/'+ \
                 word_top_candidate_1
-            )
+
             # U48:%x[-1,10]/%x[0,10]
-            features.append(
-                self.training_data[file_idx][word_idx-1]['features'][9] +'/'+
+            features['previous_candidate_2_candidate_2'] = self.training_data[file_idx][word_idx-1]['features'][9] +'/'+ \
                 word_top_candidate_2
-            )
+
             # U53:%x[-1,11]/%x[0,11]
-            features.append(
-                self.training_data[file_idx][word_idx-1]['features'][10] +'/'+
+            features['previous_candidate_3_candidate_3'] = self.training_data[file_idx][word_idx-1]['features'][10] +'/'+ \
                 word_top_candidate_3
-            )
+
             # U58:%x[-1,12]/%x[0,12]
-            features.append(
-                self.training_data[file_idx][word_idx-1]['features'][11] +'/'+
+            features['previous_candidate_4_candidate_4'] = self.training_data[file_idx][word_idx-1]['features'][11] +'/'+ \
                 word_top_candidate_4
-            )
+
             # U63:%x[-1,13]/%x[0,13]
-            features.append(
-                self.training_data[file_idx][word_idx-1]['features'][12] +'/'+
+            features['previous_candidate_5_candidate_5'] = self.training_data[file_idx][word_idx-1]['features'][12] +'/'+ \
                 word_top_candidate_5
-            )
+
             # U68:%x[-1,14]/%x[0,14]
-            features.append(
-                self.training_data[file_idx][word_idx-1]['features'][13] +'/'+
+            features['previous_mapping_mapping'] = self.training_data[file_idx][word_idx-1]['features'][13] +'/'+ \
                 word_top_mapping
-            )
+
             # U73:%x[-1,15]/%x[0,15]
-            features.append(
-                self.training_data[file_idx][word_idx-1]['features'][14] +'/'+
+            features['previous_medication_score_medication_score'] = self.training_data[file_idx][word_idx-1]['features'][14] +'/'+ \
                 word_medication_score
-            )
+
             # U78:%x[-1,16]/%x[0,16]
-            features.append(
-                self.training_data[file_idx][word_idx-1]['features'][15] +'/'+
+            features['previous_word_location_word_location'] = self.training_data[file_idx][word_idx-1]['features'][15] +'/'+ \
                 word_location
-            )
+
         else:
             # features['BOS'] = True
-            features.append('True')
+            features['BOS'] = 'True'
 
         if word_idx < len(sentence)-1:
             # U02:%x[1,0]
             next_word = sentence[word_idx+1]
-            features.append(next_word)
+            features['next_word'] = next_word
             # U04:%x[0,0]/%x[1,0]
-            features.append(word +'/'+ next_word)
+            features['word_next_word'] = word +'/'+ next_word
             # U07:%x[1,1]
-            features.append(self.training_data[file_idx][word_idx+1]['features'][0])
+            features['next_lemma'] = self.training_data[file_idx][word_idx+1]['features'][0]
             # U12:%x[1,2]
-            features.append(self.training_data[file_idx][word_idx+1]['features'][1])
+            features['next_ner'] = self.training_data[file_idx][word_idx+1]['features'][1]
             # U17:%x[1,3]
-            features.append(self.training_data[file_idx][word_idx+1]['features'][2])
+            features['next_pos'] = self.training_data[file_idx][word_idx+1]['features'][2]
             # U22:%x[1,4]
-            features.append(self.training_data[file_idx][word_idx+1]['features'][3])
+            features['next_parse_tree'] = self.training_data[file_idx][word_idx+1]['features'][3]
             # U27:%x[1,5]
-            features.append(self.training_data[file_idx][word_idx+1]['features'][4])
+            features['next_dependents'] = self.training_data[file_idx][word_idx+1]['features'][4]
             # U32:%x[1,6]
-            features.append(self.training_data[file_idx][word_idx+1]['features'][5])
+            features['next_governors'] = self.training_data[file_idx][word_idx+1]['features'][5]
             # U37:%x[1,8]
-            features.append(self.training_data[file_idx][word_idx+1]['features'][7])
+            features['next_phrase'] = self.training_data[file_idx][word_idx+1]['features'][7]
             # U42:%x[1,9]
-            features.append(self.training_data[file_idx][word_idx+1]['features'][8])
+            features['next_candidate_1'] = self.training_data[file_idx][word_idx+1]['features'][8]
             # U47:%x[1,10]
-            features.append(self.training_data[file_idx][word_idx+1]['features'][9])
+            features['next_candidate_2'] = self.training_data[file_idx][word_idx+1]['features'][9]
             # U52:%x[1,11]
-            features.append(self.training_data[file_idx][word_idx+1]['features'][10])
+            features['next_candidate_3'] = self.training_data[file_idx][word_idx+1]['features'][10]
             # U57:%x[1,12]
-            features.append(self.training_data[file_idx][word_idx+1]['features'][11])
+            features['next_candidate_4'] = self.training_data[file_idx][word_idx+1]['features'][11]
             # U62:%x[1,13]
-            features.append(self.training_data[file_idx][word_idx+1]['features'][12])
+            features['next_candidate_5'] = self.training_data[file_idx][word_idx+1]['features'][12]
             # U67:%x[1,14]
-            features.append(self.training_data[file_idx][word_idx+1]['features'][13])
+            features['next_mapping'] = self.training_data[file_idx][word_idx+1]['features'][13]
             # U72:%x[1,15]
-            features.append(self.training_data[file_idx][word_idx+1]['features'][14])
+            features['next_medication_score'] = self.training_data[file_idx][word_idx+1]['features'][14]
             # U77:%x[1,16]
-            features.append(self.training_data[file_idx][word_idx+1]['features'][15])
+            features['next_location'] = self.training_data[file_idx][word_idx+1]['features'][15]
             # U09:%x[0,1]/%x[1,1]
-            features.append(
-                word_lemma +'/'+
+            features['lemma_next_lemma'] = word_lemma +'/'+ \
                 self.training_data[file_idx][word_idx+1]['features'][0]
-            )
+
             # U14:%x[0,2]/%x[1,2]
-            features.append(
-                word_ner +'/'+
+            features['ner_next_ner'] = word_ner +'/'+ \
                 self.training_data[file_idx][word_idx+1]['features'][1]
-            )
+
             # U19:%x[0,3]/%x[1,3]
-            features.append(
-                word_pos +'/'+
+            features['pos_next_pos'] = word_pos +'/'+ \
                 self.training_data[file_idx][word_idx+1]['features'][2]
-            )
+
             # U24:%x[0,4]/%x[1,4]
-            features.append(
-                word_parse_tree +'/'+
+            features['parse_tree_next_parse_tree'] = word_parse_tree +'/'+ \
                 self.training_data[file_idx][word_idx+1]['features'][3]
-            )
+
             # U29:%x[0,5]/%x[1,5]
-            features.append(
-                word_basic_dependents +'/'+
+            features['dependents_next_dependents'] = word_basic_dependents +'/'+ \
                 self.training_data[file_idx][word_idx+1]['features'][4]
-            )
+
             # U34:%x[0,6]/%x[1,6]
-            features.append(
-                word_basic_governors +'/'+
+            features['governors_next_governors'] = word_basic_governors +'/'+ \
                 self.training_data[file_idx][word_idx+1]['features'][5]
-            )
+
             # U39:%x[0,8]/%x[1,8]
-            features.append(
-                word_phrase +'/'+
+            features['phrase_next_phrase'] = word_phrase +'/'+ \
                 self.training_data[file_idx][word_idx+1]['features'][7]
-            )
+
             # U44:%x[0,9]/%x[1,9]
-            features.append(
-                word_top_candidate_1 +'/'+
+            features['candidate_1_next_candidate_1'] = word_top_candidate_1 +'/'+ \
                 self.training_data[file_idx][word_idx+1]['features'][8]
-            )
+
             # U49:%x[0,10]/%x[1,10]
-            features.append(
-                word_top_candidate_2 +'/'+
+            features['candidate_2_next_candidate_2'] = word_top_candidate_2 +'/'+ \
                 self.training_data[file_idx][word_idx+1]['features'][9]
-            )
+
             # U54:%x[0,11]/%x[1,11]
-            features.append(
-                word_top_candidate_3 +'/'+
+            features['candidate_3_next_candidate_3'] = word_top_candidate_3 +'/'+ \
                 self.training_data[file_idx][word_idx+1]['features'][10]
-            )
+
             # U59:%x[0,12]/%x[1,12]
-            features.append(
-                word_top_candidate_4 +'/'+
+            features['candidate_4_next_candidate_4'] = word_top_candidate_4 +'/'+ \
                 self.training_data[file_idx][word_idx+1]['features'][11]
-            )
+
             # U64:%x[0,13]/%x[1,13]
-            features.append(
-                word_top_candidate_5 +'/'+
+            features['candidate_5_next_candidate_5'] = word_top_candidate_5 +'/'+ \
                 self.training_data[file_idx][word_idx+1]['features'][12]
-            )
+
             # U69:%x[0,14]/%x[1,14]
-            features.append(
-                word_top_mapping +'/'+
+            features['mapping_next_mapping'] = word_top_mapping +'/'+ \
                 self.training_data[file_idx][word_idx+1]['features'][13]
-            )
+
             # U74:%x[0,15]/%x[1,15]
-            features.append(
-                word_medication_score +'/'+
+            features['medication_score_next_medication_score'] = word_medication_score +'/'+ \
                 self.training_data[file_idx][word_idx+1]['features'][14]
-            )
+
             # U79:%x[0,16]/%x[1,16]
-            features.append(
-                word_location +'/'+
+            features['location_next_location'] = word_location +'/'+ \
                 self.training_data[file_idx][word_idx+1]['features'][15]
-            )
+
         else:
             # features['EOS'] = True
-            features.append('True')
+            features['EOS'] = True
 
         return features
 
@@ -743,7 +700,7 @@ if __name__ == '__main__':
 
     w2v_features = False
     kmeans = False
-    lda = True
+    lda = False
 
     # check_params()
 
@@ -751,20 +708,20 @@ if __name__ == '__main__':
 
     crf_model = CRF(training_data, training_texts, test_data_filename, output_model_filename,
                     w2v_features=w2v_features, kmeans_features=kmeans, lda_features=lda)
-    feature_function = crf_model.get_custom_word_features
-    # feature_function = crf_model.get_original_paper_word_features
+    # feature_function = crf_model.get_custom_word_features
+    feature_function = crf_model.get_original_paper_word_features
 
     logger.info('Extracting features with: '+feature_function.__str__())
 
-    logger.info('Using w2v_similar_words: %s kmeans: %s lda: %s' % (w2v_features, kmeans, lda))
+    logger.info('Using w2v_similar_words:%s kmeans:%s lda:%s' % (w2v_features, kmeans, lda))
 
     results_accuracy = []
     results_f1 = []
 
     loo = LeaveOneOut(training_data.__len__())
     for i, (x_idx, y_idx) in enumerate(loo):
-#        if i+1 > 1:
-#            break
+        if i+1 > 1:
+           break
         logger.info('Cross validation '+str(i+1)+' (train+predict)')
         # print x_idx, y_idx
         crf_model.train(x_idx, feature_function, verbose=False)
