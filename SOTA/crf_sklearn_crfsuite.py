@@ -86,7 +86,7 @@ class CRF:
         return gensim.models.Word2Vec.load_word2vec_format(model_filename, binary=True)
 
     def get_custom_word_features(self, sentence, file_idx, word_idx):
-        features = []
+        features = dict()
         previous_features = []
         next_features = []
         word_features = []
@@ -117,15 +117,24 @@ class CRF:
                                  word_basic_governors, word_shape_digit,
                                  word_shape_capital])
 
-        features.append(word)
-        features.append(word_lemma)
-        features.append(word_ner)
-        features.append(word_pos)
-        features.append(word_parse_tree)
-        features.append(word_basic_dependents)
-        features.append(word_basic_governors)
-        features.append(word_shape_digit)
-        features.append(word_shape_capital)
+        # features.append(word)
+        # features.append(word_lemma)
+        # features.append(word_ner)
+        # features.append(word_pos)
+        # features.append(word_parse_tree)
+        # features.append(word_basic_dependents)
+        # features.append(word_basic_governors)
+        # features.append(word_shape_digit)
+        # features.append(word_shape_capital)
+        features['word'] = word
+        features['word_lemma'] =word_lemma
+        features['word_ner'] = word_ner
+        features['word_pos'] = word_pos
+        features['word_parse_tree'] = word_parse_tree
+        features['word_dependents'] = word_basic_dependents
+        features['word_governors'] = word_basic_governors
+        features['word_has_digit'] = word_shape_digit
+        features['word_is_capitalized'] = word_shape_capital
 
         if word_idx > 0:
             previous_word = sentence[word_idx-1]
@@ -153,20 +162,31 @@ class CRF:
                                      previous_word_basic_governors, previous_word_shape_digit,
                                      previous_word_shape_capital])
 
-            features.append(previous_word)
-            features.append(previous_word_lemma)
-            features.append(previous_word_ner)
-            features.append(previous_word_pos)
-            features.append(previous_word_parse_tree)
-            features.append(previous_word_basic_dependents)
-            features.append(previous_word_basic_governors)
-            features.append(previous_word_shape_digit)
-            features.append(previous_word_shape_capital)
+            # features.append(previous_word)
+            # features.append(previous_word_lemma)
+            # features.append(previous_word_ner)
+            # features.append(previous_word_pos)
+            # features.append(previous_word_parse_tree)
+            # features.append(previous_word_basic_dependents)
+            # features.append(previous_word_basic_governors)
+            # features.append(previous_word_shape_digit)
+            # features.append(previous_word_shape_capital)
+            features['previous_word'] = previous_word
+            features['previous_lemma'] = previous_word_lemma
+            features['previous_ner'] = previous_word_ner
+            features['previous_pos'] = previous_word_pos
+            features['previous_parse_tree'] = previous_word_parse_tree
+            features['previous_dependents'] = previous_word_basic_dependents
+            features['previous_governors'] = previous_word_basic_governors
+            features['previous_has_digit'] = previous_word_shape_digit
+            features['previous_is_capitalized'] = previous_word_shape_capital
 
-            features.extend([x+'/'+y for x,y in zip(word_features, next_features)])
+            #TODO
+            # features.extend([x+'/'+y for x,y in zip(word_features, next_features)])
 
         else:
-            features.append('BOS')
+            # features.append('BOS')
+            features['BOS'] = True
 
         if word_idx < len(sentence)-1:
             next_word = sentence[word_idx+1]
@@ -194,35 +214,51 @@ class CRF:
                                      next_word_basic_governors, next_word_shape_digit,
                                      next_word_shape_capital])
 
-            features.append(next_word)
-            features.append(next_word_lemma)
-            features.append(next_word_ner)
-            features.append(next_word_pos)
-            features.append(next_word_parse_tree)
-            features.append(next_word_basic_dependents)
-            features.append(next_word_basic_governors)
-            features.append(next_word_shape_digit)
-            features.append(next_word_shape_capital)
+            # features.append(next_word)
+            # features.append(next_word_lemma)
+            # features.append(next_word_ner)
+            # features.append(next_word_pos)
+            # features.append(next_word_parse_tree)
+            # features.append(next_word_basic_dependents)
+            # features.append(next_word_basic_governors)
+            # features.append(next_word_shape_digit)
+            # features.append(next_word_shape_capital)
+            features['next_word'] = next_word
+            features['next_lemma'] = next_word_lemma
+            features['next_ner'] = next_word_ner
+            features['next_pos'] = next_word_pos
+            features['next_parse_tree'] = next_word_parse_tree
+            features['next_dependents'] = next_word_basic_dependents
+            features['next_governors'] = next_word_basic_governors
+            features['next_has_digit'] = next_word_shape_digit
+            features['next_is_capitalized'] = next_word_shape_capital
 
-            features.extend([x+'/'+y for x,y in zip(word_features, next_features)])
+            #TODO
+            # features.extend([x+'/'+y for x,y in zip(word_features, next_features)])
 
         else:
-            features.append('EOS')
+            # features.append('EOS')
+            features['EOS'] = True
 
         # word2vec features
         if self.w2v_model:
             similar_words = self.get_similar_w2v_words(word, self.similar_words_cache, topn=5)
-            features.extend(similar_words)
+            for j,sim_word in enumerate(similar_words):
+                features['w2v_similar_word_'+str(j)] = sim_word
+            # features.extend(similar_words)
 
         # kmeans features
         if self.kmeans_model and self.w2v_model:
             cluster = self.get_kmeans_cluster(word)
-            features.append(str(cluster))
+            features['kmeans_cluster'] = cluster
+            # features.append(str(cluster))
 
         # lda features
         if self.lda_model:
             topics = self.get_lda_topics(word, self.word_lda_topics, topn=5)
-            features.extend(topics)
+            for j,topic in enumerate(topics):
+                features['lda_topic_'+str(j)] = topic
+            # features.extend(topics)
 
         return features
 
