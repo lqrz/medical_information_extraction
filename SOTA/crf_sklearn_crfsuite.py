@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 class CRF:
 
     def __init__(self, training_data, training_texts, test_data, output_model_filename,
-                 w2v_features=False, kmeans_features=False, lda_features=False):
+                 w2v_features=False, kmeans_features=False, lda_features=False, zip_features=False):
         self.training_data = training_data
         self.file_texts = training_texts
         # self.file_texts = dataset.get_training_file_sentences(training_data_filename)
@@ -59,6 +59,8 @@ class CRF:
             model_filename = 'wikipedia_lda.model'
             self.lda_model = load(model_filename)
 
+        self.zip_features = zip_features
+
     def load_kmeans_model(self, model_filename):
         return load(model_filename)
 
@@ -87,9 +89,12 @@ class CRF:
 
     def get_custom_word_features(self, sentence, file_idx, word_idx):
         features = dict()
-        previous_features = []
-        next_features = []
-        word_features = []
+        previous_features = dict()
+        next_features = dict()
+        word_features = dict()
+
+        features_names = ['word', 'lemma', 'ner', 'pos', 'parse_tree', 'dependents', 'governors', 'has_digit',
+                          'is_capitalized']
 
         word = sentence[word_idx]
         word_lemma = self.training_data[file_idx][word_idx]['features'][0]
@@ -109,13 +114,16 @@ class CRF:
         # word_medication_score = self.training_data[file_idx][word_idx]['features'][14]
         # word_location = self.training_data[file_idx][word_idx]['features'][15]
         word_tag = self.training_data[file_idx][word_idx]['tag']
-        word_shape_digit = 'Digit' if re.search('\d', word) else 'non-digit'
-        word_shape_capital = 'Capital' if re.match('[A-Z]', word) else 'Non-capital'
+        word_shape_digit = re.search('\d', word) != None
+        word_shape_capital = re.match('[A-Z]', word) != None
 
-        word_features.extend([word, word_lemma, word_ner, word_pos,
+        word_feature_values = [word, word_lemma, word_ner, word_pos,
                                  word_parse_tree, word_basic_dependents,
                                  word_basic_governors, word_shape_digit,
-                                 word_shape_capital])
+                                 word_shape_capital]
+
+        for desc,val in zip(features_names,word_feature_values):
+            word_features[desc] = val
 
         # features.append(word)
         # features.append(word_lemma)
@@ -154,13 +162,16 @@ class CRF:
             # previous_word_top_mapping = self.training_data[file_idx][word_idx-1]['features'][13]
             # previous_word_medication_score = self.training_data[file_idx][word_idx-1]['features'][14]
             # previous_word_location = self.training_data[file_idx][word_idx-1]['features'][15]
-            previous_word_shape_digit = 'Digit' if re.search('\d', previous_word) else 'non-digit'
-            previous_word_shape_capital = 'Capital' if re.match('[A-Z]', previous_word) else 'Non-capital'
+            previous_word_shape_digit = re.search('\d', previous_word) != None
+            previous_word_shape_capital = re.match('[A-Z]', previous_word) != None
 
-            previous_features.extend([previous_word, previous_word_lemma, previous_word_ner, previous_word_pos,
+            previous_features_values = [previous_word, previous_word_lemma, previous_word_ner, previous_word_pos,
                                      previous_word_parse_tree, previous_word_basic_dependents,
                                      previous_word_basic_governors, previous_word_shape_digit,
-                                     previous_word_shape_capital])
+                                     previous_word_shape_capital]
+
+            for desc,val in zip(features_names,previous_features_values):
+                previous_features[desc] = val
 
             # features.append(previous_word)
             # features.append(previous_word_lemma)
@@ -182,7 +193,16 @@ class CRF:
             features['previous_is_capitalized'] = previous_word_shape_capital
 
             #TODO
-            # features.extend([x+'/'+y for x,y in zip(word_features, next_features)])
+            if self.zip_features:
+                # features.extend([x+'/'+y for x,y in zip(word_features, next_features)])
+                assert len(word_features.keys()) == len(previous_features.keys())
+                for feat_name in features_names:
+                    try:
+                        features['previous_'+feat_name+'_'+feat_name] = \
+                        previous_features[feat_name] + '/' + word_features[feat_name]
+                    except TypeError:
+                        features['previous_'+feat_name+'_'+feat_name] = \
+                        previous_features[feat_name] or word_features[feat_name]
 
         else:
             # features.append('BOS')
@@ -206,13 +226,16 @@ class CRF:
             # next_word_top_mapping = self.training_data[file_idx][word_idx+1]['features'][13]
             # next_word_medication_score = self.training_data[file_idx][word_idx+1]['features'][14]
             # next_word_location = self.training_data[file_idx][word_idx+1]['features'][15]
-            next_word_shape_digit = 'Digit' if re.search('\d', next_word) else 'non-digit'
-            next_word_shape_capital = 'Capital' if re.match('[A-Z]', next_word) else 'Non-capital'
+            next_word_shape_digit = re.search('\d', next_word) != None
+            next_word_shape_capital = re.match('[A-Z]', next_word) != None
 
-            next_features.extend([next_word, next_word_lemma, next_word_ner, next_word_pos,
+            next_feature_values = [next_word, next_word_lemma, next_word_ner, next_word_pos,
                                      next_word_parse_tree, next_word_basic_dependents,
                                      next_word_basic_governors, next_word_shape_digit,
-                                     next_word_shape_capital])
+                                     next_word_shape_capital]
+
+            for desc,val in zip(features_names,next_feature_values):
+                next_features[desc] = val
 
             # features.append(next_word)
             # features.append(next_word_lemma)
@@ -234,7 +257,16 @@ class CRF:
             features['next_is_capitalized'] = next_word_shape_capital
 
             #TODO
-            # features.extend([x+'/'+y for x,y in zip(word_features, next_features)])
+            if self.zip_features:
+                # features.extend([x+'/'+y for x,y in zip(word_features, next_features)])
+                assert len(word_features.keys()) == len(next_features.keys())
+                for feat_name in features_names:
+                    try:
+                        features[feat_name+'_'+'next_'+feat_name] = \
+                        word_features[feat_name] + '/' + next_features[feat_name]
+                    except TypeError:
+                        features[feat_name+'_'+'next_'+feat_name] = \
+                        word_features[feat_name] or next_features[feat_name]
 
         else:
             # features.append('EOS')
@@ -701,19 +733,20 @@ if __name__ == '__main__':
     w2v_features = False
     kmeans = False
     lda = False
+    zip_features = False
 
     # check_params()
 
     training_data, training_texts = Dataset.get_crf_training_data(training_data_filename)
 
     crf_model = CRF(training_data, training_texts, test_data_filename, output_model_filename,
-                    w2v_features=w2v_features, kmeans_features=kmeans, lda_features=lda)
-    # feature_function = crf_model.get_custom_word_features
-    feature_function = crf_model.get_original_paper_word_features
+                    w2v_features=w2v_features, kmeans_features=kmeans, lda_features=lda, zip_features=zip_features)
+    feature_function = crf_model.get_custom_word_features
+    # feature_function = crf_model.get_original_paper_word_features
 
     logger.info('Extracting features with: '+feature_function.__str__())
 
-    logger.info('Using w2v_similar_words:%s kmeans:%s lda:%s' % (w2v_features, kmeans, lda))
+    logger.info('Using w2v_similar_words:%s kmeans:%s lda:%s zip:%s' % (w2v_features, kmeans, lda, zip_features))
 
     results_accuracy = []
     results_f1 = []
