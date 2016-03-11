@@ -652,7 +652,7 @@ class CRF:
         return [self.get_sentence_features(sentence, file_idx, feature_function)
                 for file_idx, sentence in self.file_texts.iteritems()]
 
-    def train(self, x_idxs, feature_function, verbose=False):
+    def train(self, x_idxs, feature_function, verbose=False, save_model=save_model):
         # x_train = self.get_features()
         x_train = self.get_features_from_crf_training_data(feature_function)
         y_train = self.get_labels_from_crf_training_data()
@@ -684,7 +684,7 @@ class CRF:
 
         crf_trainer.fit(x_train, y_train)
 
-        dump(crf_trainer, self.output_model_filename)
+        # dump(crf_trainer, self.output_model_filename)
 
         # crf_trainer.train(self.output_model_filename)
 
@@ -697,7 +697,8 @@ class CRF:
         # tagger = pycrfsuite.Tagger()
         # tagger.open(self.output_model_filename)
 
-        tagger = load(self.output_model_filename)
+        # tagger = load(self.output_model_filename)
+        tagger = self.model
 
         x_train = self.get_features_from_crf_training_data(feature_function)
         y_train = self.get_labels_from_crf_training_data()
@@ -715,7 +716,7 @@ class CRF:
         # metrics.flat_f1_score(y_train, predictions, average='weighted')
 
         # return float(accuracy)/len(predictions[0]) #this calculation is ok
-        print metrics.flat_classification_report(y_train, predictions)
+        # print metrics.flat_classification_report(y_train, predictions)
 
         return metrics.flat_accuracy_score(y_train, predictions), metrics.flat_f1_score(y_train, predictions)
 
