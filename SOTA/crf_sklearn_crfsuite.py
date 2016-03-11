@@ -652,7 +652,7 @@ class CRF:
         return [self.get_sentence_features(sentence, file_idx, feature_function)
                 for file_idx, sentence in self.file_texts.iteritems()]
 
-    def train(self, x_idxs, feature_function, verbose=False, save_model=save_model):
+    def train(self, x_idxs, feature_function, verbose=False):
         # x_train = self.get_features()
         x_train = self.get_features_from_crf_training_data(feature_function)
         y_train = self.get_labels_from_crf_training_data()
