@@ -14,6 +14,7 @@ from collections import Counter
 from data import get_w2v_model
 import gensim
 from functools import wraps
+import argparse
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -731,14 +732,24 @@ def print_state_features(state_features):
 #     return
 
 if __name__ == '__main__':
+    output_folder = None
+    parser = argparse.ArgumentParser(description='CRF Sklearn')
+    parser.add_argument('outputfolder', type=str, help='output folder')
+    parser.add_argument('--w2vfeatures', action='store_true', default=False)
+    parser.add_argument('--kmeans', action='store_true', default=False)
+    parser.add_argument('--lda', action='store_true', default=False)
+    parser.add_argument('--zipfeatures', action='store_true', default=False)
+
+    arguments = parser.parse_args()
+
     training_data_filename = 'handoverdata.zip'
     test_data_filename = None
-    output_model_filename = 'crf_trained.model'
+    output_model_filename = arguments.outputfolder+ '/' + 'crf_trained.model'
 
-    w2v_features = False
-    kmeans = False
-    lda = False
-    zip_features = True
+    w2v_features = arguments.w2vfeatures
+    kmeans = arguments.kmeans
+    lda = arguments.lda
+    zip_features = arguments.zipfeatures
 
     # check_params()
 
