@@ -28,7 +28,7 @@ logger_predictions.setLevel(logging.INFO)
 
 class CRF:
 
-    def __init__(self, training_data, training_texts, test_data, output_model_filename,
+    def __init__(self, training_data, training_texts, test_data, output_model_filename, w2v_vector_features=False,
                  w2v_features=False, kmeans_features=False, lda_features=False, zip_features=False):
         self.training_data = training_data
         self.file_texts = training_texts
@@ -43,7 +43,8 @@ class CRF:
         self.kmeans_features = kmeans_features
         self.w2v_features = w2v_features
         self.w2v_model = None
-        if self.w2v_features or self.kmeans_features:
+        self.w2v_vector_features = w2v_vector_features
+        if self.w2v_features or self.kmeans_features or self.w2v_vector_features:
             W2V_PRETRAINED_FILENAME = 'GoogleNews-vectors-negative300.bin.gz'
             self.w2v_model = self.load_w2v(get_w2v_model(W2V_PRETRAINED_FILENAME))
             # self.w2v_model = True
@@ -282,24 +283,34 @@ class CRF:
             features['EOS'] = True
 
         # word2vec features
-        if self.w2v_model:
+        if self.w2v_features and self.w2v_model:
             similar_words = self.get_similar_w2v_words(word, self.similar_words_cache, topn=5)
             for j,sim_word in enumerate(similar_words):
                 features['w2v_similar_word_'+str(j)] = sim_word
             # features.extend(similar_words)
 
         # kmeans features
-        if self.kmeans_model and self.w2v_model:
+        if (self.kmeans_features and self.kmeans_model) and self.w2v_model:
             cluster = self.get_kmeans_cluster(word)
             features['kmeans_cluster'] = cluster
             # features.append(str(cluster))
 
         # lda features
-        if self.lda_model:
+        if self.lda_features and self.lda_model:
             topics = self.get_lda_topics(word, self.word_lda_topics, topn=5)
             for j,topic in enumerate(topics):
                 features['lda_topic_'+str(j)] = topic
             # features.extend(topics)
+
+        if (self.w2v_features and self.w2v_model):
+            n_dim = self.w2v_model.syn0.shape[0]
+            try:
+                rep = self.get_w2v_vector(word, self.word_vector_cache)
+            except KeyError:
+                rep = np.zeros((n_dim,))
+
+            for j,dim_val in rep:
+                features['w2v_dim_'+str(j)] = dim_val
 
         return features
 
@@ -739,6 +750,7 @@ if __name__ == '__main__':
     parser.add_argument('--zipfeatures', action='store_true', default=False)
     parser.add_argument('--originalfeatures', action='store_true', default=False)
     parser.add_argument('--customfeatures', action='store_true', default=False)
+    parser.add_argument('--w2vvectorfeatures', action='store_true', default=False)
 
     arguments = parser.parse_args()
 
@@ -752,12 +764,14 @@ if __name__ == '__main__':
     zip_features = arguments.zipfeatures
     use_original_paper_features = arguments.originalfeatures
     use_custom_features = arguments.customfeatures
+    w2v_vector_features = arguments.w2vvectorfeatures
 
     training_data, training_texts = Dataset.get_crf_training_data(training_data_filename)
 
     # test_data = Dataset.get_crf_training_data(test_data_filename)
 
     crf_model = CRF(training_data, training_texts, test_data=None, output_model_filename=output_model_filename,
+                    w2v_vector_features=w2v_vector_features,
                     w2v_features=w2v_features, kmeans_features=kmeans, lda_features=lda, zip_features=zip_features)
 
     if use_original_paper_features:
