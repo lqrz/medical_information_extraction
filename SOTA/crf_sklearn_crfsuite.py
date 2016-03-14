@@ -15,9 +15,16 @@ from data import get_w2v_model
 import gensim
 from functools import wraps
 import argparse
+import cPickle as pickle
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+logger_predictions = logging.getLogger(__name__+'file')
+hndlr = logging.FileHandler('predicted_tags.log')
+hndlr.setFormatter(logging.Formatter('%(message)s'))
+logger_predictions.addHandler(hndlr)
+logger_predictions.setLevel(logging.INFO)
 
 class CRF:
 
@@ -144,6 +151,8 @@ class CRF:
         features['word_governors'] = word_basic_governors
         features['word_has_digit'] = word_shape_digit
         features['word_is_capitalized'] = word_shape_capital
+        features['prefix'] = word[:3]
+        features['suffix'] = word[-3:]
 
         if word_idx > 0:
             previous_word = sentence[word_idx-1]
@@ -652,13 +661,8 @@ class CRF:
         return [self.get_sentence_features(sentence, file_idx, feature_function)
                 for file_idx, sentence in self.file_texts.iteritems()]
 
-    def train(self, x_idxs, feature_function, verbose=False):
+    def train(self, x_train, y_train, verbose=False):
         # x_train = self.get_features()
-        x_train = self.get_features_from_crf_training_data(feature_function)
-        y_train = self.get_labels_from_crf_training_data()
-
-        x_train = np.array(x_train)[x_idxs]
-        y_train = np.array(y_train)[x_idxs]
 
         # crf_trainer = sklearn_crfsuite.Trainer(verbose=verbose)
         crf_trainer = sklearn_crfsuite.CRF(
@@ -690,7 +694,7 @@ class CRF:
 
         return
 
-    def predict(self, y_idx, feature_function):
+    def predict(self, x_test, y_test, feature_function):
 
         accuracy = 0
 
@@ -700,42 +704,36 @@ class CRF:
         # tagger = load(self.output_model_filename)
         tagger = self.model
 
-        x_train = self.get_features_from_crf_training_data(feature_function)
-        y_train = self.get_labels_from_crf_training_data()
-
-        x_train = np.array(x_train)[y_idx]
-        y_train = np.array(y_train)[y_idx]
-
         # for sent in x_train:
             # print tagger.tag(sent)
-        predictions = tagger.predict(x_train)
-        accuracy = sum([pred==y_train[j][i]
+        predictions = tagger.predict(x_test)
+        accuracy = sum([pred==y_test[j][i]
                         for j in range(len(predictions))
                         for i, pred in enumerate(predictions[j])])
+
+        predicted_tags = zip([dic['word'] for dic in x_test[0]], predictions[0])
 
         # metrics.flat_f1_score(y_train, predictions, average='weighted')
 
         # return float(accuracy)/len(predictions[0]) #this calculation is ok
         # print metrics.flat_classification_report(y_train, predictions)
 
-        return metrics.flat_accuracy_score(y_train, predictions), metrics.flat_f1_score(y_train, predictions)
+        return predicted_tags, metrics.flat_accuracy_score(y_test, predictions), metrics.flat_f1_score(y_test, predictions)
 
 def print_state_features(state_features):
     for (attr, label), weight in state_features:
         print("%0.6f %-8s %s" % (weight, label, attr))
 
+def save_predictions_to_file(predicted_labels, true_labels, logger):
+    for (word,pred),true in zip(predicted_labels, true_labels[0]):
+        logger.info('%s\t%s\t%s' % (word,pred,true))
 
-# def check_params():
-#     if kmeans and not w2v_features:
-#         logger.error('Kmeans true and word2vec false!')
-#         exit()
-#
-#     return
+    return
+
 
 if __name__ == '__main__':
-    output_folder = None
     parser = argparse.ArgumentParser(description='CRF Sklearn')
-    parser.add_argument('outputfolder', type=str, help='output folder')
+    parser.add_argument('--outputfolder', default='./', type=str, help='Output folder for the model and logs')
     parser.add_argument('--w2vfeatures', action='store_true', default=False)
     parser.add_argument('--kmeans', action='store_true', default=False)
     parser.add_argument('--lda', action='store_true', default=False)
@@ -746,7 +744,7 @@ if __name__ == '__main__':
     arguments = parser.parse_args()
 
     training_data_filename = 'handoverdata.zip'
-    test_data_filename = None
+    test_data_filename = 'handover-set2.zip'
     output_model_filename = arguments.outputfolder+ '/' + 'crf_trained.model'
 
     w2v_features = arguments.w2vfeatures
@@ -755,8 +753,6 @@ if __name__ == '__main__':
     zip_features = arguments.zipfeatures
     use_original_paper_features = arguments.originalfeatures
     use_custom_features = arguments.customfeatures
-
-    # check_params()
 
     training_data, training_texts = Dataset.get_crf_training_data(training_data_filename)
 
@@ -775,17 +771,39 @@ if __name__ == '__main__':
     results_accuracy = []
     results_f1 = []
 
+    prediction_results = dict()
+
     loo = LeaveOneOut(training_data.__len__())
     for i, (x_idx, y_idx) in enumerate(loo):
         if i+1 > 1:
            break
         logger.info('Cross validation '+str(i+1)+' (train+predict)')
         # print x_idx, y_idx
-        crf_model.train(x_idx, feature_function, verbose=False)
-        accuracy, f1_score = crf_model.predict(y_idx, feature_function)
+
+        x = crf_model.get_features_from_crf_training_data(feature_function)
+        y = crf_model.get_labels_from_crf_training_data()
+        x_train = np.array(x)[x_idx]
+        y_train = np.array(y)[x_idx]
+
+        crf_model.train(x_train, y_train, verbose=False)
+
+        x_test = np.array(x)[y_idx]
+        y_test = np.array(y)[y_idx]
+
+        logger.info('Predicting file #%s' % (y_idx[0]))
+
+        predicted_tags, accuracy, f1_score = crf_model.predict(x_test, y_test, feature_function)
         results_accuracy.append(accuracy)
         results_f1.append(f1_score)
         # print print_state_features(Counter(crf_model.model.state_features_).most_common(20))
+        # print predicted_tags
+        # if y_idx[0] == 0:
+        #     save_predictions_to_file(predicted_tags, y_test, logger_predictions)
+
+        prediction_results[y_idx[0]] = [(word,pred,true) for (word,pred),true in zip(predicted_tags, y_test[0])]
+
+    logging.info('Pickling prediction results')
+    pickle.dump(prediction_results, open(arguments.outputfolder+'prediction_results.p','wb'))
 
     print 'Accuracy: ', results_accuracy
     print 'F1: ', results_f1
