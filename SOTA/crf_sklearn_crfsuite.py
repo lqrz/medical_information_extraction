@@ -34,8 +34,7 @@ class CRF:
         self.file_texts = training_texts
         # self.file_texts = dataset.get_training_file_sentences(training_data_filename)
 
-        if test_data_filename:
-            self.test_data = Dataset.get_crf_training_data(test_data_filename)
+        self.test_data = test_data
 
         self.output_model_filename = output_model_filename
         self.model = None
@@ -756,7 +755,9 @@ if __name__ == '__main__':
 
     training_data, training_texts = Dataset.get_crf_training_data(training_data_filename)
 
-    crf_model = CRF(training_data, training_texts, test_data_filename, output_model_filename,
+    # test_data = Dataset.get_crf_training_data(test_data_filename)
+
+    crf_model = CRF(training_data, training_texts, test_data=None, output_model_filename=output_model_filename,
                     w2v_features=w2v_features, kmeans_features=kmeans, lda_features=lda, zip_features=zip_features)
 
     if use_original_paper_features:
@@ -775,8 +776,8 @@ if __name__ == '__main__':
 
     loo = LeaveOneOut(training_data.__len__())
     for i, (x_idx, y_idx) in enumerate(loo):
-        if i+1 > 1:
-           break
+        # if i+1 > 1:
+        #    break
         logger.info('Cross validation '+str(i+1)+' (train+predict)')
         # print x_idx, y_idx
 
