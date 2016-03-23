@@ -14,6 +14,7 @@ from last_tag_neural_network import Last_tag_neural_network_trainer
 from vector_tag_neural_network import Vector_tag_neural_network_trainer
 from recurrent_neural_network import RNN_trainer
 import argparse
+import numpy as np
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -65,11 +66,15 @@ if __name__=='__main__':
 
     logger.info('Using Neural class: %s with window size: %d for epochs: %d' % (nn_name,n_window,max_epochs))
 
+    #store crossvalidation results
+    accuracy_results = []
+    f1_score_results = []
+
     loo = LeaveOneOut(n_docs)
     for cross_idx, (x_idx, y_idx) in enumerate(loo):
 
-        if cross_idx > 0:
-            break
+        # if cross_idx > 0:
+        #     break
 
         logger.info('Cross-validation %d' % (cross_idx))
 
@@ -121,8 +126,17 @@ if __name__=='__main__':
         logger.info('Predicting')
         flat_true, flat_predictions = nn_trainer.predict()
 
-        print 'Accuracy: ', utils.metrics.accuracy_score(flat_true, flat_predictions)
-        print 'F1-score: ', utils.metrics.f1_score(flat_true, flat_predictions)
+        accuracy = utils.metrics.accuracy_score(flat_true, flat_predictions)
+        accuracy_results.append(accuracy)
+
+        f1_score = utils.metrics.f1_score(flat_true, flat_predictions)
+        f1_score_results.append(f1_score)
+
+        print 'Accuracy: ', accuracy
+        print 'F1-score: ', f1_score
         # print utils.metrics.classification_report(map(lambda x: index2label[x],y_valid), map(lambda x: index2label[x], predictions[0]), unique_labels)
+
+    print 'Mean accuracy: ', np.mean(accuracy_results)
+    print 'Mean F1-score: ', np.mean(f1_score_results)
 
     logger.info('End')
