@@ -1,30 +1,40 @@
 __author__ = 'root'
+import os
+import sys
+sys.path.append(os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
+
 from sklearn.cross_validation import LeaveOneOut
-from data.dataset import Dataset
 from data import get_w2v_training_data_vectors
 from data import get_w2v_model
 from utils import utils
 import cPickle
 import logging
-import os
-from collections import defaultdict
-from SOTA.neural_network.mlp_neural_network import MLP_neural_network_trainer
-from SOTA.neural_network.last_tag_neural_network import Last_tag_neural_network_trainer
-from SOTA.neural_network.vector_tag_neural_network import Vector_tag_neural_network_trainer
-from SOTA.neural_network.recurrent_neural_network import RNN_trainer
-import numpy as np
-from sklearn import metrics
+from mlp_neural_network import MLP_neural_network_trainer
+from last_tag_neural_network import Last_tag_neural_network_trainer
+from vector_tag_neural_network import Vector_tag_neural_network_trainer
+from recurrent_neural_network import RNN_trainer
+import argparse
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
 if __name__=='__main__':
-    crf_training_data_filename = 'handoverdata.zip'
+    parser = argparse.ArgumentParser(description='Neural net trainer')
+    parser.add_argument('--outputfolder', default='./', type=str, help='Output folder for the model and logs')
+    parser.add_argument('--train_filename', default='handoverdata.zip', type=str)
+    parser.add_argument('--net', type=str, action='store', required=True, choices=['mlp','vector_tag','last_tag','rnn'])
+    parser.add_argument('--window', type=int, action='store', required=True)
+    parser.add_argument('--epochs', type=int, action='store', required=True)
+
+    #parse arguments
+    arguments = parser.parse_args()
+    crf_training_data_filename = arguments.train_filename
+    n_window = arguments.window
+    nn_name = arguments.net
+    max_epochs = arguments.epochs
 
     training_vectors_filename = get_w2v_training_data_vectors()
-
-    n_window = 7 #TODO: make param.
 
     w2v_vectors = None
     w2v_model = None
@@ -40,24 +50,20 @@ if __name__=='__main__':
         w2v_model = utils.Word2Vec.load_w2v(get_w2v_model(W2V_PRETRAINED_FILENAME))
         w2v_dims = w2v_model.syn0.shape[0]
 
-    nn_name = 'rnn' #TODO: make param
-    nn_name = 'last_tag' #TODO: make param
-
-    if nn_name=='mlp':
+    if nn_name == 'mlp':
         nn_class = MLP_neural_network_trainer
-    elif nn_name=='vector_tag':
+    elif nn_name == 'vector_tag':
         nn_class = Vector_tag_neural_network_trainer
-    elif nn_name=='last_tag':
+    elif nn_name == 'last_tag':
         nn_class = Last_tag_neural_network_trainer
-    elif nn_name=='rnn':
-        nn_class = RNN_trainer
+    elif nn_name == 'rnn':
         #the RNN init function overwrites the n_window param and sets it to 1.
+        nn_class = RNN_trainer
 
     logger.info('Loading CRF training data')
     words_per_document, tags_per_document, document_sentences_words, document_sentences_tags, n_docs, unique_words, unique_labels, index2word, word2index, index2label, label2index, n_unique_words, n_out = nn_class.get_data(crf_training_data_filename)
 
-    #TODO: do this.
-    logger.info('Using Neural class: '+nn_name)
+    logger.info('Using Neural class: %s with window size: %d for epochs: %d' % (nn_name,n_window,max_epochs))
 
     loo = LeaveOneOut(n_docs)
     for cross_idx, (x_idx, y_idx) in enumerate(loo):
@@ -110,7 +116,7 @@ if __name__=='__main__':
         # pretrained_embeddings=w)
 
         logger.info('Training Neural network')
-        nn_trainer.train(learning_rate=.01, batch_size=512, max_epochs=2, save_params=False)
+        nn_trainer.train(learning_rate=.01, batch_size=512, max_epochs=max_epochs, save_params=False)
 
         logger.info('Predicting')
         flat_true, flat_predictions = nn_trainer.predict()
