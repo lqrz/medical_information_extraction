@@ -13,6 +13,8 @@ import os.path
 import cPickle
 from trained_models import get_cwnn_path
 from collections import OrderedDict
+from utils import utils
+from A_neural_network import A_neural_network
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -22,40 +24,42 @@ theano.config.exception_verbosity='high'
 theano.config.warn_float64='ignore'
 theano.config.floatX='float64'
 
-def load_w2v(model_filename):
-    return gensim.models.Word2Vec.load_word2vec_format(model_filename, binary=True)
 
 def transform_crf_training_data(dataset):
     return [(token['word'],token['tag']) for archive in dataset.values() for token in archive.values()]
 
-def initialize_weights(w, unique_words, w2v_vectors=None, w2v_model=None):
-    for i,word in enumerate(unique_words):
-        try:
-            if w2v_vectors:
-                w[i,:] = w2v_vectors[word.lower()]
-            else:
-                w[i,:] = w2v_model[word.lower()] #TODO: lower?
-        except KeyError:
-            continue
+class Vector_tag_neural_network_trainer(A_neural_network):
 
-    return w
+    def __init__(self, hidden_activation_f, out_activation_f, tag_dim=50, **kwargs):
 
-class Neural_network_trainer():
-
-    def __init__(self, x_train, y_train, n_out, hidden_activation_f, out_activation_f, pretrained_embeddings=None):
-
-        self.x_train = x_train.astype(dtype=int)
-        self.y_train = y_train.astype(dtype=int)
-
-        self.n_out = n_out
+        super(Vector_tag_neural_network_trainer, self).__init__(**kwargs)
         self.hidden_activation_f = hidden_activation_f
         self.out_activation_f = out_activation_f
-        self.pretrained_embeddings = np.array(pretrained_embeddings, dtype=theano.config.floatX)
 
         self.params = OrderedDict()
+        self.tag_dim = tag_dim
+
+    def forward_pass(self, weight_x, prev_preds, bias_1, weight_2, bias_2, weight_t):
+        # wt_idxs = T.concatenate([prev_preds[-2:],[37]*(n_window/2)])
+        # wt_idxs = prev_preds[-2:]
+        prev_rep = weight_t[prev_preds].reshape(shape=(self.tag_dim*self.n_window,),ndim=1)
+        # prev_rep = T.concatenate([weight_x,prev_rep]) + bias_1
+        h = self.hidden_activation_f(T.concatenate([weight_x,prev_rep])+bias_1)
+        result = self.out_activation_f(T.dot(h, weight_2)+bias_2)
+        pred = T.argmax(result)
+        # pred = T.argmax([0,1,2])
+        # prev_preds = T.concatenate([prev_preds,T.stack(pred)])
+        # result = T.max([10])
+
+        # prev_preds = T.concatenate([prev_preds[1:(n_window/2)-1],T.stack(pred),[36]*(n_window/2)])
+        prev_preds = T.concatenate([prev_preds[1:(self.n_window/2)],T.stack(pred),[36]*((self.n_window/2)+1)])
+        # prev_preds[(n_window/2)] = pred
+        # prev_preds = T.concatenate(prev_preds[-(n_window-1):],[36])
+        return [prev_preds, result]
+        # return [prev_rep,result]
 
     def train(self, learning_rate=0.01, batch_size=512, max_epochs=100,
-              L1_reg=0.001, L2_reg=0.01, save_params=False, use_scan=True):
+              L1_reg=0.001, L2_reg=0.01, save_params=False):
 
         # self.x_train = self.x_train[:10,:] #TODO: remove this. debug only.
         # self.y_train = self.y_train[:10] #TODO: remove this. debug only.
@@ -70,72 +74,51 @@ class Neural_network_trainer():
         n_emb = self.pretrained_embeddings.shape[1] #embeddings dimension
         # n_tokens = self.x_train.shape[0]    #tokens in sentence
         n_tokens = idxs.shape[0]    #tokens in sentence
-        n_window = self.x_train.shape[1]    #context window size
-        tag_dim = 50 #TODO: make param
 
-        lim = np.sqrt(6./(n_window*n_emb+self.n_out))
+        lim = np.sqrt(6./(self.n_window*n_emb+self.n_out))
 
         w1 = theano.shared(value=self.pretrained_embeddings, name='w1', borrow=True)
-        w2 = theano.shared(value=np.random.uniform(-lim,lim,(n_window*(tag_dim+n_emb),self.n_out)).
+        w2 = theano.shared(value=np.random.uniform(-lim,lim,(self.n_window*(self.tag_dim+n_emb),self.n_out)).
                            astype(dtype=theano.config.floatX),
                            name='w2', borrow=True)
-        b1 = theano.shared(value=np.zeros(n_window*(n_emb+tag_dim)), name='b1', borrow=True)
+        b1 = theano.shared(value=np.zeros(self.n_window*(n_emb+self.tag_dim)), name='b1', borrow=True)
         b2 = theano.shared(value=np.zeros(self.n_out), name='b2', borrow=True)
 
         n_tags = self.n_out+2   # adding the <PAD> and <UNK> tags
 
-        tag_lim = np.sqrt(6./(n_window+tag_dim)) #TODO: times 4?? TRY!
-        wt = theano.shared(value=np.random.uniform(-tag_lim,tag_lim,(n_tags,tag_dim)), name='wt', borrow=True)
+        tag_lim = np.sqrt(6./(self.n_window+self.tag_dim)) #TODO: times 4?? TRY!
+        wt = theano.shared(value=np.random.uniform(-tag_lim,tag_lim,(n_tags,self.tag_dim)), name='wt', borrow=True)
 
         params = [w1,b1,w2,b2,wt]
         param_names = ['w1','b1','w2','b2','wt']
 
         self.params = OrderedDict(zip(param_names, params))
 
-        w_x = w1[idxs].reshape((n_tokens, n_emb* n_window))
+        w_x = w1[idxs].reshape((n_tokens, n_emb*self.n_window))
 
         minibatch_idx = T.lscalar()  # minibatch index
 
         initial_tags = T.vector(name='initial_tags', dtype='int64')
 
-        def forward_pass(weight_x, prev_preds, bias_1, weight_2, bias_2, weight_t):
-            # wt_idxs = T.concatenate([prev_preds[-2:],[37]*(n_window/2)])
-            # wt_idxs = prev_preds[-2:]
-            prev_rep = weight_t[prev_preds].reshape(shape=(tag_dim*n_window,),ndim=1)
-            # prev_rep = T.concatenate([weight_x,prev_rep]) + bias_1
-            h = self.hidden_activation_f(T.concatenate([weight_x,prev_rep])+bias_1)
-            result = self.out_activation_f(T.dot(h, weight_2)+bias_2)
-            pred = T.argmax(result)
-            # pred = T.argmax([0,1,2])
-            # prev_preds = T.concatenate([prev_preds,T.stack(pred)])
-            # result = T.max([10])
+        # if use_scan:
+        #TODO: DO I NEED THE SCAN AT ALL: NO! Im leaving it for reference only.
+        # Unchanging variables are passed to scan as non_sequences.
+        # Initialization occurs in outputs_info
+        [y_preds,out], _ = theano.scan(fn=self.forward_pass,
+                                sequences=w_x,
+                                outputs_info=[initial_tags,None],
+                                non_sequences=[b1,w2,b2,wt])
 
-            # prev_preds = T.concatenate([prev_preds[1:(n_window/2)-1],T.stack(pred),[36]*(n_window/2)])
-            prev_preds = T.concatenate([prev_preds[1:(n_window/2)],T.stack(pred),[36]*((n_window/2)+1)])
-            # prev_preds[(n_window/2)] = pred
-            # prev_preds = T.concatenate(prev_preds[-(n_window-1):],[36])
-            return [prev_preds, result]
-            # return [prev_rep,result]
+        # test_scan = theano.function(inputs=[idxs,initial_tags], outputs=[y_preds,out], updates=[])
+        # test_scan(self.x_train,[36]*n_window)
 
-        if use_scan:
-            #TODO: DO I NEED THE SCAN AT ALL: NO! Im leaving it for reference only.
-            # Unchanging variables are passed to scan as non_sequences.
-            # Initialization occurs in outputs_info
-            [y_preds,out], _ = theano.scan(fn=forward_pass,
-                                    sequences=w_x,
-                                    outputs_info=[initial_tags,None],
-                                    non_sequences=[b1,w2,b2,wt])
-
-            # test_scan = theano.function(inputs=[idxs,initial_tags], outputs=[y_preds,out], updates=[])
-            # test_scan(self.x_train,[36]*n_window)
-
-            # TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
-            cost = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y))
-            y_predictions = T.argmax(out[:,-1,:], axis=1)
-        else:
-            out = forward_pass(w_x,b1,w2,b2)
-            y_predictions = T.argmax(out, axis=1)
-            cost = T.mean(T.nnet.categorical_crossentropy(out, y))
+        # TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
+        cost = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y))
+        y_predictions = T.argmax(out[:,-1,:], axis=1)
+        # else:
+        #     out = self.forward_pass(w_x,b1,w2,b2)
+        #     y_predictions = T.argmax(out, axis=1)
+        #     cost = T.mean(T.nnet.categorical_crossentropy(out, y))
 
         errors = T.sum(T.neq(y_predictions,y))
 
@@ -173,7 +156,7 @@ class Neural_network_trainer():
                                 givens={
                                     idxs: train_x[minibatch_idx*batch_size:(minibatch_idx+1)*batch_size],
                                     y: train_y[minibatch_idx*batch_size:(minibatch_idx+1)*batch_size],
-                                    initial_tags: np.array([36]*n_window)
+                                    initial_tags: np.array([36]*self.n_window)
                                 })
 
         for epoch_index in range(max_epochs):
@@ -197,23 +180,45 @@ class Neural_network_trainer():
 
         return True
 
+    def predict(self):
 
-def context_window(sentence, n_window):
-    # make sure its uneven
-    assert (n_window % 2) == 1, 'Window size must be uneven.'
+        self.x_valid = self.x_valid.astype(dtype=int)
+        self.y_valid = self.y_valid.astype(dtype=int)
 
-    # add '<UNK>' tokens at begining and end of sentence
-    l_padded = n_window //2 * ['<PAD>'] + sentence + n_window // 2 * ['<PAD>']
+        y = T.vector(name='valid_y', dtype='int64')
 
-    # slide the window
-    return [l_padded[i:(i+n_window)] for i in range(len(sentence))]
+        idxs = T.matrix(name="valid_idxs", dtype='int64') # columns: context window size/lines: tokens in the sentence
+        n_emb = self.pretrained_embeddings.shape[1] #embeddings dimension
+        # n_tokens = self.x_train.shape[0]    #tokens in sentence
+        n_tokens = idxs.shape[0]    #tokens in sentence
 
-class Activation_function():
+        w_x = self.params['w1'][idxs].reshape((n_tokens, n_emb*self.n_window))
 
-    @staticmethod
-    def linear(x):
-        return x
+        initial_tags = T.vector(name='initial_tags', dtype='int64')
 
+        [y_pred,out], _ = theano.scan(fn=self.forward_pass,
+                                sequences=w_x,
+                                outputs_info=[initial_tags,None],
+                                non_sequences=[self.params['b1'], self.params['w2'], self.params['b2'], self.params['wt']])
+
+        # out = self.forward_pass(w_x, 36)
+        y_predictions = T.argmax(out[:,-1,:], axis=1)
+        # cost = T.mean(T.nnet.categorical_crossentropy(out, y))
+        # errors = T.sum(T.neq(y_predictions,y))
+
+        perform_prediction = theano.function(inputs=[idxs],
+                                outputs=[y_predictions],
+                                updates=[],
+                                givens={
+                                    initial_tags: np.array([36]*self.n_window)
+                                })
+
+        predictions = perform_prediction(self.x_valid)
+
+        return self.y_valid, predictions[-1]
+
+    def to_string(self):
+        return 'MLP NN with predicted vector of tags.'
 
 if __name__ == '__main__':
     crf_training_data_filename = 'handoverdata.zip'
@@ -232,7 +237,7 @@ if __name__ == '__main__':
     else:
         logger.info('Loading W2V model')
         W2V_PRETRAINED_FILENAME = 'GoogleNews-vectors-negative300.bin.gz'
-        w2v_model = load_w2v(get_w2v_model(W2V_PRETRAINED_FILENAME))
+        w2v_model = utils.Word2Vec.load_w2v(get_w2v_model(W2V_PRETRAINED_FILENAME))
         w2v_dims = w2v_model.syn0.shape[0]
 
     logger.info('Loading CRF training data')
@@ -273,16 +278,16 @@ if __name__ == '__main__':
 
     w = np.random.uniform(-lim,lim,(n_unique_words,w2v_dims)) # +1 for the <PAD>
 
-    w = initialize_weights(w, unique_words, w2v_vectors= w2v_vectors, w2v_model=w2v_model)
+    w = utils.NeuralNetwork.replace_with_word_embeddings(w, unique_words, w2v_vectors= w2v_vectors, w2v_model=w2v_model)
 
     x_train = np.matrix([map(lambda x: word2index[x], sentence) for sentence in
-                         context_window(training_sentence_words,n_window)])
+                         utils.NeuralNetwork.context_window(training_sentence_words,n_window)])
     # y_train = np.matrix([map(lambda x: label2index[x], sentence) for sentence in
     #                      context_window(training_sentence_tags,n_window)])
     y_train = np.array([label2index[tag] for tag in training_sentence_tags])
 
     logger.info('Instantiating Neural network')
-    nn_trainer = Neural_network_trainer(x_train, y_train,
+    nn_trainer = Vector_tag_neural_network_trainer(x_train, y_train,
                                         n_out=n_labels,
                                         # hidden_activation_f=T.nnet.sigmoid,
                                         hidden_activation_f=T.tanh,

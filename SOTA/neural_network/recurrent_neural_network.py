@@ -13,6 +13,9 @@ import os.path
 import cPickle
 from trained_models import get_cwnn_path
 from collections import OrderedDict
+from utils import utils
+from A_neural_network import A_neural_network
+from itertools import chain
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -22,40 +25,30 @@ theano.config.exception_verbosity='high'
 theano.config.warn_float64='ignore'
 theano.config.floatX='float64'
 
-def load_w2v(model_filename):
-    return gensim.models.Word2Vec.load_word2vec_format(model_filename, binary=True)
 
 def transform_crf_training_data(dataset):
     return [(token['word'],token['tag']) for archive in dataset.values() for token in archive.values()]
 
-def initialize_weights(w, unique_words, w2v_vectors=None, w2v_model=None):
-    for i,word in enumerate(unique_words):
-        try:
-            if w2v_vectors:
-                w[i,:] = w2v_vectors[word.lower()]
-            else:
-                w[i,:] = w2v_model[word.lower()] #TODO: lower?
-        except KeyError:
-            continue
 
-    return w
+class RNN_trainer(A_neural_network):
 
-class RNN_trainer():
+    def __init__(self, hidden_activation_f, out_activation_f, n_window=1, **kwargs):
+        super(RNN_trainer, self).__init__(**kwargs)
 
-    def __init__(self, x_train, y_train, n_out, hidden_activation_f, out_activation_f, pretrained_embeddings=None):
-
-        self.x_train = x_train
-        self.y_train = y_train
-
-        self.n_out = n_out
         self.hidden_activation_f = hidden_activation_f
         self.out_activation_f = out_activation_f
-        self.pretrained_embeddings = np.array(pretrained_embeddings, dtype=theano.config.floatX)
+        # self.pretrained_embeddings = np.array(self.pretrained_embeddings, dtype=theano.config.floatX)
+        self.n_window = n_window
 
         self.params = OrderedDict()
 
-    def train(self, learning_rate=0.01, batch_size=512, max_epochs=100,
-              L1_reg=0.001, L2_reg=0.01, save_params=False):
+    def forward_pass(self, weight_x, h_previous, bias_1, weight_2, bias_2, weight_w):
+        h_tmp = self.hidden_activation_f(weight_x + bias_1 + T.dot(weight_w, h_previous))
+        forward_result = self.out_activation_f(T.dot(h_tmp, weight_2)+bias_2)
+
+        return [h_tmp,forward_result]
+
+    def train(self, learning_rate=0.01, batch_size=512, max_epochs=100, L1_reg=0.001, L2_reg=0.01, save_params=False):
 
         # self.x_train = self.x_train[:10] #TODO: remove this. debug only.
         # self.y_train = self.y_train[:10] #TODO: remove this. debug only.
@@ -71,35 +64,29 @@ class RNN_trainer():
         # n_tokens = self.x_train.shape[0]    #tokens in sentence
         n_tokens = idxs.shape[0]    #tokens in sentence
         # n_window = self.x_train.shape[1]    #context window size
-        n_window = 1
 
-        lim = np.sqrt(6./(n_window*n_emb+self.n_out))
+        lim = np.sqrt(6./(self.n_window*n_emb+self.n_out))
 
         w1 = theano.shared(value=self.pretrained_embeddings, name='w1', borrow=True)
-        w2 = theano.shared(value=np.random.uniform(-lim,lim,(n_window*n_emb,self.n_out)).
+        w2 = theano.shared(value=np.random.uniform(-lim,lim,(self.n_window*n_emb,self.n_out)).
                            astype(dtype=theano.config.floatX), name='w2', borrow=True)
-        ww = theano.shared(value=np.random.uniform(-lim,lim,(n_window*n_emb,n_window*n_emb)).
+        ww = theano.shared(value=np.random.uniform(-lim,lim,(self.n_window*n_emb,self.n_window*n_emb)).
                            astype(dtype=theano.config.floatX), name='ww', borrow=True)
-        b1 = theano.shared(value=np.zeros(n_window*n_emb), name='b1', borrow=True)
+        b1 = theano.shared(value=np.zeros(self.n_window*n_emb), name='b1', borrow=True)
         b2 = theano.shared(value=np.zeros(self.n_out), name='b2', borrow=True)
 
-        params = [w1,b1,w2,b2]
-        param_names = ['w1','b1','w2','b2']
+        params = [w1,b1,w2,b2,ww]
+        param_names = ['w1','b1','w2','b2','ww']
 
         self.params = OrderedDict(zip(param_names, params))
 
-        w_x = w1[idxs].reshape((n_tokens, n_emb* n_window))
-
-        def forward_pass(weight_x, h_previous, bias_1, weight_2, bias_2, weight_w):
-            h_tmp = self.hidden_activation_f(weight_x + bias_1 + T.dot(weight_w, h_previous))
-            forward_result = self.out_activation_f(T.dot(h_tmp, weight_2)+bias_2)
-            return [h_tmp,forward_result]
+        w_x = w1[idxs].reshape((n_tokens, n_emb*self.n_window))
 
         # Unchanging variables are passed to scan as non_sequences.
         # Initialization occurs in outputs_info
-        [h,out], _ = theano.scan(fn=forward_pass,
+        [h,out], _ = theano.scan(fn=self.forward_pass,
                                 sequences=w_x,
-                                outputs_info=[dict(initial=T.zeros(n_window*n_emb)), None],
+                                outputs_info=[dict(initial=T.zeros(self.n_window*n_emb)), None],
                                 non_sequences=[b1,w2,b2,ww])
 
         #TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
@@ -165,23 +152,122 @@ class RNN_trainer():
 
         return True
 
+    def predict(self):
 
-def context_window(sentence, n_window):
-    # make sure its uneven
-    assert (n_window % 2) == 1, 'Window size must be uneven.'
+        # self.x_valid = x_valid.astype(dtype=int)
+        # self.y_valid = y_valid.astype(dtype=int)
 
-    # add '<UNK>' tokens at begining and end of sentence
-    l_padded = n_window //2 * ['<PAD>'] + sentence + n_window // 2 * ['<PAD>']
+        y = T.vector(name='valid_y', dtype='int64')
 
-    # slide the window
-    return [l_padded[i:(i+n_window)] for i in range(len(sentence))]
+        idxs = T.vector(name="valid_idxs", dtype='int64') # columns: context window size/lines: tokens in the sentence
+        n_emb = self.pretrained_embeddings.shape[1] #embeddings dimension
+        # n_tokens = self.x_train.shape[0]    #tokens in sentence
+        n_tokens = idxs.shape[0]    #tokens in sentence
 
-class Activation_function():
+        w_x = self.params['w1'][idxs].reshape((n_tokens, n_emb*self.n_window))
+
+        # Unchanging variables are passed to scan as non_sequences.
+        # Initialization occurs in outputs_info
+        [h,out], _ = theano.scan(fn=self.forward_pass,
+                                sequences=w_x,
+                                outputs_info=[dict(initial=T.zeros(self.n_window*n_emb)), None],
+                                non_sequences=[self.params['b1'],self.params['w2'],self.params['b2'],self.params['ww']])
+
+        # out = self.forward_pass(w_x, 36)
+        y_predictions = T.argmax(out[:,-1,:], axis=1)
+        # cost = T.mean(T.nnet.categorical_crossentropy(out, y))
+        # errors = T.sum(T.neq(y_predictions,y))
+
+        perform_prediction = theano.function(inputs=[idxs],
+                                outputs=[y_predictions],
+                                updates=[],
+                                givens=[])
+
+        predictions = []
+        for sentence_idxs in self.x_valid:
+            predictions.append(perform_prediction(sentence_idxs)[-1])
+
+        flat_predictions = list(chain(*predictions))
+        flat_true = list(chain(*self.y_valid))
+
+        return flat_true, flat_predictions
+
+    def to_string(self):
+        return 'RNN.'
 
     @staticmethod
-    def linear(x):
-        return x
+    def get_data(crf_training_data_filename):
+        """
+        overrides the inherited method.
+        gets the training data and organizes it into sentences per document.
+        RNN overrides this method, cause other neural nets dont partition into sentences.
 
+        :param crf_training_data_filename:
+        :return:
+        """
+
+        words_per_document = None
+        tags_per_document = None
+        document_sentences_words, document_sentences_tags = Dataset.get_training_file_tokenized_sentences(crf_training_data_filename)
+
+        unique_words = list(set([word for doc_sentences in document_sentences_words.values() for sentence in doc_sentences for word in sentence]))
+        unique_labels = list(set([tag for doc_sentences in document_sentences_tags.values() for sentence in doc_sentences for tag in sentence]))
+
+        logger.info('Creating word-index dictionaries')
+        index2word = defaultdict(None)
+        word2index = defaultdict(None)
+        word2index['<PAD>'] = len(unique_words)
+        for i,word in enumerate(unique_words):
+            index2word[i] = word
+            word2index[word] = i
+
+        logger.info('Creating label-index dictionaries')
+        index2label = defaultdict(None)
+        label2index = defaultdict(None)
+        label2index['<PAD>'] = len(unique_labels)
+        for i,label in enumerate(unique_labels):
+            index2label[i] = label
+            label2index[label] = i
+
+        n_unique_words = len(unique_words)+1    # +1 for the <PAD>
+        n_out = len(unique_labels)+1  # +1 for the '<PAD>' tag
+
+        n_docs = len(document_sentences_words)
+
+        return words_per_document, tags_per_document, document_sentences_words, document_sentences_tags, n_docs, unique_words, unique_labels, index2word, word2index, index2label, label2index, n_unique_words, n_out
+
+    def get_partitioned_data(self, x_idx, y_idx):
+        """
+        overrides the inherited method from the superclass.
+        it partitions the training data according to the x_idx doc_nrs used for training and y_idx doc_nrs used for
+        testing while cross-validating.
+        the RNN class overrides the parents method, cause the training data is structured differently that the other
+        neural nets.
+
+        :param x_idx:
+        :param y_idx:
+        :return:
+        """
+
+        self.x_train = []
+        self.y_train = []
+        self.x_valid = []
+        self.y_valid = []
+
+        for doc_nr, doc_sentences in self.document_sentences_words.iteritems():
+            if doc_nr in x_idx:
+                self.x_train.extend([map(lambda x: self.word2index[x], sentence) for sentence in doc_sentences])
+                self.y_train.extend([map(lambda x: self.label2index[x], sentence) for sentence in self.document_sentences_tags[doc_nr]])
+            elif doc_nr in y_idx:
+                self.x_valid.extend([map(lambda x: self.word2index[x], sentence) for sentence in doc_sentences])
+                self.y_valid.extend([map(lambda x: self.label2index[x], sentence) for sentence in self.document_sentences_tags[doc_nr]])
+
+        self.x_train = np.array(self.x_train)
+        self.y_train = np.array(self.y_train)
+        self.x_valid = np.array(self.x_valid)
+        self.y_valid = np.array(self.y_valid)
+
+        return True
 
 if __name__ == '__main__':
     crf_training_data_filename = 'handoverdata.zip'
@@ -202,7 +288,7 @@ if __name__ == '__main__':
     else:
         logger.info('Loading W2V model')
         W2V_PRETRAINED_FILENAME = 'GoogleNews-vectors-negative300.bin.gz'
-        w2v_model = load_w2v(get_w2v_model(W2V_PRETRAINED_FILENAME))
+        w2v_model = utils.Word2Vec.load_w2v(get_w2v_model(W2V_PRETRAINED_FILENAME))
         w2v_dims = w2v_model.syn0.shape[0]
 
     logger.info('Loading CRF training data')
@@ -218,8 +304,8 @@ if __name__ == '__main__':
 
     sentences_words, sentences_tags = Dataset.get_training_file_tokenized_sentences(crf_training_data_filename)
 
-    unique_words = list(set([word for sentence in sentences_words for word in sentence]))
-    unique_labels = list(set([tag for sentence in sentences_tags for tag in sentence]))
+    unique_words = list(set([word for doc_sentences in sentences_words.values() for sentence in doc_sentences for word in sentence]))
+    unique_labels = list(set([tag for doc_sentences in sentences_tags.values() for sentence in doc_sentences for tag in sentence]))
 
     logger.info('Creating word-index dictionaries')
     index2word = defaultdict(None)
@@ -237,27 +323,30 @@ if __name__ == '__main__':
         index2label[i] = label
         label2index[label] = i
 
-    n_unique_words = len(unique_words)+1
+    n_unique_words = len(unique_words)+1    # +1 for the <PAD>
     n_labels = len(unique_labels)+1
 
     lim = np.sqrt(6./(n_unique_words+w2v_dims))
 
-    w = np.random.uniform(-lim,lim,(n_unique_words,w2v_dims)) # +1 for the <PAD>
+    w = np.random.uniform(-lim,lim,(n_unique_words,w2v_dims))
 
-    w = initialize_weights(w, unique_words, w2v_vectors= w2v_vectors, w2v_model=w2v_model)
+    w = utils.NeuralNetwork.replace_with_word_embeddings(w, unique_words, w2v_vectors=w2v_vectors, w2v_model=w2v_model)
 
     #TODO: change to make sentences.
     if use_context_window:
-        x_train = np.array([map(lambda x: word2index[x], sentence) for sentence in
-                            context_window(sentences_words,n_window)])
+        x_train = np.array([map(lambda x: word2index[x], sentence) for sentence_words in sentences_words
+                            for sentence in utils.NeuralNetwork.context_window(sentence_words,n_window)])
     else:
-        x_train = np.array([map(lambda x: word2index[x], sentence) for sentence in sentences_words])
+        # x_train = np.array([map(lambda x: word2index[x], sentence) for sentence in sentences_words.values()])
+        # x_train = np.array([map(lambda x: word2index[x], sentence) for sentence in delete_words])
+        x_train = np.array([map(lambda x: word2index[x], sentence) for doc_sentences in sentences_words.values() for sentence in doc_sentences])
 
-    y_train = np.array([map(lambda x: label2index[x], sentence) for sentence in sentences_tags])
+    # y_train = np.array([map(lambda x: label2index[x], sentence) for sentence in delete_tags])
+    y_train = np.array([map(lambda x: label2index[x], sentence) for doc_sentences in sentences_tags.values() for sentence in doc_sentences])
 
     logger.info('Instantiating RNN')
     nn_trainer = RNN_trainer(x_train, y_train,
-                                        n_out=n_labels,
+                                        # n_out=n_labels,
                                         # hidden_activation_f=T.nnet.sigmoid,
                                         hidden_activation_f=T.tanh,
                                         # hidden_activation_f=Activation_function.linear,

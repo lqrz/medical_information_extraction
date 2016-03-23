@@ -24,33 +24,32 @@ theano.config.exception_verbosity='high'
 theano.config.warn_float64='ignore'
 theano.config.floatX='float64'
 
-
 def transform_crf_training_data(dataset):
     return [(token['word'],token['tag']) for archive in dataset.values() for token in archive.values()]
 
-class Last_tag_neural_network_trainer(A_neural_network):
+class MLP_neural_network_trainer(A_neural_network):
 
-    def __init__(self, hidden_activation_f, out_activation_f, tag_dim=50, **kwargs):
-
-        super(Last_tag_neural_network_trainer, self).__init__(**kwargs)
-
+    def __init__(self, hidden_activation_f, out_activation_f, **kwargs):
+        super(MLP_neural_network_trainer, self).__init__(**kwargs)
+        #
+        # self.x_train = x_train.astype(dtype=int)
+        # self.y_train = y_train.astype(dtype=int)
+        # self.x_valid = None
+        # self.y_valid = None
+        #
+        # self.n_out = n_out
         self.hidden_activation_f = hidden_activation_f
         self.out_activation_f = out_activation_f
+        # self.pretrained_embeddings = np.array(self.pretrained_embeddings, dtype=theano.config.floatX)
 
         self.params = OrderedDict()
 
-        self.tag_dim = tag_dim
-
-    def forward_pass(self, weight_x, prev_pred, bias_1, weight_2, bias_2, weight_t):
-        prev_rep = weight_t[prev_pred,:]
-        h = self.hidden_activation_f(T.concatenate([weight_x,prev_rep])+bias_1)
-        result = self.out_activation_f(T.dot(h, weight_2)+bias_2)
-        pred = T.argmax(result)
-
-        return [pred,result]
+    def forward_pass(self, weight_x, bias_1, weight_2, bias_2):
+        h = self.hidden_activation_f(weight_x+bias_1)
+        return self.out_activation_f(T.dot(h, weight_2)+bias_2)
 
     def train(self, learning_rate=0.01, batch_size=512, max_epochs=100,
-              L1_reg=0.001, L2_reg=0.01, save_params=False):
+              L1_reg=0.001, L2_reg=0.01, save_params=False, use_scan=False):
 
         # self.x_train = self.x_train[:10,:] #TODO: remove this. debug only.
         # self.y_train = self.y_train[:10] #TODO: remove this. debug only.
@@ -65,50 +64,47 @@ class Last_tag_neural_network_trainer(A_neural_network):
         n_emb = self.pretrained_embeddings.shape[1] #embeddings dimension
         # n_tokens = self.x_train.shape[0]    #tokens in sentence
         n_tokens = idxs.shape[0]    #tokens in sentence
+        n_window = self.x_train.shape[1]    #context window size    #TODO: replace n_win with self.n_win
 
-        lim = np.sqrt(6./(self.n_window*n_emb+self.n_out))
+        lim = np.sqrt(6./(n_window*n_emb+self.n_out))
 
         w1 = theano.shared(value=self.pretrained_embeddings, name='w1', borrow=True)
-        w2 = theano.shared(value=np.random.uniform(-lim,lim,(self.n_window*n_emb+self.tag_dim,self.n_out)).
+        w2 = theano.shared(value=np.random.uniform(-lim,lim,(n_window*n_emb,self.n_out)).
                            astype(dtype=theano.config.floatX),
                            name='w2', borrow=True)
-        b1 = theano.shared(value=np.zeros(self.n_window*n_emb+self.tag_dim), name='b1', borrow=True)
+        b1 = theano.shared(value=np.zeros(n_window*n_emb), name='b1', borrow=True)
         b2 = theano.shared(value=np.zeros(self.n_out), name='b2', borrow=True)
 
-        n_tags = self.n_out+1 # adding the '<PAD>' tag. Should be 37 in total
-
-        tag_lim = np.sqrt(6./(self.n_window+self.tag_dim))
-        wt = theano.shared(value=np.random.uniform(-tag_lim,tag_lim,(n_tags,self.tag_dim)), name='wt', borrow=True)
-
-        params = [w1,b1,w2,b2,wt]
-        param_names = ['w1','b1','w2','b2','wt']
+        params = [w1,b1,w2,b2]
+        param_names = ['w1','b1','w2','b2']
 
         self.params = OrderedDict(zip(param_names, params))
 
-        w_x = w1[idxs].reshape((n_tokens, n_emb*self.n_window))
+        w_x = w1[idxs].reshape((n_tokens, n_emb* n_window))
 
         minibatch_idx = T.lscalar()  # minibatch index
 
-        initial_tag = T.scalar(name='initial_tag',dtype='int64')
+        # def forward_pass(weight_x, bias_1, weight_2, bias_2):
+        #     h = self.hidden_activation_f(weight_x+bias_1)
+        #     return self.out_activation_f(T.dot(h, weight_2)+bias_2)
 
-        # if use_scan:
-        #     TODO: DO I NEED THE SCAN AT ALL: NO! Im leaving it for reference only.
-        # Unchanging variables are passed to scan as non_sequences.
-        # Initialization occurs in outputs_info
-        [y_pred,out], _ = theano.scan(fn=self.forward_pass,
-                                sequences=w_x,
-                                outputs_info=[initial_tag,None],
-                                non_sequences=[b1,w2,b2,wt])
-        # TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
-        cost = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y))
-        y_predictions = T.argmax(out[:,-1,:], axis=1)
-        # else:
-        #     out = self.forward_pass(w_x,b1,w2,b2)
-        #     y_predictions = T.argmax(out, axis=1)
-        #     cost = T.mean(T.nnet.categorical_crossentropy(out, y))
+        if use_scan:
+            #TODO: DO I NEED THE SCAN AT ALL: NO! Im leaving it for reference only.
+            # Unchanging variables are passed to scan as non_sequences.
+            # Initialization occurs in outputs_info
+            out, _ = theano.scan(fn=self.forward_pass,
+                                    sequences=w_x,
+                                    outputs_info=None,
+                                    non_sequences=[b1,w2,b2])
+            # TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
+            cost = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y))
+            y_predictions = T.argmax(out[:,-1,:], axis=1)
+        else:
+            out = self.forward_pass(w_x,b1,w2,b2)
+            y_predictions = T.argmax(out, axis=1)
+            cost = T.mean(T.nnet.categorical_crossentropy(out, y))
 
-        # test_scan = theano.function(inputs=[idxs,y,initial_tag], outputs=[out,cost,y_pred], updates=[])
-        # test_scan(self.x_train,self.y_train,37)
+        # test_scan = theano.function(inputs=[idxs,y], outputs=[out,cost], updates=[])
 
         errors = T.sum(T.neq(y_predictions,y))
 
@@ -145,8 +141,7 @@ class Last_tag_neural_network_trainer(A_neural_network):
                                 updates=updates,
                                 givens={
                                     idxs: train_x[minibatch_idx*batch_size:(minibatch_idx+1)*batch_size],
-                                    y: train_y[minibatch_idx*batch_size:(minibatch_idx+1)*batch_size],
-                                    initial_tag: 36
+                                    y: train_y[minibatch_idx*batch_size:(minibatch_idx+1)*batch_size]
                                 })
 
         for epoch_index in range(max_epochs):
@@ -157,9 +152,10 @@ class Last_tag_neural_network_trainer(A_neural_network):
                 cost_output, errors_output = train(minibatch_index)
                 epoch_cost += cost_output
                 epoch_errors += errors_output
-            print 'Epoch %d Cost: %f Errors: %d' % (epoch_index+1, epoch_cost, epoch_errors)
+            logger.info('Epoch %d Cost: %f Errors: %d' % (epoch_index+1, epoch_cost, epoch_errors))
 
         if save_params:
+            logger.info('Saving parameters to File system')
             self.save_params()
 
         return True
@@ -181,34 +177,26 @@ class Last_tag_neural_network_trainer(A_neural_network):
         n_emb = self.pretrained_embeddings.shape[1] #embeddings dimension
         # n_tokens = self.x_train.shape[0]    #tokens in sentence
         n_tokens = idxs.shape[0]    #tokens in sentence
+        n_window = self.x_train.shape[1]    #context window size    #TODO: replace with self.n_win
 
-        w_x = self.params['w1'][idxs].reshape((n_tokens, n_emb*self.n_window))
+        w_x = self.params['w1'][idxs].reshape((n_tokens, n_emb* n_window))
 
-        initial_tag = T.scalar(name='initial_tag',dtype='int64')
-
-        [y_pred,out], _ = theano.scan(fn=self.forward_pass,
-                                sequences=w_x,
-                                outputs_info=[initial_tag,None],
-                                non_sequences=[self.params['b1'], self.params['w2'], self.params['b2'], self.params['wt']])
-
-        # out = self.forward_pass(w_x, 36)
-        y_predictions = T.argmax(out[:,-1,:], axis=1)
-        # cost = T.mean(T.nnet.categorical_crossentropy(out, y))
-        # errors = T.sum(T.neq(y_predictions,y))
+        out = self.forward_pass(w_x, self.params['b1'], self.params['w2'], self.params['b2'])
+        y_predictions = T.argmax(out, axis=1)
+        cost = T.mean(T.nnet.categorical_crossentropy(out, y))
+        errors = T.sum(T.neq(y_predictions,y))
 
         perform_prediction = theano.function(inputs=[idxs],
                                 outputs=[y_predictions],
                                 updates=[],
-                                givens={
-                                    initial_tag: 36
-                                })
+                                givens=[])
 
         predictions = perform_prediction(self.x_valid)
 
         return self.y_valid, predictions[-1]
 
     def to_string(self):
-        return 'MLP NN with last predicted tag.'
+        return 'MLP NN with no tags.'
 
 
 if __name__ == '__main__':
@@ -238,12 +226,14 @@ if __name__ == '__main__':
 
     crf_training_dataset,_ = Dataset.get_crf_training_data(crf_training_data_filename)
 
-    annotated_data = transform_crf_training_data(crf_training_dataset)
     training_sentence_words = [word['word'] for archive in crf_training_dataset.values() for word in archive.values()]
     training_sentence_tags = [word['tag'] for archive in crf_training_dataset.values() for word in archive.values()]
 
-    unique_words = list(set([word for word,_ in annotated_data]))
-    unique_labels = list(set([tag for _,tag in annotated_data]))
+    # annotated_data = transform_crf_training_data(crf_training_dataset)
+    # unique_words = list(set([word for word,_ in annotated_data]))
+    # unique_labels = list(set([tag for _,tag in annotated_data]))
+    unique_words = list(set(training_sentence_words))
+    unique_labels = list(set(training_sentence_tags))
 
     logger.info('Creating word-index dictionaries')
     index2word = defaultdict(None)
@@ -270,14 +260,16 @@ if __name__ == '__main__':
 
     w = utils.NeuralNetwork.replace_with_word_embeddings(w, unique_words, w2v_vectors= w2v_vectors, w2v_model=w2v_model)
 
+    #TODO: should i pad every end of sentence? TRY IT!
     x_train = np.matrix([map(lambda x: word2index[x], sentence) for sentence in
                          utils.NeuralNetwork.context_window(training_sentence_words,n_window)])
     # y_train = np.matrix([map(lambda x: label2index[x], sentence) for sentence in
     #                      context_window(training_sentence_tags,n_window)])
+
     y_train = np.array([label2index[tag] for tag in training_sentence_tags])
 
     logger.info('Instantiating Neural network')
-    nn_trainer = Last_tag_neural_network_trainer(x_train, y_train,
+    nn_trainer = MLP_neural_network_trainer(x_train, y_train,
                                         n_out=n_labels,
                                         # hidden_activation_f=T.nnet.sigmoid,
                                         hidden_activation_f=utils.NeuralNetwork.tanh_activation_function,
