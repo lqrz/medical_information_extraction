@@ -32,13 +32,13 @@ def transform_crf_training_data(dataset):
 
 class RNN_trainer(A_neural_network):
 
-    def __init__(self, hidden_activation_f, out_activation_f, n_window=1, **kwargs):
+    def __init__(self, hidden_activation_f, out_activation_f, **kwargs):
         super(RNN_trainer, self).__init__(**kwargs)
 
         self.hidden_activation_f = hidden_activation_f
         self.out_activation_f = out_activation_f
         # self.pretrained_embeddings = np.array(self.pretrained_embeddings, dtype=theano.config.floatX)
-        self.n_window = n_window
+        self.n_window = 1
 
         self.params = OrderedDict()
 
