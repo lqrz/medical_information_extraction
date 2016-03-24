@@ -15,6 +15,10 @@ from vector_tag_neural_network import Vector_tag_neural_network_trainer
 from recurrent_neural_network import RNN_trainer
 import argparse
 import numpy as np
+from trained_models import get_vector_tag_path
+from trained_models import get_cwnn_path
+from trained_models import get_last_tag_path
+from trained_models import get_rnn_path
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -53,13 +57,17 @@ if __name__=='__main__':
 
     if nn_name == 'mlp':
         nn_class = MLP_neural_network_trainer
+        get_output_path = get_cwnn_path
     elif nn_name == 'vector_tag':
         nn_class = Vector_tag_neural_network_trainer
+        get_output_path = get_vector_tag_path
     elif nn_name == 'last_tag':
         nn_class = Last_tag_neural_network_trainer
+        get_output_path = get_last_tag_path
     elif nn_name == 'rnn':
         #the RNN init function overwrites the n_window param and sets it to 1.
         nn_class = RNN_trainer
+        get_output_path = get_rnn_path
 
     logger.info('Loading CRF training data')
     words_per_document, tags_per_document, document_sentences_words, document_sentences_tags, n_docs, unique_words, unique_labels, index2word, word2index, index2label, label2index, n_unique_words, n_out = nn_class.get_data(crf_training_data_filename)
@@ -69,6 +77,8 @@ if __name__=='__main__':
     #store crossvalidation results
     accuracy_results = []
     f1_score_results = []
+
+    prediction_results = dict()
 
     loo = LeaveOneOut(n_docs)
     for cross_idx, (x_idx, y_idx) in enumerate(loo):
@@ -132,11 +142,18 @@ if __name__=='__main__':
         f1_score = utils.metrics.f1_score(flat_true, flat_predictions)
         f1_score_results.append(f1_score)
 
+        prediction_results[cross_idx] = (flat_true, flat_predictions)
+
         print 'Accuracy: ', accuracy
         print 'F1-score: ', f1_score
         # print utils.metrics.classification_report(map(lambda x: index2label[x],y_valid), map(lambda x: index2label[x], predictions[0]), unique_labels)
 
     print 'Mean accuracy: ', np.mean(accuracy_results)
     print 'Mean F1-score: ', np.mean(f1_score_results)
+
+    logger.info('Pickling results')
+    cPickle.dump(prediction_results, open(get_output_path('prediction_results.p'), 'wb'))
+    cPickle.dump(accuracy_results, open(get_output_path('accuracy_results.p'), 'wb'))
+    cPickle.dump(f1_score_results, open(get_output_path('f1_score_results.p'), 'wb'))
 
     logger.info('End')
