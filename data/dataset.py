@@ -15,6 +15,9 @@ class Dataset:
     TRAINING_SENTENCES_PATH = '101writtenfreetextreports/'
     TRAINING_SENTENCES_EXTENSION = '.txt'
 
+    I2B2_PATH = ''
+    I2B2_EXTENSION = '.txt'
+
     # List of contractions adapted from Robert MacIntyre's tokenizer.
     CONTRACTIONS2 = [re.compile(r"(?i)\b(can)(not)\b"),
                      re.compile(r"(?i)\b(d)('ye)\b"),
@@ -53,26 +56,27 @@ class Dataset:
         return sentences_words, sentences_tags
 
     @staticmethod
-    def get_training_file_sentences(file_name):
-        f = Dataset.get_filename(file_name, Dataset.TRAINING_SENTENCES_PATH, Dataset.TRAINING_SENTENCES_EXTENSION)
+    def get_training_file_text(file_name, path, extension):
+        f = Dataset.get_filename(file_name, path, extension)
         # sentences = []
-        training_sentences = defaultdict()
-
+        training_text = defaultdict()
         for i, text in enumerate(f):
-            training_sentences[i] = text.strip().replace(u'\ufeff','')
+            training_text[i] = text.strip().replace(u'\ufeff','')
 
-        return training_sentences
+        return training_text
 
     @staticmethod
     def get_words_in_training_dataset(file_name):
-        sentences = Dataset.get_training_file_sentences(file_name)
+        documents_text = Dataset.get_training_file_text(file_name,
+                                                   Dataset.TRAINING_SENTENCES_PATH,
+                                                   Dataset.TRAINING_SENTENCES_EXTENSION)
 
         #TODO: remove later. for comparison only.
         # training_data, sentences_from_annotations = Dataset.get_crf_training_data(file_name)
         # training_data = [word['word'] for archive in training_data.values() for word in archive.values()]
 
         text = []
-        for sentence in sentences.values():
+        for sentence in documents_text.values():
             words = Dataset.word_tokenize(sentence)
             text.extend(words)
 
@@ -175,12 +179,12 @@ if __name__ == '__main__':
 
     dataset = Dataset()
 
-    files_text = Dataset.get_training_file_tokenized_sentences(training_data_filename)
-
-    Dataset.get_words_in_training_dataset(training_data_filename)
-
-    train_sentences = Dataset.get_training_file_sentences(training_data_filename)
-
-    dataset.get_training_file_sentences(training_data_filename)
+    # files_text = Dataset.get_training_file_tokenized_sentences(training_data_filename)
+    #
+    # Dataset.get_words_in_training_dataset(training_data_filename)
+    #
+    # train_doc_texts = Dataset.get_training_file_text(training_data_filename,
+    #                                                       Dataset.TRAINING_SENTENCES_PATH,
+    #                                                       Dataset.TRAINING_SENTENCES_EXTENSION)
 
     dataset.get_crf_training_data(training_data_filename)

@@ -11,7 +11,9 @@ import utils
 
 def filter_w2v_model(w2v_model):
     training_data_filename = 'handoverdata.zip'
-    sentences = Dataset.get_training_file_sentences(training_data_filename)
+    sentences = Dataset.get_training_file_text(training_data_filename,
+                                                    Dataset.TRAINING_SENTENCES_PATH,
+                                                    Dataset.TRAINING_SENTENCES_EXTENSION)
     sentences = sentences.values()
     words = set()
     for sentence in sentences:
