@@ -18,6 +18,6 @@ class CorpusReader(object):
     def __iter__(self):
         for (file_name,path,extension) in CorpusReader.TRAINING_FILES:
             f = Dataset.get_filename(file_name, path, extension)
-            for i, text in enumerate(f):
+            for i, (doc_nr, text) in enumerate(f):
                 for sent in text.strip().replace(u'\ufeff','').split('\n'):
                     yield Dataset.word_tokenize(sent)

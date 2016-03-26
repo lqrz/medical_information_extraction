@@ -76,3 +76,11 @@ class Metrics:
     @staticmethod
     def compute_classification_report(y_true, y_pred, labels, **kwargs):
         return metrics.classification_report(y_true, y_pred, labels, **kwargs)
+
+    @staticmethod
+    def compute_precision_score(y_true, y_pred, **kwargs):
+        return metrics.precision_score(y_true, y_pred, **kwargs)
+
+    @staticmethod
+    def compute_recall_score(y_true, y_pred, **kwargs):
+        return metrics.recall_score(y_true, y_pred, **kwargs)

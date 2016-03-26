@@ -9,7 +9,7 @@ import re
 
 class Dataset:
 
-    CRF_FEATURES_PATH = '101informationextraction/documents/'
+    CRF_FEATURES_PATH = 'handoverdata/101informationextraction/documents/'
     CRF_FEATURES_EXTENSION = '.txt'
 
     TRAINING_SENTENCES_PATH = '101writtenfreetextreports/'
@@ -60,8 +60,8 @@ class Dataset:
         f = Dataset.get_filename(file_name, path, extension)
         # sentences = []
         training_text = defaultdict()
-        for i, text in enumerate(f):
-            training_text[i] = text.strip().replace(u'\ufeff','')
+        for i, (doc_nr, text) in enumerate(f):
+            training_text[doc_nr] = text.strip().replace(u'\ufeff','')
 
         return training_text
 
@@ -141,35 +141,87 @@ class Dataset:
 
     @staticmethod
     def get_filename(file_name, filename_match, extension_match):
+        """
+        opens the zip file, and reads all the documents that satisfy the matching expression.
+        bewatch, it reads the files in this order: output1, output10, output 100, output11, ..., output2.txt, ...
+
+        :param file_name:
+        :param filename_match:
+        :param extension_match:
+        :return:
+        """
         resource = data.get_resource(file_name)
 
         if '.zip' in file_name:
             zip_file = zipfile.ZipFile(resource, mode='r')
             for fname in zip_file.namelist():
                 if filename_match in fname and extension_match in fname:
+                    doc_nr = int(fname.replace(filename_match+'output','').replace(extension_match,''))
                     # f = zip_file.read(fname)
                     zip_item = zip_file.open(fname)
                     zip_item = io.TextIOWrapper(zip_item, encoding='utf-8', newline='\n')
-                    yield zip_item.read()
+                    yield (doc_nr, zip_item.read())
 
     @staticmethod
     def get_crf_training_data(file_name):
         f = Dataset.get_filename(file_name, Dataset.CRF_FEATURES_PATH, Dataset.CRF_FEATURES_EXTENSION)
+
         training_data = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(list))))
         sentences = defaultdict(list)
-        # yield zip_file.read(f)
-        # for line in f.split('\n'):
-        for i, text in enumerate(f):
+
+        for i, (doc_nr, text) in enumerate(f):
             j = 0 # do not use enumerate instead
             for line in text.split('\n'):
                 if len(line) < 2:
                     continue
                 line = line.strip().split('\t')
-                training_data[i][j]['word'] = line[0]
-                training_data[i][j]['features'] = line[1:-2]
-                training_data[i][j]['tag'] = line[-2] # -2 is the true label, -1 is their predicted tag
+                training_data[doc_nr][j]['word'] = line[0]
+                training_data[doc_nr][j]['features'] = line[1:-2]
+                training_data[doc_nr][j]['tag'] = line[-2] # -2 is the true label, -1 is their predicted tag
                 j += 1
-                sentences[i].append(line[0])
+                sentences[doc_nr].append(line[0])
+
+        return training_data, sentences
+
+    @staticmethod
+    def get_crf_training_data_by_sentence(file_name):
+        """
+        returns a dictionary indexed in the following way:
+            -doc_nr
+                -list of sentences
+                    -sentence
+                        -list of word_dict
+                            -word_dict: ['word'], ['features'], ['tag']
+        :param file_name:
+        :return:
+        """
+        f = Dataset.get_filename(file_name, Dataset.CRF_FEATURES_PATH, Dataset.CRF_FEATURES_EXTENSION)
+
+        # training_data = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(list))))
+        sentences = defaultdict(list)
+
+        dict_sentence = []
+        training_data = defaultdict(list)
+
+        for i, (doc_nr, text) in enumerate(f):
+            j = 0 # do not use enumerate instead
+            for line in text.split('\n'):
+                if len(line) < 2:
+                    if dict_sentence:
+                        training_data[doc_nr].append(dict_sentence)
+                        dict_sentence = []
+                    continue
+                dict_word = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+                line = line.strip().split('\t')
+                dict_word['word'] = line[0]
+                dict_word['features'] = line[1:-2]
+                dict_word['tag'] = line[-2] # -2 is the true label, -1 is their predicted tag
+                dict_sentence.append(dict_word)
+                j += 1
+                sentences[doc_nr].append(line[0])
+
+            if dict_sentence:
+                training_data[doc_nr].append(dict_sentence)
 
         return training_data, sentences
 
@@ -187,4 +239,6 @@ if __name__ == '__main__':
     #                                                       Dataset.TRAINING_SENTENCES_PATH,
     #                                                       Dataset.TRAINING_SENTENCES_EXTENSION)
 
-    dataset.get_crf_training_data(training_data_filename)
+    training_data, sentences = dataset.get_crf_training_data(training_data_filename)
+
+    print 'End'

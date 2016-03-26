@@ -1,30 +1,32 @@
 __author__ = 'root'
+import os
+import sys
+sys.path.append(os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
 
 import sklearn_crfsuite
-from sklearn_crfsuite import metrics
 import logging
-import codecs
 from data.dataset import Dataset
-from nltk.tokenize import word_tokenize
 from sklearn.cross_validation import LeaveOneOut
 import numpy as np
 from joblib import load, dump
 import re
-from collections import Counter
 from data import get_w2v_model
-import gensim
+from collections import defaultdict
 from functools import wraps
 import argparse
 import cPickle as pickle
+from collections import OrderedDict
+from utils import utils
+from itertools import chain
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-logger_predictions = logging.getLogger(__name__+'file')
-hndlr = logging.FileHandler('predicted_tags.log')
-hndlr.setFormatter(logging.Formatter('%(message)s'))
-logger_predictions.addHandler(hndlr)
-logger_predictions.setLevel(logging.INFO)
+# logger_predictions = logging.getLogger(__name__+'file')
+# hndlr = logging.FileHandler('predicted_tags.log')
+# hndlr.setFormatter(logging.Formatter('%(message)s'))
+# logger_predictions.addHandler(hndlr)
+# logger_predictions.setLevel(logging.INFO)
 
 class CRF:
 
@@ -46,7 +48,7 @@ class CRF:
         self.w2v_vector_features = w2v_vector_features
         if self.w2v_features or self.kmeans_features or self.w2v_vector_features:
             W2V_PRETRAINED_FILENAME = 'GoogleNews-vectors-negative300.bin.gz'
-            self.w2v_model = self.load_w2v(get_w2v_model(W2V_PRETRAINED_FILENAME))
+            self.w2v_model = utils.Word2Vec.load_w2v(get_w2v_model(W2V_PRETRAINED_FILENAME))
             # self.w2v_model = True
 
         # querying word2vec is too expensive. Maintain a cache.
@@ -76,24 +78,28 @@ class CRF:
         # return [self.training_data[file_idx][j]['tag'] for j, sentence in enumerate(sentence.split(' '))]
         tags = []
         # for j, word in enumerate(word_tokenize(sentence)):
-        for j, word in enumerate(sentence):
-            if self.training_data[file_idx][j]['word'] != word:
-                print 'mismatch'
-            else:
-                tags.append(self.training_data[file_idx][j]['tag'])
+        for j, word_dict in enumerate(sentence):
+            # if self.training_data[file_idx][j]['word'] != word:
+            #     print 'mismatch'
+            # else:
+            #     tags.append(self.training_data[file_idx][j]['tag'])
+            tags.append(word_dict['tag'])
 
         return tags
 
-    def get_labels(self):
-        return [self.get_sentence_labels(sentence, file_idx)
-                for file_idx, sentence in enumerate(self.file_texts)]
+    # def get_labels(self):
+    #     return [self.get_sentence_labels(sentence, file_idx)
+    #             for file_idx, sentence in enumerate(self.file_texts)]
 
     def get_labels_from_crf_training_data(self):
-        return [self.get_sentence_labels(sentence, file_idx)
-                for file_idx, sentence in self.file_texts.iteritems()]
+        # return [self.get_sentence_labels(sentence, file_idx)
+        #         for file_idx, sentences in self.training_data.iteritems() for sentence in sentences]
+        document_sentence_tag = defaultdict(list)
+        for doc_nr, sentences in self.training_data.iteritems():
+            for sentence in sentences:
+                document_sentence_tag[doc_nr].append(self.get_sentence_labels(sentence, doc_nr))
 
-    def load_w2v(self, model_filename):
-        return gensim.models.Word2Vec.load_word2vec_format(model_filename, binary=True)
+        return document_sentence_tag
 
     def get_custom_word_features(self, sentence, file_idx, word_idx):
         features = dict()
@@ -373,29 +379,35 @@ class CRF:
 
         return topics
 
-    def get_original_paper_word_features(self, sentence, file_idx, word_idx):
+    def get_original_paper_word_features(self, sentence, word_idx, inc_unk_score=True):
         # features = []
-        features = dict()
+        features = OrderedDict()
 
-        word = sentence[word_idx]
-        word_lemma = self.training_data[file_idx][word_idx]['features'][0]
-        word_ner = self.training_data[file_idx][word_idx]['features'][1]
-        word_pos = self.training_data[file_idx][word_idx]['features'][2]
-        word_parse_tree = self.training_data[file_idx][word_idx]['features'][3]
-        word_basic_dependents = self.training_data[file_idx][word_idx]['features'][4]
-        word_basic_governors = self.training_data[file_idx][word_idx]['features'][5]
-        word_unk_score = self.training_data[file_idx][word_idx]['features'][6]
-        word_phrase = self.training_data[file_idx][word_idx]['features'][7]
-        word_top_candidate_1 = self.training_data[file_idx][word_idx]['features'][8]
-        word_top_candidate_2 = self.training_data[file_idx][word_idx]['features'][9]
-        word_top_candidate_3 = self.training_data[file_idx][word_idx]['features'][10]
-        word_top_candidate_4 = self.training_data[file_idx][word_idx]['features'][11]
-        word_top_candidate_5 = self.training_data[file_idx][word_idx]['features'][12]
-        word_top_mapping = self.training_data[file_idx][word_idx]['features'][13]
-        word_medication_score = self.training_data[file_idx][word_idx]['features'][14]
-        word_location = self.training_data[file_idx][word_idx]['features'][15]
+        word = sentence[word_idx]['word']
+        word_lemma = sentence[word_idx]['features'][0]
+        word_ner = sentence[word_idx]['features'][1]
+        word_pos = sentence[word_idx]['features'][2]
+        word_parse_tree = sentence[word_idx]['features'][3]
+        word_basic_dependents = sentence[word_idx]['features'][4]
+        word_basic_governors = sentence[word_idx]['features'][5]
+        # word_unk_score = float(sentence[word_idx]['features'][6])
+        word_unk_score = sentence[word_idx]['features'][6]
+        word_phrase = sentence[word_idx]['features'][7]
+        word_top_candidate_1 = sentence[word_idx]['features'][8]
+        word_top_candidate_2 = sentence[word_idx]['features'][9]
+        word_top_candidate_3 = sentence[word_idx]['features'][10]
+        word_top_candidate_4 = sentence[word_idx]['features'][11]
+        word_top_candidate_5 = sentence[word_idx]['features'][12]
+        word_top_mapping = sentence[word_idx]['features'][13]
+        # word_medication_score = float(sentence[word_idx]['features'][14])
+        word_medication_score = sentence[word_idx]['features'][14]
+        # word_location = float(sentence[word_idx]['features'][15])
+        word_location = sentence[word_idx]['features'][15]
 
-        word_tag = self.training_data[file_idx][word_idx]['tag']
+        word_tag = sentence[word_idx]['tag']
+
+        if inc_unk_score:
+            features['word_unk_score'] = word_unk_score
 
         # Unigram
         # U01:%x[0,0]
@@ -414,6 +426,9 @@ class CRF:
         features['word_governors'] = word_basic_governors
         # U36:%x[0,8]
         features['word_phrase'] = word_phrase
+
+        #FEATURE IN POSITION 7 IS NOT USED ON THEIR TEMPLATE => DISCARDED!
+
         # U41:%x[0,9]
         features['word_candidate_1'] = word_top_candidate_1
         # U46:%x[0,10]
@@ -438,38 +453,40 @@ class CRF:
 
         if word_idx > 0:
             # U00:%x[-1,0]
-            previous_word = sentence[word_idx-1]
+            previous_word = sentence[word_idx-1]['word']
             features['previous_word'] = previous_word
             # U05:%x[-1,1]
-            features['previous_lemma'] = self.training_data[file_idx][word_idx-1]['features'][0]
+            features['previous_lemma'] = sentence[word_idx-1]['features'][0]
             # U10:%x[-1,2]
-            features['previous_ner'] = self.training_data[file_idx][word_idx-1]['features'][1]
+            features['previous_ner'] = sentence[word_idx-1]['features'][1]
             # U15:%x[-1,3]
-            features['previous_pos'] = self.training_data[file_idx][word_idx-1]['features'][2]
+            features['previous_pos'] = sentence[word_idx-1]['features'][2]
             # U20:%x[-1,4]
-            features['previous_parse_tree'] = self.training_data[file_idx][word_idx-1]['features'][3]
+            features['previous_parse_tree'] = sentence[word_idx-1]['features'][3]
             # U25:%x[-1,5]
-            features['previous_dependents'] = self.training_data[file_idx][word_idx-1]['features'][4]
+            features['previous_dependents'] = sentence[word_idx-1]['features'][4]
             # U30:%x[-1,6]
-            features['previous_governors'] = self.training_data[file_idx][word_idx-1]['features'][5]
+            features['previous_governors'] = sentence[word_idx-1]['features'][5]
             # U35:%x[-1,8]
-            features['previous_phrase'] = self.training_data[file_idx][word_idx-1]['features'][7]
+            features['previous_phrase'] = sentence[word_idx-1]['features'][7]
             # U40:%x[-1,9]
-            features['previous_candidate_1'] = self.training_data[file_idx][word_idx-1]['features'][8]
+            features['previous_candidate_1'] = sentence[word_idx-1]['features'][8]
             # U45:%x[-1,10]
-            features['previous_candidate_2'] = self.training_data[file_idx][word_idx-1]['features'][9]
+            features['previous_candidate_2'] = sentence[word_idx-1]['features'][9]
             # U50:%x[-1,11]
-            features['previous_candidate_3'] = self.training_data[file_idx][word_idx-1]['features'][10]
+            features['previous_candidate_3'] = sentence[word_idx-1]['features'][10]
             # U55:%x[-1,12]
-            features['previous_candidate_4'] = self.training_data[file_idx][word_idx-1]['features'][11]
+            features['previous_candidate_4'] = sentence[word_idx-1]['features'][11]
             # U60:%x[-1,13]
-            features['previous_candidate_5'] = self.training_data[file_idx][word_idx-1]['features'][12]
+            features['previous_candidate_5'] = sentence[word_idx-1]['features'][12]
             # U65:%x[-1,14]
-            features['previous_mapping'] = self.training_data[file_idx][word_idx-1]['features'][13]
+            features['previous_mapping'] = sentence[word_idx-1]['features'][13]
             # U70:%x[-1,15]
-            features['previous_medication_score'] = self.training_data[file_idx][word_idx-1]['features'][14]
+            # features['previous_medication_score'] = float(sentence[word_idx-1]['features'][14])
+            features['previous_medication_score'] = sentence[word_idx-1]['features'][14]
             # U75:%x[-1,16]
-            features['previous_location'] = self.training_data[file_idx][word_idx-1]['features'][15]
+            # features['previous_location'] = float(sentence[word_idx-1]['features'][15])
+            features['previous_location'] = sentence[word_idx-1]['features'][15]
 
             # TODO: uncomment? or is it included in the CRF all_possible_transitions flag?
             # Bigram
@@ -482,64 +499,66 @@ class CRF:
                 features['previous_word_word'] = previous_word +'/'+ word
 
                 # U08:%x[-1,1]/%x[0,1]
-                features['previous_lemma_lemma'] = self.training_data[file_idx][word_idx-1]['features'][0] +'/'+ \
+                features['previous_lemma_lemma'] = sentence[word_idx-1]['features'][0] +'/'+ \
                     word_lemma
 
                 # U13:%x[-1,2]/%x[0,2]
-                features['previous_ner_ner'] = self.training_data[file_idx][word_idx-1]['features'][1] +'/'+ \
+                features['previous_ner_ner'] = sentence[word_idx-1]['features'][1] +'/'+ \
                     word_ner
 
                 # U18:%x[-1,3]/%x[0,3]
-                features['previous_pos_pos'] = self.training_data[file_idx][word_idx-1]['features'][2] +'/'+ \
+                features['previous_pos_pos'] = sentence[word_idx-1]['features'][2] +'/'+ \
                     word_pos
 
                 # U23:%x[-1,4]/%x[0,4]
-                features['previous_parse_tree_parse_tree'] = self.training_data[file_idx][word_idx-1]['features'][3] +'/'+ \
+                features['previous_parse_tree_parse_tree'] = sentence[word_idx-1]['features'][3] +'/'+ \
                     word_parse_tree
 
                 # U28:%x[-1,5]/%x[0,5]
-                features['previous_dependents_dependents'] = self.training_data[file_idx][word_idx-1]['features'][4] +'/'+ \
+                features['previous_dependents_dependents'] = sentence[word_idx-1]['features'][4] +'/'+ \
                     word_basic_dependents
 
                 # U33:%x[-1,6]/%x[0,6]
-                features['previous_governors_governors'] = self.training_data[file_idx][word_idx-1]['features'][5] +'/'+ \
+                features['previous_governors_governors'] = sentence[word_idx-1]['features'][5] +'/'+ \
                     word_basic_governors
 
                 # U38:%x[-1,8]/%x[0,8]
-                features['previous_phrase_phrase'] = self.training_data[file_idx][word_idx-1]['features'][7] +'/'+ \
+                features['previous_phrase_phrase'] = sentence[word_idx-1]['features'][7] +'/'+ \
                     word_phrase
 
                 # U43:%x[-1,9]/%x[0,9]
-                features['previous_candidate_1_candidate_1'] = self.training_data[file_idx][word_idx-1]['features'][8] +'/'+ \
+                features['previous_candidate_1_candidate_1'] = sentence[word_idx-1]['features'][8] +'/'+ \
                     word_top_candidate_1
 
                 # U48:%x[-1,10]/%x[0,10]
-                features['previous_candidate_2_candidate_2'] = self.training_data[file_idx][word_idx-1]['features'][9] +'/'+ \
+                features['previous_candidate_2_candidate_2'] = sentence[word_idx-1]['features'][9] +'/'+ \
                     word_top_candidate_2
 
                 # U53:%x[-1,11]/%x[0,11]
-                features['previous_candidate_3_candidate_3'] = self.training_data[file_idx][word_idx-1]['features'][10] +'/'+ \
+                features['previous_candidate_3_candidate_3'] = sentence[word_idx-1]['features'][10] +'/'+ \
                     word_top_candidate_3
 
                 # U58:%x[-1,12]/%x[0,12]
-                features['previous_candidate_4_candidate_4'] = self.training_data[file_idx][word_idx-1]['features'][11] +'/'+ \
+                features['previous_candidate_4_candidate_4'] = sentence[word_idx-1]['features'][11] +'/'+ \
                     word_top_candidate_4
 
                 # U63:%x[-1,13]/%x[0,13]
-                features['previous_candidate_5_candidate_5'] = self.training_data[file_idx][word_idx-1]['features'][12] +'/'+ \
+                features['previous_candidate_5_candidate_5'] = sentence[word_idx-1]['features'][12] +'/'+ \
                     word_top_candidate_5
 
                 # U68:%x[-1,14]/%x[0,14]
-                features['previous_mapping_mapping'] = self.training_data[file_idx][word_idx-1]['features'][13] +'/'+ \
+                features['previous_mapping_mapping'] = sentence[word_idx-1]['features'][13] +'/'+ \
                     word_top_mapping
 
                 # U73:%x[-1,15]/%x[0,15]
-                features['previous_medication_score_medication_score'] = self.training_data[file_idx][word_idx-1]['features'][14] +'/'+ \
+                features['previous_medication_score_medication_score'] = sentence[word_idx-1]['features'][14] +'/'+ \
                     word_medication_score
+                    # str(word_medication_score)
 
                 # U78:%x[-1,16]/%x[0,16]
-                features['previous_word_location_word_location'] = self.training_data[file_idx][word_idx-1]['features'][15] +'/'+ \
+                features['previous_word_location_word_location'] = sentence[word_idx-1]['features'][15] +'/'+ \
                     word_location
+                    # str(word_location)
 
         else:
             # features['BOS'] = True
@@ -547,38 +566,40 @@ class CRF:
 
         if word_idx < len(sentence)-1:
             # U02:%x[1,0]
-            next_word = sentence[word_idx+1]
+            next_word = sentence[word_idx+1]['word']
             features['next_word'] = next_word
             # U07:%x[1,1]
-            features['next_lemma'] = self.training_data[file_idx][word_idx+1]['features'][0]
+            features['next_lemma'] = sentence[word_idx+1]['features'][0]
             # U12:%x[1,2]
-            features['next_ner'] = self.training_data[file_idx][word_idx+1]['features'][1]
+            features['next_ner'] = sentence[word_idx+1]['features'][1]
             # U17:%x[1,3]
-            features['next_pos'] = self.training_data[file_idx][word_idx+1]['features'][2]
+            features['next_pos'] = sentence[word_idx+1]['features'][2]
             # U22:%x[1,4]
-            features['next_parse_tree'] = self.training_data[file_idx][word_idx+1]['features'][3]
+            features['next_parse_tree'] = sentence[word_idx+1]['features'][3]
             # U27:%x[1,5]
-            features['next_dependents'] = self.training_data[file_idx][word_idx+1]['features'][4]
+            features['next_dependents'] = sentence[word_idx+1]['features'][4]
             # U32:%x[1,6]
-            features['next_governors'] = self.training_data[file_idx][word_idx+1]['features'][5]
+            features['next_governors'] = sentence[word_idx+1]['features'][5]
             # U37:%x[1,8]
-            features['next_phrase'] = self.training_data[file_idx][word_idx+1]['features'][7]
+            features['next_phrase'] = sentence[word_idx+1]['features'][7]
             # U42:%x[1,9]
-            features['next_candidate_1'] = self.training_data[file_idx][word_idx+1]['features'][8]
+            features['next_candidate_1'] = sentence[word_idx+1]['features'][8]
             # U47:%x[1,10]
-            features['next_candidate_2'] = self.training_data[file_idx][word_idx+1]['features'][9]
+            features['next_candidate_2'] = sentence[word_idx+1]['features'][9]
             # U52:%x[1,11]
-            features['next_candidate_3'] = self.training_data[file_idx][word_idx+1]['features'][10]
+            features['next_candidate_3'] = sentence[word_idx+1]['features'][10]
             # U57:%x[1,12]
-            features['next_candidate_4'] = self.training_data[file_idx][word_idx+1]['features'][11]
+            features['next_candidate_4'] = sentence[word_idx+1]['features'][11]
             # U62:%x[1,13]
-            features['next_candidate_5'] = self.training_data[file_idx][word_idx+1]['features'][12]
+            features['next_candidate_5'] = sentence[word_idx+1]['features'][12]
             # U67:%x[1,14]
-            features['next_mapping'] = self.training_data[file_idx][word_idx+1]['features'][13]
+            features['next_mapping'] = sentence[word_idx+1]['features'][13]
             # U72:%x[1,15]
-            features['next_medication_score'] = self.training_data[file_idx][word_idx+1]['features'][14]
+            # features['next_medication_score'] = float(sentence[word_idx+1]['features'][14])
+            features['next_medication_score'] = sentence[word_idx+1]['features'][14]
             # U77:%x[1,16]
-            features['next_location'] = self.training_data[file_idx][word_idx+1]['features'][15]
+            # features['next_location'] = float(sentence[word_idx+1]['features'][15])
+            features['next_location'] = sentence[word_idx+1]['features'][15]
 
             if self.zip_features:
                 # U04:%x[0,0]/%x[1,0]
@@ -586,63 +607,65 @@ class CRF:
 
                 # U09:%x[0,1]/%x[1,1]
                 features['lemma_next_lemma'] = word_lemma +'/'+ \
-                    self.training_data[file_idx][word_idx+1]['features'][0]
+                    sentence[word_idx+1]['features'][0]
 
                 # U14:%x[0,2]/%x[1,2]
                 features['ner_next_ner'] = word_ner +'/'+ \
-                    self.training_data[file_idx][word_idx+1]['features'][1]
+                    sentence[word_idx+1]['features'][1]
 
                 # U19:%x[0,3]/%x[1,3]
                 features['pos_next_pos'] = word_pos +'/'+ \
-                    self.training_data[file_idx][word_idx+1]['features'][2]
+                    sentence[word_idx+1]['features'][2]
 
                 # U24:%x[0,4]/%x[1,4]
                 features['parse_tree_next_parse_tree'] = word_parse_tree +'/'+ \
-                    self.training_data[file_idx][word_idx+1]['features'][3]
+                    sentence[word_idx+1]['features'][3]
 
                 # U29:%x[0,5]/%x[1,5]
                 features['dependents_next_dependents'] = word_basic_dependents +'/'+ \
-                    self.training_data[file_idx][word_idx+1]['features'][4]
+                    sentence[word_idx+1]['features'][4]
 
                 # U34:%x[0,6]/%x[1,6]
                 features['governors_next_governors'] = word_basic_governors +'/'+ \
-                    self.training_data[file_idx][word_idx+1]['features'][5]
+                    sentence[word_idx+1]['features'][5]
 
                 # U39:%x[0,8]/%x[1,8]
                 features['phrase_next_phrase'] = word_phrase +'/'+ \
-                    self.training_data[file_idx][word_idx+1]['features'][7]
+                    sentence[word_idx+1]['features'][7]
 
                 # U44:%x[0,9]/%x[1,9]
                 features['candidate_1_next_candidate_1'] = word_top_candidate_1 +'/'+ \
-                    self.training_data[file_idx][word_idx+1]['features'][8]
+                    sentence[word_idx+1]['features'][8]
 
                 # U49:%x[0,10]/%x[1,10]
                 features['candidate_2_next_candidate_2'] = word_top_candidate_2 +'/'+ \
-                    self.training_data[file_idx][word_idx+1]['features'][9]
+                    sentence[word_idx+1]['features'][9]
 
                 # U54:%x[0,11]/%x[1,11]
                 features['candidate_3_next_candidate_3'] = word_top_candidate_3 +'/'+ \
-                    self.training_data[file_idx][word_idx+1]['features'][10]
+                    sentence[word_idx+1]['features'][10]
 
                 # U59:%x[0,12]/%x[1,12]
                 features['candidate_4_next_candidate_4'] = word_top_candidate_4 +'/'+ \
-                    self.training_data[file_idx][word_idx+1]['features'][11]
+                    sentence[word_idx+1]['features'][11]
 
                 # U64:%x[0,13]/%x[1,13]
                 features['candidate_5_next_candidate_5'] = word_top_candidate_5 +'/'+ \
-                    self.training_data[file_idx][word_idx+1]['features'][12]
+                    sentence[word_idx+1]['features'][12]
 
                 # U69:%x[0,14]/%x[1,14]
                 features['mapping_next_mapping'] = word_top_mapping +'/'+ \
-                    self.training_data[file_idx][word_idx+1]['features'][13]
+                    sentence[word_idx+1]['features'][13]
 
                 # U74:%x[0,15]/%x[1,15]
+                # features['medication_score_next_medication_score'] = str(word_medication_score) +'/'+ \
                 features['medication_score_next_medication_score'] = word_medication_score +'/'+ \
-                    self.training_data[file_idx][word_idx+1]['features'][14]
+                    sentence[word_idx+1]['features'][14]
 
                 # U79:%x[0,16]/%x[1,16]
+                # features['location_next_location'] = str(word_location) +'/'+ \
                 features['location_next_location'] = word_location +'/'+ \
-                    self.training_data[file_idx][word_idx+1]['features'][15]
+                    sentence[word_idx+1]['features'][15]
 
         else:
             # features['EOS'] = True
@@ -650,26 +673,36 @@ class CRF:
 
         return features
 
-    def get_sentence_features(self, sentence, file_idx, feature_function):
+    def get_sentence_features(self, sentence, feature_function):
         # return [self.training_data[file_idx][j]['features'] for j, word in enumerate(word_tokenize(sentence))]
         features = []
         # for j, word in enumerate(word_tokenize(sentence)):
-        for j, word in enumerate(sentence):
-            if self.training_data[file_idx][j]['word'] != word:
-                print 'mismatch'
-            else:
-                features.append(feature_function(sentence, file_idx, j))
+        for j, word_dict in enumerate(sentence):
+            # if word_dict['word'] != word:
+            #     print 'mismatch'
+            # else:
+            #     features.append(feature_function(sentence, file_idx, j))
+            features.append(feature_function(sentence, j))
 
         return features
 
-    def get_features(self, feature_function):
-        return [self.get_sentence_features(sentence, file_idx, feature_function)
-                for file_idx, file_text in self.file_texts.iteritems()
-                for sentence in file_text[0].split('\n')]
+    # def get_features(self, feature_function):
+    #     return [self.get_sentence_features(sentence, file_idx, feature_function)
+    #             for file_idx, file_text in self.file_texts.iteritems()
+    #             for sentence in file_text[0].split('\n')]
 
+    # def get_features_from_crf_training_data(self, feature_function):
+    #     return [self.get_sentence_features(sentence, file_idx, feature_function)
+    #             for file_idx, sentences in self.file_texts.iteritems() for sentence in sentences]
     def get_features_from_crf_training_data(self, feature_function):
-        return [self.get_sentence_features(sentence, file_idx, feature_function)
-                for file_idx, sentence in self.file_texts.iteritems()]
+        # return [self.get_sentence_features(sentence, feature_function)
+        #         for file_idx, sentences in self.training_data.iteritems() for sentence in sentences]
+        document_sentence_features = defaultdict(list)
+        for doc_nr, sentences in self.training_data.iteritems():
+            for sentence in sentences:
+                document_sentence_features[doc_nr].append(self.get_sentence_features(sentence, feature_function))
+
+        return document_sentence_features
 
     def train(self, x_train, y_train, verbose=False):
         # x_train = self.get_features()
@@ -680,7 +713,8 @@ class CRF:
             c1=1.0,
             c2=1e-3,
             max_iterations=50,
-            all_possible_transitions=True
+            all_possible_transitions=True,
+            verbose=verbose
         )
 
         # for xseq, yseq in zip(x_train, y_train):
@@ -704,7 +738,7 @@ class CRF:
 
         return
 
-    def predict(self, x_test, y_test, feature_function):
+    def predict(self, x_test, y_test):
 
         accuracy = 0
 
@@ -721,14 +755,32 @@ class CRF:
                         for j in range(len(predictions))
                         for i, pred in enumerate(predictions[j])])
 
-        predicted_tags = zip([dic['word'] for dic in x_test[0]], predictions[0])
+        predicted_tags = zip([token_dict['word'] for sentence in x_test for token_dict in sentence], [tag for sentence in predictions for tag in sentence])
 
         # metrics.flat_f1_score(y_train, predictions, average='weighted')
 
         # return float(accuracy)/len(predictions[0]) #this calculation is ok
         # print metrics.flat_classification_report(y_train, predictions)
+        flat_y_test = [tag for tag in chain(*y_test)]
+        flat_predictions = [tag for tag in chain(*predictions)]
 
-        return predicted_tags, metrics.flat_accuracy_score(y_test, predictions), metrics.flat_f1_score(y_test, predictions)
+        accuracy = utils.Metrics.compute_accuracy_score(flat_y_test, flat_predictions)
+        precision = utils.Metrics.compute_precision_score(flat_y_test, flat_predictions, average='micro')
+        recall = utils.Metrics.compute_recall_score(flat_y_test, flat_predictions, average='micro')
+        f1_score = utils.Metrics.compute_f1_score(flat_y_test, flat_predictions, average='micro')
+
+        return predicted_tags, accuracy, precision, recall, f1_score
+
+    def filter_by_doc_nr(self, x_train, y_train, x_idx):
+        x_features = []
+        y_labels = []
+        for doc_nr,sentences in x_train.iteritems():
+            for sent_nr, sentence in enumerate(sentences):
+                if doc_nr in x_idx:
+                    x_features.append(sentence)
+                    y_labels.append(y_train[doc_nr][sent_nr])
+
+        return x_features, y_labels
 
 def print_state_features(state_features):
     for (attr, label), weight in state_features:
@@ -766,7 +818,7 @@ if __name__ == '__main__':
     use_custom_features = arguments.customfeatures
     w2v_vector_features = arguments.w2vvectorfeatures
 
-    training_data, training_texts = Dataset.get_crf_training_data(training_data_filename)
+    training_data, training_texts = Dataset.get_crf_training_data_by_sentence(training_data_filename)
 
     # test_data = Dataset.get_crf_training_data(test_data_filename)
 
@@ -784,38 +836,42 @@ if __name__ == '__main__':
     logger.info('Using w2v_similar_words:%s kmeans:%s lda:%s zip:%s' % (w2v_features, kmeans, lda, zip_features))
 
     results_accuracy = []
+    results_precision = []
+    results_recall = []
     results_f1 = []
 
     prediction_results = dict()
 
     loo = LeaveOneOut(training_data.__len__())
     for i, (x_idx, y_idx) in enumerate(loo):
-        # if i+1 > 1:
+
+        # if i > 0:
         #    break
-        logger.info('Cross validation '+str(i+1)+' (train+predict)')
+
+        logger.info('Cross validation '+str(i)+' (train+predict)')
         # print x_idx, y_idx
 
         x = crf_model.get_features_from_crf_training_data(feature_function)
         y = crf_model.get_labels_from_crf_training_data()
-        x_train = np.array(x)[x_idx]
-        y_train = np.array(y)[x_idx]
+        x_train, y_train = crf_model.filter_by_doc_nr(x, y, x_idx)
 
-        crf_model.train(x_train, y_train, verbose=False)
+        crf_model.train(x_train, y_train, verbose=True)
 
-        x_test = np.array(x)[y_idx]
-        y_test = np.array(y)[y_idx]
+        x_test, y_test = crf_model.filter_by_doc_nr(x, y, y_idx)
 
         logger.info('Predicting file #%s' % (y_idx[0]))
 
-        predicted_tags, accuracy, f1_score = crf_model.predict(x_test, y_test, feature_function)
+        predicted_tags, accuracy, precision, recall, f1_score = crf_model.predict(x_test, y_test)
         results_accuracy.append(accuracy)
+        results_precision.append(precision)
+        results_recall.append(recall)
         results_f1.append(f1_score)
         # print print_state_features(Counter(crf_model.model.state_features_).most_common(20))
         # print predicted_tags
         # if y_idx[0] == 0:
         #     save_predictions_to_file(predicted_tags, y_test, logger_predictions)
 
-        prediction_results[y_idx[0]] = [(word,pred,true) for (word,pred),true in zip(predicted_tags, y_test[0])]
+        prediction_results[y_idx[0]] = [(word,pred,true) for (word,pred),true in zip(predicted_tags, [tag for tag in chain(*y_test)])]
 
     logging.info('Pickling prediction results')
     pickle.dump(prediction_results, open(arguments.outputfolder+'prediction_results.p','wb'))
@@ -823,4 +879,6 @@ if __name__ == '__main__':
     print 'Accuracy: ', results_accuracy
     print 'F1: ', results_f1
     print 'Mean accuracy: ', np.mean(results_accuracy)
+    print 'Mean precision: ', np.mean(results_precision)
+    print 'Mean recall: ', np.mean(results_recall)
     print 'Mean f1: ', np.mean(results_f1)

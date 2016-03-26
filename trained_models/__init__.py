@@ -38,3 +38,18 @@ def get_rnn_path(file_name):
         os.makedirs(dir)
 
     return path
+
+def get_crpp_path(file_name):
+    """
+    returns path where to save crf++ related files.
+
+    :param file_name:
+    :return:
+    """
+
+    path = pkg_resources.resource_filename('trained_models', 'crfpp/'+file_name)
+    dir = os.path.dirname(path)
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+    return path
