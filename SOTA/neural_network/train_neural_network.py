@@ -26,11 +26,15 @@ logger = logging.getLogger(__name__)
 
 if __name__=='__main__':
     parser = argparse.ArgumentParser(description='Neural net trainer')
-#    parser.add_argument('--outputfolder', default='./', type=str, help='Output folder for the model and logs')
     parser.add_argument('--train_filename', default='handoverdata.zip', type=str)
-    parser.add_argument('--net', type=str, action='store', required=True, choices=['mlp','vector_tag','last_tag','rnn'])
-    parser.add_argument('--window', type=int, action='store', required=True)
-    parser.add_argument('--epochs', type=int, action='store', required=True)
+    parser.add_argument('--net', type=str, action='store', required=True,
+                        choices=['mlp','vector_tag','last_tag','rnn'], help='NNet type')
+    parser.add_argument('--window', type=int, action='store', required=True,
+                        help='Context window size. 1 for RNN')
+    parser.add_argument('--epochs', type=int, action='store', required=True,
+                        help='Nr of training epochs.')
+    parser.add_argument('--cviters', type=int, action='store', required=True,
+                        help='Nr of cross-validation iterations.')
 
     #parse arguments
     arguments = parser.parse_args()
@@ -38,6 +42,7 @@ if __name__=='__main__':
     n_window = arguments.window
     nn_name = arguments.net
     max_epochs = arguments.epochs
+    max_cross_validation = arguments.cviters
 
     training_vectors_filename = get_w2v_training_data_vectors()
 
@@ -83,7 +88,7 @@ if __name__=='__main__':
     loo = LeaveOneOut(n_docs)
     for cross_idx, (x_idx, y_idx) in enumerate(loo):
 
-        if (cross_idx+1) > max_epochs:
+        if (cross_idx+1) > max_cross_validation:
             break
 
         logger.info('Cross-validation %d' % (cross_idx))
