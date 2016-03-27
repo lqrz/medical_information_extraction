@@ -53,3 +53,19 @@ def get_crpp_path(file_name):
         os.makedirs(dir)
 
     return path
+
+def get_pycrf_customfeats_folder():
+    path = pkg_resources.resource_filename('trained_models', 'pycrf/custom_feats/')
+    dir = os.path.dirname(path)
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+    return path
+
+def get_pycrf_originalfeats_folder():
+    path = pkg_resources.resource_filename('trained_models', 'pycrf/original_feats/')
+    dir = os.path.dirname(path)
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+    return path

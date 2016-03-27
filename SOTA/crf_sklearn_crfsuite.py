@@ -18,6 +18,8 @@ import cPickle as pickle
 from collections import OrderedDict
 from utils import utils
 from itertools import chain
+from trained_models import get_pycrf_customfeats_folder
+from trained_models import get_pycrf_originalfeats_folder
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -101,7 +103,7 @@ class CRF:
 
         return document_sentence_tag
 
-    def get_custom_word_features(self, sentence, file_idx, word_idx):
+    def get_custom_word_features(self, sentence, word_idx):
         features = dict()
         previous_features = dict()
         next_features = dict()
@@ -110,13 +112,13 @@ class CRF:
         features_names = ['word', 'lemma', 'ner', 'pos', 'parse_tree', 'dependents', 'governors', 'has_digit',
                           'is_capitalized']
 
-        word = sentence[word_idx]
-        word_lemma = self.training_data[file_idx][word_idx]['features'][0]
-        word_ner = self.training_data[file_idx][word_idx]['features'][1]
-        word_pos = self.training_data[file_idx][word_idx]['features'][2]
-        word_parse_tree = self.training_data[file_idx][word_idx]['features'][3]
-        word_basic_dependents = self.training_data[file_idx][word_idx]['features'][4]
-        word_basic_governors = self.training_data[file_idx][word_idx]['features'][5]
+        word = sentence[word_idx]['word']
+        word_lemma = sentence[word_idx]['features'][0]
+        word_ner = sentence[word_idx]['features'][1]
+        word_pos = sentence[word_idx]['features'][2]
+        word_parse_tree = sentence[word_idx]['features'][3]
+        word_basic_dependents = sentence[word_idx]['features'][4]
+        word_basic_governors = sentence[word_idx]['features'][5]
         # word_unk_score = self.training_data[file_idx][word_idx]['features'][6]
         # word_phrase = self.training_data[file_idx][word_idx]['features'][7]
         # word_top_candidate_1 = self.training_data[file_idx][word_idx]['features'][8]
@@ -127,7 +129,7 @@ class CRF:
         # word_top_mapping = self.training_data[file_idx][word_idx]['features'][13]
         # word_medication_score = self.training_data[file_idx][word_idx]['features'][14]
         # word_location = self.training_data[file_idx][word_idx]['features'][15]
-        word_tag = self.training_data[file_idx][word_idx]['tag']
+        word_tag = sentence[word_idx]['tag']
         word_shape_digit = re.search('\d', word) is not None
         word_shape_capital = re.match('[A-Z]', word) is not None
 
@@ -149,7 +151,7 @@ class CRF:
         # features.append(word_shape_digit)
         # features.append(word_shape_capital)
         features['word'] = word
-        features['word_lemma'] =word_lemma
+        features['word_lemma'] = word_lemma
         features['word_ner'] = word_ner
         features['word_pos'] = word_pos
         features['word_parse_tree'] = word_parse_tree
@@ -161,13 +163,13 @@ class CRF:
         features['suffix'] = word[-3:]
 
         if word_idx > 0:
-            previous_word = sentence[word_idx-1]
-            previous_word_lemma = self.training_data[file_idx][word_idx-1]['features'][0]
-            previous_word_ner = self.training_data[file_idx][word_idx-1]['features'][1]
-            previous_word_pos = self.training_data[file_idx][word_idx-1]['features'][2]
-            previous_word_parse_tree = self.training_data[file_idx][word_idx-1]['features'][3]
-            previous_word_basic_dependents = self.training_data[file_idx][word_idx-1]['features'][4]
-            previous_word_basic_governors = self.training_data[file_idx][word_idx-1]['features'][5]
+            previous_word = sentence[word_idx-1]['word']
+            previous_word_lemma = sentence[word_idx-1]['features'][0]
+            previous_word_ner = sentence[word_idx-1]['features'][1]
+            previous_word_pos = sentence[word_idx-1]['features'][2]
+            previous_word_parse_tree = sentence[word_idx-1]['features'][3]
+            previous_word_basic_dependents = sentence[word_idx-1]['features'][4]
+            previous_word_basic_governors = sentence[word_idx-1]['features'][5]
             # previous_word_unk_score = self.training_data[file_idx][word_idx-1]['features'][6]
             # previous_word_phrase = self.training_data[file_idx][word_idx-1]['features'][7]
             # previous_word_top_candidate_1 = self.training_data[file_idx][word_idx-1]['features'][8]
@@ -217,6 +219,7 @@ class CRF:
                         features['previous_'+feat_name+'_'+feat_name] = \
                         previous_features[feat_name] + '/' + word_features[feat_name]
                     except TypeError:
+                        # this is for boolean-type features
                         features['previous_'+feat_name+'_'+feat_name] = \
                         previous_features[feat_name] or word_features[feat_name]
 
@@ -225,13 +228,13 @@ class CRF:
             features['BOS'] = True
 
         if word_idx < len(sentence)-1:
-            next_word = sentence[word_idx+1]
-            next_word_lemma = self.training_data[file_idx][word_idx+1]['features'][0]
-            next_word_ner = self.training_data[file_idx][word_idx+1]['features'][1]
-            next_word_pos = self.training_data[file_idx][word_idx+1]['features'][2]
-            next_word_parse_tree = self.training_data[file_idx][word_idx+1]['features'][3]
-            next_word_basic_dependents = self.training_data[file_idx][word_idx+1]['features'][4]
-            next_word_basic_governors = self.training_data[file_idx][word_idx+1]['features'][5]
+            next_word = sentence[word_idx+1]['word']
+            next_word_lemma = sentence[word_idx+1]['features'][0]
+            next_word_ner = sentence[word_idx+1]['features'][1]
+            next_word_pos = sentence[word_idx+1]['features'][2]
+            next_word_parse_tree = sentence[word_idx+1]['features'][3]
+            next_word_basic_dependents = sentence[word_idx+1]['features'][4]
+            next_word_basic_governors = sentence[word_idx+1]['features'][5]
             # next_word_unk_score = self.training_data[file_idx][word_idx+1]['features'][6]
             # next_word_phrase = self.training_data[file_idx][word_idx+1]['features'][7]
             # next_word_top_candidate_1 = self.training_data[file_idx][word_idx+1]['features'][8]
@@ -281,6 +284,7 @@ class CRF:
                         features[feat_name+'_'+'next_'+feat_name] = \
                         word_features[feat_name] + '/' + next_features[feat_name]
                     except TypeError:
+                        # this is for boolean-type features
                         features[feat_name+'_'+'next_'+feat_name] = \
                         word_features[feat_name] or next_features[feat_name]
 
@@ -308,7 +312,7 @@ class CRF:
                 features['lda_topic_'+str(j)] = topic
             # features.extend(topics)
 
-        if (self.w2v_features and self.w2v_model):
+        if self.w2v_features and self.w2v_model:
             n_dim = self.w2v_model.syn0.shape[0]
             try:
                 rep = self.get_w2v_vector(word, self.word_vector_cache)
@@ -316,7 +320,8 @@ class CRF:
                 rep = np.zeros((n_dim,))
 
             for j,dim_val in rep:
-                features['w2v_dim_'+str(j)] = dim_val
+                # features['w2v_dim_'+str(j)] = dim_val
+                features['w2v_dim_'+str(j)] = str(dim_val)[:4]
 
         return features
 
@@ -379,7 +384,7 @@ class CRF:
 
         return topics
 
-    def get_original_paper_word_features(self, sentence, word_idx, inc_unk_score=True):
+    def get_original_paper_word_features(self, sentence, word_idx, inc_unk_score=False):
         # features = []
         features = OrderedDict()
 
@@ -795,7 +800,7 @@ def save_predictions_to_file(predicted_labels, true_labels, logger):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='CRF Sklearn')
-    parser.add_argument('--outputfolder', default='./', type=str, help='Output folder for the model and logs')
+    # parser.add_argument('--outputfolder', default='./', type=str, help='Output folder for the model and logs')
     parser.add_argument('--w2vfeatures', action='store_true', default=False)
     parser.add_argument('--kmeans', action='store_true', default=False)
     parser.add_argument('--lda', action='store_true', default=False)
@@ -803,12 +808,13 @@ if __name__ == '__main__':
     parser.add_argument('--originalfeatures', action='store_true', default=False)
     parser.add_argument('--customfeatures', action='store_true', default=False)
     parser.add_argument('--w2vvectorfeatures', action='store_true', default=False)
+    parser.add_argument('--cviters', action='store', type=int, default=0)
 
     arguments = parser.parse_args()
 
     training_data_filename = 'handoverdata.zip'
     test_data_filename = 'handover-set2.zip'
-    output_model_filename = arguments.outputfolder+ '/' + 'crf_trained.model'
+    # output_model_filename = arguments.outputfolder+ '/' + 'crf_trained.model'
 
     w2v_features = arguments.w2vfeatures
     kmeans = arguments.kmeans
@@ -817,12 +823,14 @@ if __name__ == '__main__':
     use_original_paper_features = arguments.originalfeatures
     use_custom_features = arguments.customfeatures
     w2v_vector_features = arguments.w2vvectorfeatures
+    max_cv_iters = arguments.cviters
 
     training_data, training_texts = Dataset.get_crf_training_data_by_sentence(training_data_filename)
 
     # test_data = Dataset.get_crf_training_data(test_data_filename)
 
-    crf_model = CRF(training_data, training_texts, test_data=None, output_model_filename=output_model_filename,
+    #TODO: im setting output_model_filename to None. Im not using it, currently.
+    crf_model = CRF(training_data, training_texts, test_data=None, output_model_filename=None,
                     w2v_vector_features=w2v_vector_features,
                     w2v_features=w2v_features, kmeans_features=kmeans, lda_features=lda, zip_features=zip_features)
 
@@ -845,8 +853,8 @@ if __name__ == '__main__':
     loo = LeaveOneOut(training_data.__len__())
     for i, (x_idx, y_idx) in enumerate(loo):
 
-        # if i > 0:
-        #    break
+        if (max_cv_iters > 0) and ((i+1) > max_cv_iters):
+            break
 
         logger.info('Cross validation '+str(i)+' (train+predict)')
         # print x_idx, y_idx
@@ -874,7 +882,16 @@ if __name__ == '__main__':
         prediction_results[y_idx[0]] = [(word,pred,true) for (word,pred),true in zip(predicted_tags, [tag for tag in chain(*y_test)])]
 
     logging.info('Pickling prediction results')
-    pickle.dump(prediction_results, open(arguments.outputfolder+'prediction_results.p','wb'))
+    run_params = '_'.join(map(str,['w2vfeat_',w2v_features,'kmeans',kmeans,'w2vvec',w2v_vector_features,
+                           'lda',lda,'zip',zip_features]))
+
+    output_folder = './'
+    if use_original_paper_features:
+        output_folder = get_pycrf_originalfeats_folder()
+    elif use_custom_features:
+        output_folder = get_pycrf_customfeats_folder()
+
+    pickle.dump(prediction_results, open(output_folder+'prediction_results_'+run_params+'.p','wb'))
 
     print 'Accuracy: ', results_accuracy
     print 'F1: ', results_f1
