@@ -32,12 +32,15 @@ class NeuralNetwork:
         return w
 
     @staticmethod
-    def context_window(sentence, n_window):
+    def context_window(sentence, n_window, pad_idx=None):
         # make sure its uneven
         assert (n_window % 2) == 1, 'Window size must be uneven.'
 
-        # add '<UNK>' tokens at begining and end of sentence
-        l_padded = n_window //2 * ['<PAD>'] + sentence + n_window // 2 * ['<PAD>']
+        # add '<PAD>' tokens at begining and end of sentence
+        if pad_idx:
+            l_padded = n_window //2 * [pad_idx] + sentence + n_window // 2 * [pad_idx]
+        else:
+            l_padded = n_window //2 * ['<PAD>'] + sentence + n_window // 2 * ['<PAD>']
 
         # slide the window
         return [l_padded[i:(i+n_window)] for i in range(len(sentence))]
