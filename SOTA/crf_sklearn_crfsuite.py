@@ -319,9 +319,9 @@ class CRF:
             except KeyError:
                 rep = np.zeros((n_dim,))
 
-            for j,dim_val in rep:
+            for dim_nr,dim_val in enumerate(rep):
                 # features['w2v_dim_'+str(j)] = dim_val
-                features['w2v_dim_'+str(j)] = str(dim_val)[:4]
+                features['w2v_dim_'+str(dim_nr)] = str(dim_val)[:4]
 
         return features
 
