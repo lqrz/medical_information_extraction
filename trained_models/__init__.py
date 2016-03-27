@@ -69,3 +69,9 @@ def get_pycrf_originalfeats_folder():
         os.makedirs(dir)
 
     return path
+
+def get_lda_path(file_name):
+    return pkg_resources.resource_filename('trained_models', 'lda/'+file_name)
+
+def get_kmeans_path(file_name):
+    return pkg_resources.resource_filename('trained_models', 'kmeans/'+file_name)

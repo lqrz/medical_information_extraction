@@ -18,8 +18,8 @@ import cPickle as pickle
 from collections import OrderedDict
 from utils import utils
 from itertools import chain
-from trained_models import get_pycrf_customfeats_folder
-from trained_models import get_pycrf_originalfeats_folder
+from trained_models import get_pycrf_customfeats_folder, get_pycrf_originalfeats_folder
+from trained_models import get_kmeans_path, get_lda_path
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -62,14 +62,14 @@ class CRF:
         self.kmeans_model = None
         if self.kmeans_features:
             model_filename = 'kmeans.model'
-            self.kmeans_model = self.load_kmeans_model(model_filename)
+            self.kmeans_model = self.load_kmeans_model(get_kmeans_path(model_filename))
 
         # use the lda 5 most promising topics as feature
         self.lda_features = lda_features
         self.lda_model = None
         if self.lda_features:
             model_filename = 'wikipedia_lda.model'
-            self.lda_model = load(model_filename)
+            self.lda_model = load(get_lda_path(model_filename))
 
         self.zip_features = zip_features
 
