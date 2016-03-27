@@ -312,7 +312,7 @@ class CRF:
                 features['lda_topic_'+str(j)] = topic
             # features.extend(topics)
 
-        if self.w2v_features and self.w2v_model:
+        if self.w2v_vector_features and self.w2v_model:
             n_dim = self.w2v_model.syn0.shape[0]
             try:
                 rep = self.get_w2v_vector(word, self.word_vector_cache)
