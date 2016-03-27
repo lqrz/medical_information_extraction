@@ -825,7 +825,7 @@ if __name__ == '__main__':
     w2v_vector_features = arguments.w2vvectorfeatures
     max_cv_iters = arguments.cviters
 
-    training_data, training_texts = Dataset.get_crf_training_data_by_sentence(training_data_filename)
+    training_data, training_texts, _, _ = Dataset.get_crf_training_data_by_sentence(training_data_filename)
 
     # test_data = Dataset.get_crf_training_data(test_data_filename)
 
