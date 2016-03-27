@@ -201,15 +201,24 @@ class Dataset:
         sentences = defaultdict(list)
 
         dict_sentence = []
+
         training_data = defaultdict(list)
 
+        word_sentence = []
+        tag_sentence = []
+        document_sentence_words = defaultdict(list)
+        document_sentence_tags = defaultdict(list)
+
         for i, (doc_nr, text) in enumerate(f):
-            j = 0 # do not use enumerate instead
             for line in text.split('\n'):
                 if len(line) < 2:
                     if dict_sentence:
                         training_data[doc_nr].append(dict_sentence)
+                        document_sentence_words[doc_nr].append(word_sentence)
+                        document_sentence_tags[doc_nr].append(tag_sentence)
                         dict_sentence = []
+                        word_sentence = []
+                        tag_sentence = []
                     continue
                 dict_word = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
                 line = line.strip().split('\t')
@@ -217,13 +226,14 @@ class Dataset:
                 dict_word['features'] = line[1:-2]
                 dict_word['tag'] = line[-2] # -2 is the true label, -1 is their predicted tag
                 dict_sentence.append(dict_word)
-                j += 1
+                word_sentence.append(dict_word['word'])
+                tag_sentence.append(dict_word['tag'])
                 sentences[doc_nr].append(line[0])
 
             if dict_sentence:
                 training_data[doc_nr].append(dict_sentence)
 
-        return training_data, sentences
+        return training_data, sentences, document_sentence_words, document_sentence_tags
 
 
 if __name__ == '__main__':

@@ -140,6 +140,10 @@ class A_neural_network():
 
         self.y_train = np.array([self.label2index[tag] for tag in training_sentence_tags])
 
+        #TODO: REMOVE THIS!
+        # self.x_train = self.x_train[:10]
+        # self.y_train = self.y_train[:10]
+
         self.x_valid = np.matrix([map(lambda x: self.word2index[x], sentence) for sentence in
                              utils.NeuralNetwork.context_window(validation_sentence_words,self.n_window)])
 

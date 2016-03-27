@@ -1,6 +1,5 @@
 __author__ = 'root'
 
-import gensim
 from data import get_w2v_model
 from data import get_w2v_training_data_vectors
 import logging
@@ -15,15 +14,19 @@ from trained_models import get_cwnn_path
 from collections import OrderedDict
 from utils import utils
 from A_neural_network import A_neural_network
+from A_neural_network import A_neural_network
 from itertools import chain
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-theano.config.optimizer='fast_compile'
-theano.config.exception_verbosity='high'
+# theano.config.exception_verbosity='high'
+# theano.config.optimizer='fast_run'
+theano.config.exception_verbosity='low'
 theano.config.warn_float64='ignore'
-theano.config.floatX='float64'
+# theano.config.floatX='float64'
+
+print theano.config.floatX
 
 
 def transform_crf_training_data(dataset):
@@ -54,12 +57,12 @@ class RNN_trainer(A_neural_network):
         # self.y_train = self.y_train[:10] #TODO: remove this. debug only.
 
         # i need these theano vars for the minibatch (the givens in the train function). Otherwise i wouldnt.
-        # train_x = theano.shared(value=np.array(self.x_train, dtype='int64'), name='train_x', borrow=True)
-        # train_y = theano.shared(value=np.array(self.y_train, dtype='int64'), name='train_y', borrow=True)
+        # train_x = theano.shared(value=self.x_train, name='train_x_shared')
+        # train_y = theano.shared(value=self.y_train, name='train_y_shared')
 
-        y = T.vector(name='y', dtype='int64')
+        y = T.vector(name='y', dtype='int32')
 
-        idxs = T.vector(name="idxs", dtype='int64') # columns: context window size/lines: tokens in the sentence
+        idxs = T.vector(name="idxs", dtype='int32') # columns: context window size/lines: tokens in the sentence
         n_emb = self.pretrained_embeddings.shape[1] #embeddings dimension
         # n_tokens = self.x_train.shape[0]    #tokens in sentence
         n_tokens = idxs.shape[0]    #tokens in sentence
@@ -67,13 +70,13 @@ class RNN_trainer(A_neural_network):
 
         lim = np.sqrt(6./(self.n_window*n_emb+self.n_out))
 
-        w1 = theano.shared(value=self.pretrained_embeddings, name='w1', borrow=True)
+        w1 = theano.shared(value=np.array(self.pretrained_embeddings).astype(dtype=theano.config.floatX), name='w1', borrow=True)
         w2 = theano.shared(value=np.random.uniform(-lim,lim,(self.n_window*n_emb,self.n_out)).
                            astype(dtype=theano.config.floatX), name='w2', borrow=True)
         ww = theano.shared(value=np.random.uniform(-lim,lim,(self.n_window*n_emb,self.n_window*n_emb)).
                            astype(dtype=theano.config.floatX), name='ww', borrow=True)
-        b1 = theano.shared(value=np.zeros(self.n_window*n_emb), name='b1', borrow=True)
-        b2 = theano.shared(value=np.zeros(self.n_out), name='b2', borrow=True)
+        b1 = theano.shared(value=np.zeros(self.n_window*n_emb).astype(dtype=theano.config.floatX), name='b1', borrow=True)
+        b2 = theano.shared(value=np.zeros(self.n_out).astype(dtype=theano.config.floatX), name='b2', borrow=True)
 
         params = [w1,b1,w2,b2,ww]
         param_names = ['w1','b1','w2','b2','ww']
@@ -126,7 +129,7 @@ class RNN_trainer(A_neural_network):
             updates.append((param, param - learning_rate * grad/(T.sqrt(accum)+10**-5)))
             updates.append((accum_grad, accum))
 
-        train = theano.function(inputs=[idxs, y],
+        train = theano.function(inputs=[theano.In(idxs,borrow=True), theano.In(y,borrow=True)],
                                 outputs=[cost,errors],
                                 updates=updates)
 
@@ -134,6 +137,7 @@ class RNN_trainer(A_neural_network):
             epoch_cost = 0
             epoch_errors = 0
             for j,(sentence_idxs, tags_idxs) in enumerate(zip(self.x_train, self.y_train)):
+            # for j,(sentence_idxs, tags_idxs) in enumerate(zip(train_x.get_value(borrow=True), train_y.get_value(borrow=True))):
                 # error = train(self.x_train, self.y_train)
                 # print 'Epoch %d Sentence %d' % (epoch_index, j)
                 cost_output, errors_output = train(sentence_idxs, tags_idxs)
@@ -178,7 +182,7 @@ class RNN_trainer(A_neural_network):
         # cost = T.mean(T.nnet.categorical_crossentropy(out, y))
         # errors = T.sum(T.neq(y_predictions,y))
 
-        perform_prediction = theano.function(inputs=[idxs],
+        perform_prediction = theano.function(inputs=[theano.In(idxs)],
                                 outputs=[y_predictions],
                                 updates=[],
                                 givens=[])
@@ -195,8 +199,8 @@ class RNN_trainer(A_neural_network):
     def to_string(self):
         return 'RNN.'
 
-    @staticmethod
-    def get_data(crf_training_data_filename):
+    @classmethod
+    def get_data(cls, crf_training_data_filename):
         """
         overrides the inherited method.
         gets the training data and organizes it into sentences per document.
@@ -208,10 +212,12 @@ class RNN_trainer(A_neural_network):
 
         words_per_document = None
         tags_per_document = None
-        document_sentences_words, document_sentences_tags = Dataset.get_training_file_tokenized_sentences(crf_training_data_filename)
+        # document_sentences_words, document_sentences_tags = Dataset.get_training_file_tokenized_sentences(crf_training_data_filename)
 
-        unique_words = list(set([word for doc_sentences in document_sentences_words.values() for sentence in doc_sentences for word in sentence]))
-        unique_labels = list(set([tag for doc_sentences in document_sentences_tags.values() for sentence in doc_sentences for tag in sentence]))
+        _, _, document_sentence_words, document_sentence_tags = Dataset.get_crf_training_data_by_sentence(crf_training_data_filename)
+
+        unique_words = list(set([word for doc_sentences in document_sentence_words.values() for sentence in doc_sentences for word in sentence]))
+        unique_labels = list(set([tag for doc_sentences in document_sentence_tags.values() for sentence in doc_sentences for tag in sentence]))
 
         logger.info('Creating word-index dictionaries')
         index2word = defaultdict(None)
@@ -232,9 +238,9 @@ class RNN_trainer(A_neural_network):
         n_unique_words = len(unique_words)+1    # +1 for the <PAD>
         n_out = len(unique_labels)+1  # +1 for the '<PAD>' tag
 
-        n_docs = len(document_sentences_words)
+        n_docs = len(document_sentence_words)
 
-        return words_per_document, tags_per_document, document_sentences_words, document_sentences_tags, n_docs, unique_words, unique_labels, index2word, word2index, index2label, label2index, n_unique_words, n_out
+        return words_per_document, tags_per_document, document_sentence_words, document_sentence_tags, n_docs, unique_words, unique_labels, index2word, word2index, index2label, label2index, n_unique_words, n_out
 
     def get_partitioned_data(self, x_idx, y_idx):
         """
@@ -302,10 +308,13 @@ if __name__ == '__main__':
     # training_sentence_words/ = [word['word'] for archive in crf_training_dataset.values() for word in archive.values()]
     # training_sentence_tags = [word['tag'] for archive in crf_training_dataset.values() for word in archive.values()]
 
-    sentences_words, sentences_tags = Dataset.get_training_file_tokenized_sentences(crf_training_data_filename)
+    # sentences_words, sentences_tags = Dataset.get_training_file_tokenized_sentences(crf_training_data_filename)
+    _, _, document_sentence_words, document_sentence_tags = Dataset.get_crf_training_data_by_sentence(crf_training_data_filename)
 
-    unique_words = list(set([word for doc_sentences in sentences_words.values() for sentence in doc_sentences for word in sentence]))
-    unique_labels = list(set([tag for doc_sentences in sentences_tags.values() for sentence in doc_sentences for tag in sentence]))
+    unique_words = list(set([word for doc_sentences in document_sentence_words.values() for sentence in doc_sentences for word in sentence]))
+    unique_labels = list(set([tag for doc_sentences in document_sentence_tags.values() for sentence in doc_sentences for tag in sentence]))
+    # unique_words = list(set([word_dict['word'] for doc_sentences in document_sentence.values() for sentence in doc_sentences for word_dict in sentence]))
+    # unique_labels = list(set([word_dict['tag'] for doc_sentences in document_sentence.values() for sentence in doc_sentences for word_dict in sentence]))
 
     logger.info('Creating word-index dictionaries')
     index2word = defaultdict(None)
@@ -323,6 +332,8 @@ if __name__ == '__main__':
         index2label[i] = label
         label2index[label] = i
 
+    n_out = len(label2index)
+
     n_unique_words = len(unique_words)+1    # +1 for the <PAD>
     n_labels = len(unique_labels)+1
 
@@ -332,26 +343,44 @@ if __name__ == '__main__':
 
     w = utils.NeuralNetwork.replace_with_word_embeddings(w, unique_words, w2v_vectors=w2v_vectors, w2v_model=w2v_model)
 
+    words_per_document, tags_per_document, document_sentences_words, document_sentences_tags, n_docs, unique_words, unique_labels, index2word, word2index, index2label, label2index, n_unique_words, n_out = RNN_trainer.get_data(crf_training_data_filename)
+
+    logger.info('Instantiating RNN')
+    params = {
+    'hidden_activation_f': utils.NeuralNetwork.tanh_activation_function,
+    'out_activation_f': utils.NeuralNetwork.softmax_activation_function,
+    'n_window': n_window,
+    'words_per_document': None,
+    'tags_per_document': None,
+    'document_sentences_words': document_sentence_words,
+    'document_sentences_tags': document_sentence_tags,
+    'unique_words': unique_words,
+    'unique_labels': unique_labels,
+    'index2word': index2word,
+    'word2index': word2index,
+    'index2label': index2label,
+    'label2index': label2index,
+    'n_unique_words': n_unique_words,
+    'n_out': n_out
+    }
+    nn_trainer = RNN_trainer(**params)
+
     #TODO: change to make sentences.
     if use_context_window:
-        x_train = np.array([map(lambda x: word2index[x], sentence) for sentence_words in sentences_words
-                            for sentence in utils.NeuralNetwork.context_window(sentence_words,n_window)])
+        nn_trainer.x_train = np.array([map(lambda x: word2index[x],sentence_window) for sentences in document_sentence_words.values()
+                   for sentence in sentences
+                   for sentence_window in utils.NeuralNetwork.context_window(sentence,n_window)])
     else:
         # x_train = np.array([map(lambda x: word2index[x], sentence) for sentence in sentences_words.values()])
         # x_train = np.array([map(lambda x: word2index[x], sentence) for sentence in delete_words])
-        x_train = np.array([map(lambda x: word2index[x], sentence) for doc_sentences in sentences_words.values() for sentence in doc_sentences])
+        # x_train = np.array([map(lambda x: word2index[x], sentence) for doc_sentences in sentences_words.values() for sentence in doc_sentences])
+        nn_trainer.x_train = np.array([map(lambda x:word2index[x],sentence) for doc_sentences in document_sentence_words.values() for sentence in doc_sentences])
 
     # y_train = np.array([map(lambda x: label2index[x], sentence) for sentence in delete_tags])
-    y_train = np.array([map(lambda x: label2index[x], sentence) for doc_sentences in sentences_tags.values() for sentence in doc_sentences])
+    # y_train = np.array([map(lambda x: label2index[x], sentence) for doc_sentences in sentences_tags.values() for sentence in doc_sentences])
+    nn_trainer.y_train = np.array([map(lambda x:label2index[x],sentence) for doc_sentences in document_sentence_tags.values() for sentence in doc_sentences])
 
-    logger.info('Instantiating RNN')
-    nn_trainer = RNN_trainer(x_train, y_train,
-                                        # n_out=n_labels,
-                                        # hidden_activation_f=T.nnet.sigmoid,
-                                        hidden_activation_f=T.tanh,
-                                        # hidden_activation_f=Activation_function.linear,
-                                        out_activation_f=T.nnet.softmax,
-                                        pretrained_embeddings=w)
+    nn_trainer.initialize_w(w2v_dims, w2v_vectors=w2v_vectors, w2v_model=w2v_model)
 
     logger.info('Training RNN')
     nn_trainer.train(learning_rate=.01, batch_size=512, max_epochs=50, save_params=False)
