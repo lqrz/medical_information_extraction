@@ -9,7 +9,7 @@ import cPickle
 import argparse
 
 if __name__=='__main__':
-    parser = argparse.ArgumentParser(description='Evaliate pickled results')
+    parser = argparse.ArgumentParser(description='Evaluate pickled results')
     parser.add_argument('--file', type=str, required=True, help='Pickle file with predictions.')
     arguments = parser.parse_args()
     path = arguments.file
@@ -18,8 +18,8 @@ if __name__=='__main__':
 
     #TODO: this is horrible. Consistency!
     if 'pycrf' in path:
-        y_t = list(chain(*[true for _,_,true in p.values()]))
-        y_p = list(chain(*[pred for _,pred,_ in p.values()]))
+        y_t = [true for sent in p.values() for _,_,true in sent]
+        y_p = [pred for sent in p.values() for _,pred,_ in sent]
     else:
         y_t = list(chain(*[trues[0] for trues in p.values()]))
         y_p = list(chain(*[trues[1] for trues in p.values()]))
