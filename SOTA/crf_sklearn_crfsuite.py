@@ -33,8 +33,9 @@ logger = logging.getLogger(__name__)
 class CRF:
 
     def __init__(self, training_data, training_texts, test_data, output_model_filename, w2v_vector_features=False,
-                 w2v_features=False, kmeans_features=False, lda_features=False, zip_features=False,
-                 original_include_metamap=True, original_inc_unk_score=False):
+                 w2v_similar_words=False, kmeans_features=False, lda_features=False, zip_features=False,
+                 original_include_metamap=True, original_inc_unk_score=False,
+                 w2v_model = None, w2v_vectors_dict=None):
         self.training_data = training_data
         self.file_texts = training_texts
         # self.file_texts = dataset.get_training_file_sentences(training_data_filename)
@@ -46,18 +47,24 @@ class CRF:
 
         # use top 5 most similar word from word2vec or kmeans (it also uses the word representation)
         self.kmeans_features = kmeans_features
-        self.w2v_features = w2v_features
+        self.w2v_similar_words = w2v_similar_words
         self.w2v_model = None
         self.w2v_vector_features = w2v_vector_features
-        if self.w2v_features or self.kmeans_features or self.w2v_vector_features:
-            W2V_PRETRAINED_FILENAME = 'GoogleNews-vectors-negative300.bin.gz'
-            self.w2v_model = utils.Word2Vec.load_w2v(get_w2v_model(W2V_PRETRAINED_FILENAME))
+        if self.w2v_similar_words or self.kmeans_features or self.w2v_vector_features:
+            # load w2v model from specified file
+            #W2V_PRETRAINED_FILENAME = 'GoogleNews-vectors-negative300.bin.gz'
+            self.w2v_model = utils.Word2Vec.load_w2v(get_w2v_model(w2v_model))
             # self.w2v_model = True
 
         # querying word2vec is too expensive. Maintain a cache.
         self.similar_words_cache = dict(list()) # this is for word2vec similar words
-        self.word_vector_cache = dict(list()) # this is for word2vec representations
         self.word_lda_topics = dict(list()) # this is for lda assigned topics
+        self.word_vector_cache = None
+        if w2v_vectors_dict:
+            # if a dict file is provided, load it!
+            self.word_vector_cache = pickle.load(open(w2v_vectors_dict, 'rb'))
+        else:
+            self.word_vector_cache = dict(list()) # this is for word2vec representations
 
         # use the kmeans cluster as feature
         self.kmeans_model = None
@@ -299,7 +306,7 @@ class CRF:
             features['EOS'] = True
 
         # word2vec features
-        if self.w2v_features and self.w2v_model:
+        if self.w2v_similar_words and self.w2v_model:
             similar_words = self.get_similar_w2v_words(word, self.similar_words_cache, topn=5)
             for j,sim_word in enumerate(similar_words):
                 features['w2v_similar_word_'+str(j)] = sim_word
@@ -818,15 +825,17 @@ def save_predictions_to_file(predicted_labels, true_labels, logger):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='CRF Sklearn')
     # parser.add_argument('--outputfolder', default='./', type=str, help='Output folder for the model and logs')
-    parser.add_argument('--w2vfeatures', action='store_true', default=False)
-    parser.add_argument('--kmeans', action='store_true', default=False)
-    parser.add_argument('--lda', action='store_true', default=False)
-    parser.add_argument('--zipfeatures', action='store_true', default=False)
     parser.add_argument('--originalfeatures', action='store_true', default=False)
     parser.add_argument('--customfeatures', action='store_true', default=False)
-    parser.add_argument('--w2vvectorfeatures', action='store_true', default=False)
+    parser.add_argument('--w2vsimwords', action='store_true', default=False)
+    parser.add_argument('--w2vvectors', action='store_true', default=False)
+    parser.add_argument('--w2vmodel', action='store', type=str, default=None)
+    parser.add_argument('--w2vvectorscache', action='store', type=str, default=None)
+    parser.add_argument('--kmeans', action='store_true', default=False)
+    parser.add_argument('--lda', action='store_true', default=False)
     parser.add_argument('--unkscore', action='store_true', default=False)
     parser.add_argument('--metamap', action='store_true', default=False)
+    parser.add_argument('--zipfeatures', action='store_true', default=False)
     parser.add_argument('--cviters', action='store', type=int, default=0)
 
     arguments = parser.parse_args()
@@ -835,16 +844,27 @@ if __name__ == '__main__':
     test_data_filename = 'handover-set2.zip'
     # output_model_filename = arguments.outputfolder+ '/' + 'crf_trained.model'
 
-    w2v_features = arguments.w2vfeatures
-    kmeans = arguments.kmeans
-    lda = arguments.lda
-    zip_features = arguments.zipfeatures
     use_original_paper_features = arguments.originalfeatures
     use_custom_features = arguments.customfeatures
-    w2v_vector_features = arguments.w2vvectorfeatures
-    max_cv_iters = arguments.cviters
+    w2v_similar_words = arguments.w2vsimwords
+    w2v_vector_features = arguments.w2vvectors
+    w2v_model_file = arguments.w2vmodel
+    w2v_vectors_cache = arguments.w2vvectorscache
+    kmeans = arguments.kmeans
+    lda = arguments.lda
     incl_unk_score = arguments.unkscore
     incl_metamap = arguments.metamap
+    zip_features = arguments.zipfeatures
+    max_cv_iters = arguments.cviters
+
+    # check consistency in arguments
+    # if w2v_similar_words and not w2v_model_file:
+    #     logger.error('Provide a word2vec model for similar word extraction.')
+    #     exit()
+    #TODO: i shouldnt load the model if its for using kmeans or vector-features and a cache-dict is provided
+    if (w2v_similar_words or kmeans or w2v_vector_features) and not (w2v_model_file or w2v_vectors_cache):
+        logger.error('Provide a word2vec model or vector dictionary for vector extraction.')
+        exit()
 
     training_data, training_texts, _, _ = Dataset.get_crf_training_data_by_sentence(training_data_filename)
 
@@ -853,9 +873,10 @@ if __name__ == '__main__':
     #TODO: im setting output_model_filename to None. Im not using it, currently.
     crf_model = CRF(training_data, training_texts, test_data=None, output_model_filename=None,
                     w2v_vector_features=w2v_vector_features,
-                    w2v_features=w2v_features, kmeans_features=kmeans, lda_features=lda,
+                    w2v_similar_words=w2v_similar_words, kmeans_features=kmeans, lda_features=lda,
                     zip_features=zip_features, original_inc_unk_score=incl_unk_score,
-                    original_include_metamap=incl_metamap)
+                    original_include_metamap=incl_metamap,
+                    w2v_model=w2v_model_file, w2v_vectors_dict=w2v_vectors_cache)
 
     if use_original_paper_features:
         feature_function = crf_model.get_original_paper_word_features
@@ -864,7 +885,8 @@ if __name__ == '__main__':
 
     logger.info('Extracting features with: '+feature_function.__str__())
 
-    logger.info('Using w2v_similar_words:%s kmeans:%s lda:%s zip:%s' % (w2v_features, kmeans, lda, zip_features))
+    logger.info('Using w2v_similar_words:%s kmeans:%s lda:%s zip:%s' % (w2v_similar_words, kmeans, lda, zip_features))
+    logger.info('Using w2v_model: %s and vector_dictionary: %s' % (w2v_model_file, w2v_vectors_cache))
 
     results_accuracy = []
     results_precision = []
@@ -905,7 +927,7 @@ if __name__ == '__main__':
         prediction_results[y_idx[0]] = [(word,pred,true) for (word,pred),true in zip(predicted_tags, [tag for tag in chain(*y_test)])]
 
     logging.info('Pickling prediction results')
-    run_params = '_'.join(map(str,['metamap',incl_metamap,'w2vfeat',w2v_features,'kmeans',kmeans,'w2vvec',w2v_vector_features,
+    run_params = '_'.join(map(str,['metamap',incl_metamap,'w2vsim',w2v_similar_words,'kmeans',kmeans,'w2vvec',w2v_vector_features,
                            'lda',lda,'zip',zip_features]))
 
     output_folder = './'
