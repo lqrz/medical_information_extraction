@@ -69,21 +69,24 @@ class CRF:
         self.w2v_similar_words = w2v_similar_words
         self.w2v_model = None
         self.w2v_vector_features = w2v_vector_features
+
+        # querying word2vec is too expensive. Maintain a cache.
+        self.similar_words_cache = dict(list()) # this is for word2vec similar words
+        self.word_lda_topics = dict(list()) # this is for lda assigned topics
+        self.word_vector_cache = None
+
+        self.load_w2v_model_and_cache(w2v_model,w2v_vectors_dict )
         if self.w2v_similar_words or self.kmeans_features or self.w2v_vector_features:
             # load w2v model from specified file
             #W2V_PRETRAINED_FILENAME = 'GoogleNews-vectors-negative300.bin.gz'
             self.w2v_model = utils.Word2Vec.load_w2v(get_w2v_model(w2v_model))
             # self.w2v_model = True
 
-        # querying word2vec is too expensive. Maintain a cache.
-        self.similar_words_cache = dict(list()) # this is for word2vec similar words
-        self.word_lda_topics = dict(list()) # this is for lda assigned topics
-        self.word_vector_cache = None
-        if w2v_vectors_dict:
-            # if a dict file is provided, load it!
-            self.word_vector_cache = pickle.load(open(get_w2v_training_data_vectors(w2v_vectors_dict), 'rb'))
-        else:
-            self.word_vector_cache = dict(list()) # this is for word2vec representations
+        # if w2v_vectors_dict:
+        #     # if a dict file is provided, load it!
+        #     self.word_vector_cache = pickle.load(open(get_w2v_training_data_vectors(w2v_vectors_dict), 'rb'))
+        # else:
+        #     self.word_vector_cache = dict(list()) # this is for word2vec representations
 
         # use the kmeans cluster as feature
         self.kmeans_model = None
@@ -104,6 +107,24 @@ class CRF:
         self.original_include_metamap = original_include_metamap
         # include the unk_score from the original features?
         self.original_inc_unk_score = original_inc_unk_score
+
+    def load_w2v_model_and_cache(self, w2v_model, w2v_vectors_dict):
+        if self.w2v_similar_words and not self.w2v_model:
+            # i need to load the model to query similar words
+            logger.info('Using w2v_similar-words. Loading w2v model')
+            self.w2v_model = utils.Word2Vec.load_w2v(get_w2v_model(w2v_model))
+
+        if (self.kmeans_features or self.w2v_vector_features) and \
+                w2v_vectors_dict and not self.word_vector_cache:
+            # i can get by with the cached vectors
+            logger.info('Using either Kmeans or w2v_features. Loading dictionary.')
+            self.word_vector_cache = pickle.load(open(get_w2v_training_data_vectors(w2v_vectors_dict), 'rb'))
+        elif (self.kmeans_features or self.w2v_vector_features) and \
+               not w2v_vectors_dict and not self.w2v_model and w2v_model:
+            logger.info('Using either kmeans or w2v_features. No dictionary. Loading w2v model.')
+            self.w2v_model = utils.Word2Vec.load_w2v(get_w2v_model(w2v_model))
+
+        return
 
     def load_kmeans_model(self, model_filename):
         return load(model_filename)
