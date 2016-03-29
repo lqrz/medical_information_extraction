@@ -35,7 +35,8 @@ class CRF:
     def __init__(self, training_data, training_texts, test_data, output_model_filename, w2v_vector_features=False,
                  w2v_similar_words=False, kmeans_features=False, lda_features=False, zip_features=False,
                  original_include_metamap=True, original_inc_unk_score=False,
-                 w2v_model = None, w2v_vectors_dict=None):
+                 w2v_model=None, w2v_vectors_dict=None):
+
         self.training_data = training_data
         self.file_texts = training_texts
         # self.file_texts = dataset.get_training_file_sentences(training_data_filename)
@@ -338,6 +339,7 @@ class CRF:
 
         return features
 
+    @staticmethod
     def memoize(func):
 
         @wraps(func)
@@ -348,7 +350,7 @@ class CRF:
             try:
                 # similar_words = self.similar_words_cache[word]
                 similar_words = dictionary[word]
-            except:
+            except KeyError:
                 similar_words = func(self, *args, **kwds)
                 # self.similar_words_cache[word] = similar_words
                 dictionary[word] = similar_words
