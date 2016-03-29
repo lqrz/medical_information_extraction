@@ -112,23 +112,32 @@ class CRF:
         self.original_inc_unk_score = original_inc_unk_score
 
     def load_w2v_model_and_cache(self, w2v_model, w2v_vectors_dict):
-        if self.w2v_similar_words and not self.w2v_model:
-            # i need to load the model to query similar words
-            logger.info('Using w2v_similar-words. Loading w2v model')
-            self.w2v_model = utils.Word2Vec.load_w2v(get_w2v_model(w2v_model))
-            self.w2v_ndims = self.w2v_model.syn0.shape[0]
 
-        if (self.kmeans_features or self.w2v_vector_features) and \
-                w2v_vectors_dict and not self.word_vector_cache:
-            # i can get by with the cached vectors
-            logger.info('Using either Kmeans or w2v_features. Loading dictionary.')
+        #always load the w2v model
+        self.w2v_model = utils.Word2Vec.load_w2v(get_w2v_model(w2v_model))
+        self.w2v_ndims = self.w2v_model.syn0.shape[0]
+
+        #load cache if supplied
+        if w2v_vectors_dict:
             self.word_vector_cache = pickle.load(open(get_w2v_training_data_vectors(w2v_vectors_dict), 'rb'))
-            self.w2v_ndims = self.word_vector_cache.values()[0].__len__()
-        elif (self.kmeans_features or self.w2v_vector_features) and \
-               not w2v_vectors_dict and not self.w2v_model and w2v_model:
-            logger.info('Using either kmeans or w2v_features. No dictionary. Loading w2v model.')
-            self.w2v_model = utils.Word2Vec.load_w2v(get_w2v_model(w2v_model))
-            self.w2v_ndims = self.w2v_model.syn0.shape[0]
+
+        # if self.w2v_similar_words and not self.w2v_model:
+        #     # i need to load the model to query similar words
+        #     logger.info('Using w2v_similar-words. Loading w2v model')
+        #     self.w2v_model = utils.Word2Vec.load_w2v(get_w2v_model(w2v_model))
+        #     self.w2v_ndims = self.w2v_model.syn0.shape[0]
+        #
+        # if (self.kmeans_features or self.w2v_vector_features) and \
+        #         w2v_vectors_dict and not self.word_vector_cache:
+        #     # i can get by with the cached vectors
+        #     logger.info('Using either Kmeans or w2v_features. Loading dictionary.')
+        #     self.word_vector_cache = pickle.load(open(get_w2v_training_data_vectors(w2v_vectors_dict), 'rb'))
+        #     self.w2v_ndims = self.word_vector_cache.values()[0].__len__()
+        # elif (self.kmeans_features or self.w2v_vector_features) and \
+        #        not w2v_vectors_dict and not self.w2v_model and w2v_model:
+        #     logger.info('Using either kmeans or w2v_features. No dictionary. Loading w2v model.')
+        #     self.w2v_model = utils.Word2Vec.load_w2v(get_w2v_model(w2v_model))
+        #     self.w2v_ndims = self.w2v_model.syn0.shape[0]
 
         return
 
