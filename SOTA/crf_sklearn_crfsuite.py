@@ -30,6 +30,24 @@ logger = logging.getLogger(__name__)
 # logger_predictions.addHandler(hndlr)
 # logger_predictions.setLevel(logging.INFO)
 
+def memoize(func):
+
+    @wraps(func)
+    def wrapper(self, *args, **kwds):
+        similar_words = None
+        word = args[0].lower()
+        dictionary = args[1]
+        try:
+            # similar_words = self.similar_words_cache[word]
+            similar_words = dictionary[word]
+        except KeyError:
+            similar_words = func(self, *args, **kwds)
+            # self.similar_words_cache[word] = similar_words
+            dictionary[word] = similar_words
+        return similar_words
+
+    return wrapper
+
 class CRF:
 
     def __init__(self, training_data, training_texts, test_data, output_model_filename, w2v_vector_features=False,
@@ -338,25 +356,6 @@ class CRF:
                 features['w2v_dim_'+str(dim_nr)] = str(dim_val)[:4]
 
         return features
-
-    @staticmethod
-    def memoize(func):
-
-        @wraps(func)
-        def wrapper(self, *args, **kwds):
-            similar_words = None
-            word = args[0].lower()
-            dictionary = args[1]
-            try:
-                # similar_words = self.similar_words_cache[word]
-                similar_words = dictionary[word]
-            except KeyError:
-                similar_words = func(self, *args, **kwds)
-                # self.similar_words_cache[word] = similar_words
-                dictionary[word] = similar_words
-            return similar_words
-
-        return wrapper
 
     @memoize
     def get_similar_w2v_words(self, word, dictionary, topn=5):
