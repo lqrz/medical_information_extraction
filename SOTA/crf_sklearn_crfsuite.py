@@ -76,11 +76,11 @@ class CRF:
         self.word_vector_cache = None
 
         self.load_w2v_model_and_cache(w2v_model,w2v_vectors_dict )
-        if self.w2v_similar_words or self.kmeans_features or self.w2v_vector_features:
-            # load w2v model from specified file
-            #W2V_PRETRAINED_FILENAME = 'GoogleNews-vectors-negative300.bin.gz'
-            self.w2v_model = utils.Word2Vec.load_w2v(get_w2v_model(w2v_model))
-            # self.w2v_model = True
+        # if self.w2v_similar_words or self.kmeans_features or self.w2v_vector_features:
+        #     # load w2v model from specified file
+        #     #W2V_PRETRAINED_FILENAME = 'GoogleNews-vectors-negative300.bin.gz'
+        #     self.w2v_model = utils.Word2Vec.load_w2v(get_w2v_model(w2v_model))
+        #     # self.w2v_model = True
 
         # if w2v_vectors_dict:
         #     # if a dict file is provided, load it!
