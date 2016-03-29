@@ -33,7 +33,8 @@ logger = logging.getLogger(__name__)
 class CRF:
 
     def __init__(self, training_data, training_texts, test_data, output_model_filename, w2v_vector_features=False,
-                 w2v_features=False, kmeans_features=False, lda_features=False, zip_features=False):
+                 w2v_features=False, kmeans_features=False, lda_features=False, zip_features=False,
+                 original_include_metamap=True, original_inc_unk_score=False):
         self.training_data = training_data
         self.file_texts = training_texts
         # self.file_texts = dataset.get_training_file_sentences(training_data_filename)
@@ -72,6 +73,11 @@ class CRF:
             self.lda_model = load(get_lda_path(model_filename))
 
         self.zip_features = zip_features
+
+        # include Metamap features when retrieving original features?
+        self.original_include_metamap = original_include_metamap
+        # include the unk_score from the original features?
+        self.original_inc_unk_score = original_inc_unk_score
 
     def load_kmeans_model(self, model_filename):
         return load(model_filename)
@@ -384,7 +390,7 @@ class CRF:
 
         return topics
 
-    def get_original_paper_word_features(self, sentence, word_idx, inc_unk_score=False):
+    def get_original_paper_word_features(self, sentence, word_idx):
         # features = []
         features = OrderedDict()
 
@@ -411,7 +417,7 @@ class CRF:
 
         word_tag = sentence[word_idx]['tag']
 
-        if inc_unk_score:
+        if self.original_inc_unk_score:
             features['word_unk_score'] = word_unk_score
 
         # Unigram
@@ -434,27 +440,32 @@ class CRF:
 
         #FEATURE IN POSITION 7 IS NOT USED ON THEIR TEMPLATE => DISCARDED!
 
-        # U41:%x[0,9]
-        features['word_candidate_1'] = word_top_candidate_1
-        # U46:%x[0,10]
-        features['word_candidate_2'] = word_top_candidate_2
-        # U51:%x[0,11]
-        features['word_candidate_3'] = word_top_candidate_3
-        # U56:%x[0,12]
-        features['word_candidate_4'] = word_top_candidate_4
-        # U61:%x[0,13]
-        features['word_candidate_5'] = word_top_candidate_5
-        # U66:%x[0,14]
-        features['word_mapping'] = word_top_mapping
-        # U71:%x[0,15]
-        features['word_medication_score'] = word_medication_score
-        # U76:%x[0,16]
-        features['word_location'] = word_location
-        # U80:%x[0,1]/%x[0,2]/%x[0,3]/%x[0,5]/%x[0,6]/%x[0,7]/%x[0,8]/%x[0,9]/%x[0,10]/%x[0,11]/%x[0,12]/%x[0,13]/%x[0,14]/%x[0,15]/%x[0,16]
-        features['word_all_features'] = '/'.join([word_lemma, word_ner, word_pos, word_parse_tree,
-            word_basic_dependents, word_basic_governors, word_unk_score, word_phrase,
-            word_top_candidate_1, word_top_candidate_2, word_top_candidate_3, word_top_candidate_4,
-            word_top_candidate_5, word_top_mapping, word_medication_score, word_location])
+        if self.original_include_metamap:
+            # U41:%x[0,9]
+            features['word_candidate_1'] = word_top_candidate_1
+            # U46:%x[0,10]
+            features['word_candidate_2'] = word_top_candidate_2
+            # U51:%x[0,11]
+            features['word_candidate_3'] = word_top_candidate_3
+            # U56:%x[0,12]
+            features['word_candidate_4'] = word_top_candidate_4
+            # U61:%x[0,13]
+            features['word_candidate_5'] = word_top_candidate_5
+            # U66:%x[0,14]
+            features['word_mapping'] = word_top_mapping
+            # U71:%x[0,15]
+            features['word_medication_score'] = word_medication_score
+            # U76:%x[0,16]
+            features['word_location'] = word_location
+            # U80:%x[0,1]/%x[0,2]/%x[0,3]/%x[0,5]/%x[0,6]/%x[0,7]/%x[0,8]/%x[0,9]/%x[0,10]/%x[0,11]/%x[0,12]/%x[0,13]/%x[0,14]/%x[0,15]/%x[0,16]
+            features['word_all_features'] = '/'.join([word_lemma, word_ner, word_pos, word_parse_tree,
+                word_basic_dependents, word_basic_governors, word_unk_score, word_phrase,
+                word_top_candidate_1, word_top_candidate_2, word_top_candidate_3, word_top_candidate_4,
+                word_top_candidate_5, word_top_mapping, word_medication_score, word_location])
+        else:
+            # U80:%x[0,1]/%x[0,2]/%x[0,3]/%x[0,5]/%x[0,6]/%x[0,7]/%x[0,8]/%x[0,9]/%x[0,10]/%x[0,11]/%x[0,12]/%x[0,13]/%x[0,14]/%x[0,15]/%x[0,16]
+            features['word_all_features'] = '/'.join([word_lemma, word_ner, word_pos, word_parse_tree,
+                word_basic_dependents, word_basic_governors, word_unk_score, word_phrase])
 
         if word_idx > 0:
             # U00:%x[-1,0]
@@ -474,24 +485,26 @@ class CRF:
             features['previous_governors'] = sentence[word_idx-1]['features'][5]
             # U35:%x[-1,8]
             features['previous_phrase'] = sentence[word_idx-1]['features'][7]
-            # U40:%x[-1,9]
-            features['previous_candidate_1'] = sentence[word_idx-1]['features'][8]
-            # U45:%x[-1,10]
-            features['previous_candidate_2'] = sentence[word_idx-1]['features'][9]
-            # U50:%x[-1,11]
-            features['previous_candidate_3'] = sentence[word_idx-1]['features'][10]
-            # U55:%x[-1,12]
-            features['previous_candidate_4'] = sentence[word_idx-1]['features'][11]
-            # U60:%x[-1,13]
-            features['previous_candidate_5'] = sentence[word_idx-1]['features'][12]
-            # U65:%x[-1,14]
-            features['previous_mapping'] = sentence[word_idx-1]['features'][13]
-            # U70:%x[-1,15]
-            # features['previous_medication_score'] = float(sentence[word_idx-1]['features'][14])
-            features['previous_medication_score'] = sentence[word_idx-1]['features'][14]
-            # U75:%x[-1,16]
-            # features['previous_location'] = float(sentence[word_idx-1]['features'][15])
-            features['previous_location'] = sentence[word_idx-1]['features'][15]
+
+            if self.original_include_metamap:
+                # U40:%x[-1,9]
+                features['previous_candidate_1'] = sentence[word_idx-1]['features'][8]
+                # U45:%x[-1,10]
+                features['previous_candidate_2'] = sentence[word_idx-1]['features'][9]
+                # U50:%x[-1,11]
+                features['previous_candidate_3'] = sentence[word_idx-1]['features'][10]
+                # U55:%x[-1,12]
+                features['previous_candidate_4'] = sentence[word_idx-1]['features'][11]
+                # U60:%x[-1,13]
+                features['previous_candidate_5'] = sentence[word_idx-1]['features'][12]
+                # U65:%x[-1,14]
+                features['previous_mapping'] = sentence[word_idx-1]['features'][13]
+                # U70:%x[-1,15]
+                # features['previous_medication_score'] = float(sentence[word_idx-1]['features'][14])
+                features['previous_medication_score'] = sentence[word_idx-1]['features'][14]
+                # U75:%x[-1,16]
+                # features['previous_location'] = float(sentence[word_idx-1]['features'][15])
+                features['previous_location'] = sentence[word_idx-1]['features'][15]
 
             # TODO: uncomment? or is it included in the CRF all_possible_transitions flag?
             # Bigram
@@ -531,39 +544,40 @@ class CRF:
                 features['previous_phrase_phrase'] = sentence[word_idx-1]['features'][7] +'/'+ \
                     word_phrase
 
-                # U43:%x[-1,9]/%x[0,9]
-                features['previous_candidate_1_candidate_1'] = sentence[word_idx-1]['features'][8] +'/'+ \
-                    word_top_candidate_1
+                if self.original_include_metamap:
+                    # U43:%x[-1,9]/%x[0,9]
+                    features['previous_candidate_1_candidate_1'] = sentence[word_idx-1]['features'][8] +'/'+ \
+                        word_top_candidate_1
 
-                # U48:%x[-1,10]/%x[0,10]
-                features['previous_candidate_2_candidate_2'] = sentence[word_idx-1]['features'][9] +'/'+ \
-                    word_top_candidate_2
+                    # U48:%x[-1,10]/%x[0,10]
+                    features['previous_candidate_2_candidate_2'] = sentence[word_idx-1]['features'][9] +'/'+ \
+                        word_top_candidate_2
 
-                # U53:%x[-1,11]/%x[0,11]
-                features['previous_candidate_3_candidate_3'] = sentence[word_idx-1]['features'][10] +'/'+ \
-                    word_top_candidate_3
+                    # U53:%x[-1,11]/%x[0,11]
+                    features['previous_candidate_3_candidate_3'] = sentence[word_idx-1]['features'][10] +'/'+ \
+                        word_top_candidate_3
 
-                # U58:%x[-1,12]/%x[0,12]
-                features['previous_candidate_4_candidate_4'] = sentence[word_idx-1]['features'][11] +'/'+ \
-                    word_top_candidate_4
+                    # U58:%x[-1,12]/%x[0,12]
+                    features['previous_candidate_4_candidate_4'] = sentence[word_idx-1]['features'][11] +'/'+ \
+                        word_top_candidate_4
 
-                # U63:%x[-1,13]/%x[0,13]
-                features['previous_candidate_5_candidate_5'] = sentence[word_idx-1]['features'][12] +'/'+ \
-                    word_top_candidate_5
+                    # U63:%x[-1,13]/%x[0,13]
+                    features['previous_candidate_5_candidate_5'] = sentence[word_idx-1]['features'][12] +'/'+ \
+                        word_top_candidate_5
 
-                # U68:%x[-1,14]/%x[0,14]
-                features['previous_mapping_mapping'] = sentence[word_idx-1]['features'][13] +'/'+ \
-                    word_top_mapping
+                    # U68:%x[-1,14]/%x[0,14]
+                    features['previous_mapping_mapping'] = sentence[word_idx-1]['features'][13] +'/'+ \
+                        word_top_mapping
 
-                # U73:%x[-1,15]/%x[0,15]
-                features['previous_medication_score_medication_score'] = sentence[word_idx-1]['features'][14] +'/'+ \
-                    word_medication_score
-                    # str(word_medication_score)
+                    # U73:%x[-1,15]/%x[0,15]
+                    features['previous_medication_score_medication_score'] = sentence[word_idx-1]['features'][14] +'/'+ \
+                        word_medication_score
+                        # str(word_medication_score)
 
-                # U78:%x[-1,16]/%x[0,16]
-                features['previous_word_location_word_location'] = sentence[word_idx-1]['features'][15] +'/'+ \
-                    word_location
-                    # str(word_location)
+                    # U78:%x[-1,16]/%x[0,16]
+                    features['previous_word_location_word_location'] = sentence[word_idx-1]['features'][15] +'/'+ \
+                        word_location
+                        # str(word_location)
 
         else:
             # features['BOS'] = True
@@ -587,24 +601,26 @@ class CRF:
             features['next_governors'] = sentence[word_idx+1]['features'][5]
             # U37:%x[1,8]
             features['next_phrase'] = sentence[word_idx+1]['features'][7]
-            # U42:%x[1,9]
-            features['next_candidate_1'] = sentence[word_idx+1]['features'][8]
-            # U47:%x[1,10]
-            features['next_candidate_2'] = sentence[word_idx+1]['features'][9]
-            # U52:%x[1,11]
-            features['next_candidate_3'] = sentence[word_idx+1]['features'][10]
-            # U57:%x[1,12]
-            features['next_candidate_4'] = sentence[word_idx+1]['features'][11]
-            # U62:%x[1,13]
-            features['next_candidate_5'] = sentence[word_idx+1]['features'][12]
-            # U67:%x[1,14]
-            features['next_mapping'] = sentence[word_idx+1]['features'][13]
-            # U72:%x[1,15]
-            # features['next_medication_score'] = float(sentence[word_idx+1]['features'][14])
-            features['next_medication_score'] = sentence[word_idx+1]['features'][14]
-            # U77:%x[1,16]
-            # features['next_location'] = float(sentence[word_idx+1]['features'][15])
-            features['next_location'] = sentence[word_idx+1]['features'][15]
+
+            if self.original_include_metamap:
+                # U42:%x[1,9]
+                features['next_candidate_1'] = sentence[word_idx+1]['features'][8]
+                # U47:%x[1,10]
+                features['next_candidate_2'] = sentence[word_idx+1]['features'][9]
+                # U52:%x[1,11]
+                features['next_candidate_3'] = sentence[word_idx+1]['features'][10]
+                # U57:%x[1,12]
+                features['next_candidate_4'] = sentence[word_idx+1]['features'][11]
+                # U62:%x[1,13]
+                features['next_candidate_5'] = sentence[word_idx+1]['features'][12]
+                # U67:%x[1,14]
+                features['next_mapping'] = sentence[word_idx+1]['features'][13]
+                # U72:%x[1,15]
+                # features['next_medication_score'] = float(sentence[word_idx+1]['features'][14])
+                features['next_medication_score'] = sentence[word_idx+1]['features'][14]
+                # U77:%x[1,16]
+                # features['next_location'] = float(sentence[word_idx+1]['features'][15])
+                features['next_location'] = sentence[word_idx+1]['features'][15]
 
             if self.zip_features:
                 # U04:%x[0,0]/%x[1,0]
@@ -638,39 +654,40 @@ class CRF:
                 features['phrase_next_phrase'] = word_phrase +'/'+ \
                     sentence[word_idx+1]['features'][7]
 
-                # U44:%x[0,9]/%x[1,9]
-                features['candidate_1_next_candidate_1'] = word_top_candidate_1 +'/'+ \
-                    sentence[word_idx+1]['features'][8]
+                if self.original_include_metamap:
+                    # U44:%x[0,9]/%x[1,9]
+                    features['candidate_1_next_candidate_1'] = word_top_candidate_1 +'/'+ \
+                        sentence[word_idx+1]['features'][8]
 
-                # U49:%x[0,10]/%x[1,10]
-                features['candidate_2_next_candidate_2'] = word_top_candidate_2 +'/'+ \
-                    sentence[word_idx+1]['features'][9]
+                    # U49:%x[0,10]/%x[1,10]
+                    features['candidate_2_next_candidate_2'] = word_top_candidate_2 +'/'+ \
+                        sentence[word_idx+1]['features'][9]
 
-                # U54:%x[0,11]/%x[1,11]
-                features['candidate_3_next_candidate_3'] = word_top_candidate_3 +'/'+ \
-                    sentence[word_idx+1]['features'][10]
+                    # U54:%x[0,11]/%x[1,11]
+                    features['candidate_3_next_candidate_3'] = word_top_candidate_3 +'/'+ \
+                        sentence[word_idx+1]['features'][10]
 
-                # U59:%x[0,12]/%x[1,12]
-                features['candidate_4_next_candidate_4'] = word_top_candidate_4 +'/'+ \
-                    sentence[word_idx+1]['features'][11]
+                    # U59:%x[0,12]/%x[1,12]
+                    features['candidate_4_next_candidate_4'] = word_top_candidate_4 +'/'+ \
+                        sentence[word_idx+1]['features'][11]
 
-                # U64:%x[0,13]/%x[1,13]
-                features['candidate_5_next_candidate_5'] = word_top_candidate_5 +'/'+ \
-                    sentence[word_idx+1]['features'][12]
+                    # U64:%x[0,13]/%x[1,13]
+                    features['candidate_5_next_candidate_5'] = word_top_candidate_5 +'/'+ \
+                        sentence[word_idx+1]['features'][12]
 
-                # U69:%x[0,14]/%x[1,14]
-                features['mapping_next_mapping'] = word_top_mapping +'/'+ \
-                    sentence[word_idx+1]['features'][13]
+                    # U69:%x[0,14]/%x[1,14]
+                    features['mapping_next_mapping'] = word_top_mapping +'/'+ \
+                        sentence[word_idx+1]['features'][13]
 
-                # U74:%x[0,15]/%x[1,15]
-                # features['medication_score_next_medication_score'] = str(word_medication_score) +'/'+ \
-                features['medication_score_next_medication_score'] = word_medication_score +'/'+ \
-                    sentence[word_idx+1]['features'][14]
+                    # U74:%x[0,15]/%x[1,15]
+                    # features['medication_score_next_medication_score'] = str(word_medication_score) +'/'+ \
+                    features['medication_score_next_medication_score'] = word_medication_score +'/'+ \
+                        sentence[word_idx+1]['features'][14]
 
-                # U79:%x[0,16]/%x[1,16]
-                # features['location_next_location'] = str(word_location) +'/'+ \
-                features['location_next_location'] = word_location +'/'+ \
-                    sentence[word_idx+1]['features'][15]
+                    # U79:%x[0,16]/%x[1,16]
+                    # features['location_next_location'] = str(word_location) +'/'+ \
+                    features['location_next_location'] = word_location +'/'+ \
+                        sentence[word_idx+1]['features'][15]
 
         else:
             # features['EOS'] = True
@@ -808,6 +825,8 @@ if __name__ == '__main__':
     parser.add_argument('--originalfeatures', action='store_true', default=False)
     parser.add_argument('--customfeatures', action='store_true', default=False)
     parser.add_argument('--w2vvectorfeatures', action='store_true', default=False)
+    parser.add_argument('--unkscore', action='store_true', default=False)
+    parser.add_argument('--metamap', action='store_true', default=True)
     parser.add_argument('--cviters', action='store', type=int, default=0)
 
     arguments = parser.parse_args()
@@ -824,6 +843,8 @@ if __name__ == '__main__':
     use_custom_features = arguments.customfeatures
     w2v_vector_features = arguments.w2vvectorfeatures
     max_cv_iters = arguments.cviters
+    incl_unk_score = arguments.unkscore
+    incl_metamap = arguments.metamap
 
     training_data, training_texts, _, _ = Dataset.get_crf_training_data_by_sentence(training_data_filename)
 
@@ -832,7 +853,9 @@ if __name__ == '__main__':
     #TODO: im setting output_model_filename to None. Im not using it, currently.
     crf_model = CRF(training_data, training_texts, test_data=None, output_model_filename=None,
                     w2v_vector_features=w2v_vector_features,
-                    w2v_features=w2v_features, kmeans_features=kmeans, lda_features=lda, zip_features=zip_features)
+                    w2v_features=w2v_features, kmeans_features=kmeans, lda_features=lda,
+                    zip_features=zip_features, original_inc_unk_score=incl_unk_score,
+                    original_include_metamap=incl_metamap)
 
     if use_original_paper_features:
         feature_function = crf_model.get_original_paper_word_features
