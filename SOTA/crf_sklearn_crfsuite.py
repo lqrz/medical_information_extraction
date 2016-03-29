@@ -826,7 +826,7 @@ if __name__ == '__main__':
     parser.add_argument('--customfeatures', action='store_true', default=False)
     parser.add_argument('--w2vvectorfeatures', action='store_true', default=False)
     parser.add_argument('--unkscore', action='store_true', default=False)
-    parser.add_argument('--metamap', action='store_true', default=True)
+    parser.add_argument('--metamap', action='store_true', default=False)
     parser.add_argument('--cviters', action='store', type=int, default=0)
 
     arguments = parser.parse_args()
@@ -905,7 +905,7 @@ if __name__ == '__main__':
         prediction_results[y_idx[0]] = [(word,pred,true) for (word,pred),true in zip(predicted_tags, [tag for tag in chain(*y_test)])]
 
     logging.info('Pickling prediction results')
-    run_params = '_'.join(map(str,['w2vfeat_',w2v_features,'kmeans',kmeans,'w2vvec',w2v_vector_features,
+    run_params = '_'.join(map(str,['metamap',incl_metamap,'w2vfeat',w2v_features,'kmeans',kmeans,'w2vvec',w2v_vector_features,
                            'lda',lda,'zip',zip_features]))
 
     output_folder = './'
