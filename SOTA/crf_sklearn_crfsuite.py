@@ -35,17 +35,17 @@ def memoize(func):
 
     @wraps(func)
     def wrapper(self, *args, **kwds):
-        similar_words = None
+        result = None
         word = args[0].lower()
         # dictionary = args[1]  # avoid copy operation
         try:
             # similar_words = self.similar_words_cache[word]
-            similar_words = args[1][word]
+            result = args[1][word]
         except KeyError:
-            similar_words = func(self, *args, **kwds)
-            # self.similar_words_cache[word] = similar_words
-            args[1][word] = similar_words
-        return similar_words
+            result = func(self, *args, **kwds)
+            args[1][word] = result
+            
+        return result
 
     return wrapper
 
@@ -114,8 +114,9 @@ class CRF:
     def load_w2v_model_and_cache(self, w2v_model, w2v_vectors_dict):
 
         #always load the w2v model
-        self.w2v_model = utils.Word2Vec.load_w2v(get_w2v_model(w2v_model))
-        self.w2v_ndims = self.w2v_model.syn0.shape[0]
+        if w2v_model:
+            self.w2v_model = utils.Word2Vec.load_w2v(get_w2v_model(w2v_model))
+            self.w2v_ndims = self.w2v_model.syn0.shape[0]
 
         #load cache if supplied
         if w2v_vectors_dict:
@@ -381,9 +382,8 @@ class CRF:
             # features.extend(topics)
 
         if self.w2v_vector_features and (self.w2v_model or self.word_vector_cache):
-            try:
-                rep = self.get_w2v_vector(word, self.word_vector_cache)
-            except KeyError:
+            rep = self.get_w2v_vector(word, self.word_vector_cache)
+            if not rep:
                 rep = np.zeros((self.w2v_ndims,))
 
             for dim_nr,dim_val in enumerate(rep):
@@ -404,7 +404,13 @@ class CRF:
 
     @memoize
     def get_w2v_vector(self, word, dictionary):
-        return self.w2v_model[word]
+        rep = None
+        try:
+            rep = self.w2v_model[word]
+        except KeyError:
+            pass
+
+        return rep
 
     def get_kmeans_cluster(self, word):
         try:
@@ -426,10 +432,10 @@ class CRF:
             bow = [(token_id,1)]
             topics = [str(topic) for topic,_ in
                           sorted(self.lda_model.get_document_topics(bow, minimum_probability=0.),
-                                 key=lambda x: x[1], reverse=True)[:5]]
+                                 key=lambda x: x[1], reverse=True)[:topn]]
         except:
             n_topics = self.lda_model.num_topics
-            topics = ['999'] * n_topics
+            topics = ['999'] * topn
 
         return topics
 
