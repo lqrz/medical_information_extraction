@@ -44,7 +44,7 @@ def memoize(func):
         except KeyError:
             result = func(self, *args, **kwds)
             args[1][word] = result
-            
+
         return result
 
     return wrapper
@@ -383,7 +383,7 @@ class CRF:
 
         if self.w2v_vector_features and (self.w2v_model or self.word_vector_cache):
             rep = self.get_w2v_vector(word, self.word_vector_cache)
-            if not rep:
+            if rep is None:
                 rep = np.zeros((self.w2v_ndims,))
 
             for dim_nr,dim_val in enumerate(rep):
