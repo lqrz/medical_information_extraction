@@ -30,20 +30,21 @@ logger = logging.getLogger(__name__)
 # logger_predictions.addHandler(hndlr)
 # logger_predictions.setLevel(logging.INFO)
 
+
 def memoize(func):
 
     @wraps(func)
     def wrapper(self, *args, **kwds):
         similar_words = None
         word = args[0].lower()
-        dictionary = args[1]
+        # dictionary = args[1]  # avoid copy operation
         try:
             # similar_words = self.similar_words_cache[word]
-            similar_words = dictionary[word]
+            similar_words = args[1][word]
         except KeyError:
             similar_words = func(self, *args, **kwds)
             # self.similar_words_cache[word] = similar_words
-            dictionary[word] = similar_words
+            args[1][word] = similar_words
         return similar_words
 
     return wrapper
@@ -74,6 +75,8 @@ class CRF:
         self.similar_words_cache = dict(list()) # this is for word2vec similar words
         self.word_lda_topics = dict(list()) # this is for lda assigned topics
         self.word_vector_cache = None
+
+        self.w2v_ndims = None   #w2v model dimensions
 
         self.load_w2v_model_and_cache(w2v_model,w2v_vectors_dict )
         # if self.w2v_similar_words or self.kmeans_features or self.w2v_vector_features:
@@ -113,16 +116,19 @@ class CRF:
             # i need to load the model to query similar words
             logger.info('Using w2v_similar-words. Loading w2v model')
             self.w2v_model = utils.Word2Vec.load_w2v(get_w2v_model(w2v_model))
+            self.w2v_ndims = self.w2v_model.syn0.shape[0]
 
         if (self.kmeans_features or self.w2v_vector_features) and \
                 w2v_vectors_dict and not self.word_vector_cache:
             # i can get by with the cached vectors
             logger.info('Using either Kmeans or w2v_features. Loading dictionary.')
             self.word_vector_cache = pickle.load(open(get_w2v_training_data_vectors(w2v_vectors_dict), 'rb'))
+            self.w2v_ndims = self.word_vector_cache.values()[0].__len__()
         elif (self.kmeans_features or self.w2v_vector_features) and \
                not w2v_vectors_dict and not self.w2v_model and w2v_model:
             logger.info('Using either kmeans or w2v_features. No dictionary. Loading w2v model.')
             self.w2v_model = utils.Word2Vec.load_w2v(get_w2v_model(w2v_model))
+            self.w2v_ndims = self.w2v_model.syn0.shape[0]
 
         return
 
@@ -365,16 +371,15 @@ class CRF:
                 features['lda_topic_'+str(j)] = topic
             # features.extend(topics)
 
-        if self.w2v_vector_features and self.w2v_model:
-            n_dim = self.w2v_model.syn0.shape[0]
+        if self.w2v_vector_features and (self.w2v_model or self.word_vector_cache):
             try:
                 rep = self.get_w2v_vector(word, self.word_vector_cache)
             except KeyError:
-                rep = np.zeros((n_dim,))
+                rep = np.zeros((self.w2v_ndims,))
 
             for dim_nr,dim_val in enumerate(rep):
                 # features['w2v_dim_'+str(j)] = dim_val
-                features['w2v_dim_'+str(dim_nr)] = str(dim_val)[:4]
+                features['w2v_dim_'+str(dim_nr)] = str(dim_val)[:4] if dim_val > 0 else str(dim_val)[:5]
 
         return features
 
