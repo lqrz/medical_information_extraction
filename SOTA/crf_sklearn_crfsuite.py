@@ -10,7 +10,7 @@ from sklearn.cross_validation import LeaveOneOut
 import numpy as np
 from joblib import load, dump
 import re
-from data import get_w2v_model
+from data import get_w2v_model, get_w2v_training_data_vectors
 from collections import defaultdict
 from functools import wraps
 import argparse
@@ -62,7 +62,7 @@ class CRF:
         self.word_vector_cache = None
         if w2v_vectors_dict:
             # if a dict file is provided, load it!
-            self.word_vector_cache = pickle.load(open(w2v_vectors_dict, 'rb'))
+            self.word_vector_cache = pickle.load(open(get_w2v_training_data_vectors(w2v_vectors_dict), 'rb'))
         else:
             self.word_vector_cache = dict(list()) # this is for word2vec representations
 
