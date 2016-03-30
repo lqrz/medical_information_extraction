@@ -361,7 +361,7 @@ class CRF:
             # features.append('EOS')
             features['EOS'] = True
 
-        # word2vec features
+        # word2vec similar words features
         if self.w2v_similar_words and self.w2v_model:
             similar_words = self.get_similar_w2v_words(word, self.similar_words_cache, topn=5)
             for j,sim_word in enumerate(similar_words):
@@ -381,6 +381,7 @@ class CRF:
                 features['lda_topic_'+str(j)] = topic
             # features.extend(topics)
 
+        # word2vec dimensions features
         if self.w2v_vector_features and (self.w2v_model or self.word_vector_cache):
             rep = self.get_w2v_vector(word, self.word_vector_cache)
             if rep is None:
@@ -395,6 +396,7 @@ class CRF:
     @memoize
     def get_similar_w2v_words(self, word, dictionary, topn=5):
         try:
+            word = word.lower()
             similar_words = [sim for sim,_ in self.w2v_model.most_similar(positive=[word], topn=topn)]
         except:
             similar_words = []
@@ -406,6 +408,7 @@ class CRF:
     def get_w2v_vector(self, word, dictionary):
         rep = None
         try:
+            word = word.lower()
             rep = self.w2v_model[word]
         except KeyError:
             pass
@@ -428,7 +431,8 @@ class CRF:
             # id2word = gensim.corpora.Dictionary()
             # id2word.merge_with(self.lda_model.id2word)
             # bow = id2word.doc2bow([word])
-            token_id = self.lda_model.id2word.token2id[word.lower()]
+            word = word.lower()
+            token_id = self.lda_model.id2word.token2id[word]
             bow = [(token_id,1)]
             topics = [str(topic) for topic,_ in
                           sorted(self.lda_model.get_document_topics(bow, minimum_probability=0.),
@@ -878,6 +882,7 @@ if __name__ == '__main__':
     parser.add_argument('--unkscore', action='store_true', default=False)
     parser.add_argument('--metamap', action='store_true', default=False)
     parser.add_argument('--zipfeatures', action='store_true', default=False)
+    parser.add_argument('--outputaddid', default=None, type=str, help='Output folder for the model and logs')
     parser.add_argument('--cviters', action='store', type=int, default=0)
 
     arguments = parser.parse_args()
@@ -898,6 +903,7 @@ if __name__ == '__main__':
     incl_metamap = arguments.metamap
     zip_features = arguments.zipfeatures
     max_cv_iters = arguments.cviters
+    outputaddid = arguments.outputaddid
 
     # check consistency in arguments
     # if w2v_similar_words and not w2v_model_file:
@@ -971,6 +977,10 @@ if __name__ == '__main__':
     logging.info('Pickling prediction results')
     run_params = '_'.join(map(str,['metamap',incl_metamap,'w2vsim',w2v_similar_words,'kmeans',kmeans,'w2vvec',w2v_vector_features,
                            'lda',lda,'zip',zip_features]))
+
+    if outputaddid:
+        #append string identifier if supplied.
+        run_params = '_'.join([run_params,outputaddid])
 
     output_folder = './'
     if use_original_paper_features:
