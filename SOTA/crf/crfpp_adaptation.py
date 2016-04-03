@@ -2,7 +2,7 @@ __author__ = 'root'
 
 import os
 import sys
-sys.path.append(os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
+sys.path.append(os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
 
 from data.dataset import Dataset
 from crf_sklearn_crfsuite import CRF
@@ -10,8 +10,7 @@ from sklearn.cross_validation import LeaveOneOut
 from trained_models import get_crpp_path
 import subprocess
 import utils
-from utils.utils import Metrics
-import numpy as np
+from utils.metrics import Metrics
 
 def save_to_file(features, labels, doc_nrs, file_name):
     f_out = open(file_name, 'w')
@@ -45,11 +44,20 @@ if __name__=='__main__':
 
     training_data_filename = 'handoverdata.zip'
 
-    training_data, training_texts = Dataset.get_crf_training_data_by_sentence(training_data_filename)
+    training_data, training_texts, _, _ = Dataset.get_crf_training_data_by_sentence(training_data_filename)
 
-    crf_model = CRF(training_data, training_texts, test_data=None, output_model_filename=False,
+    crf_model = CRF(training_data, training_texts,
+                    test_data=None,
+                    output_model_filename=None,
                     w2v_vector_features=False,
-                    w2v_features=False, kmeans_features=False, lda_features=False, zip_features=False)
+                    w2v_similar_words=False,
+                    kmeans_features=False,
+                    lda_features=False,
+                    zip_features=False,
+                    original_inc_unk_score=True,
+                    original_include_metamap=True,
+                    w2v_model=None,
+                    w2v_vectors_dict=None)
 
     print 'Getting features'
     x = crf_model.get_features_from_crf_training_data(crf_model.get_original_paper_word_features)
@@ -115,20 +123,11 @@ if __name__=='__main__':
             p = subprocess.Popen(['perl',conlleval_filename,' -r -d "\t" < '+crfpp_test_output_filename])
             out,err = p.communicate()
 
-        # accuracy = Metrics.compute_accuracy_score([tag for tag in chain(*y[0])], predictions)
-        accuracy = Metrics.compute_accuracy_score(y_true, y_predictions)
-        f1_score = Metrics.compute_f1_score(y_true, y_predictions, average='micro')
-        precision = Metrics.compute_precision_score(y_true, y_predictions, average='micro')
-        recall = Metrics.compute_recall_score(y_true, y_predictions, average='micro')
+    assert y_predictions.__len__() == y_true.__len__()
 
-        accuracy_results.append(accuracy)
-        f1_score_results.append(f1_score)
-        precision_results.append(precision)
-        recall_results.append(recall)
-
-    print 'Mean accuracy: ', np.mean(accuracy_results)
-    print 'Mean F1-score: ', np.mean(f1_score_results)
-    print 'Mean precision: ', np.mean(precision_results)
-    print 'Mean recall', np.mean(recall_results)
+    print '## MICRO results'
+    print Metrics.compute_all_metrics(y_true, y_predictions, average='micro')
+    print '## MACRO results'
+    print Metrics.compute_all_metrics(y_true, y_predictions, average='macro')
 
     print 'End'
