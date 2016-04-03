@@ -11,13 +11,15 @@ import argparse
 if __name__=='__main__':
     parser = argparse.ArgumentParser(description='Evaluate pickled results')
     parser.add_argument('--file', type=str, required=True, help='Pickle file with predictions.')
+    parser.add_argument('--oldv', action='store_true', help='Old version pickle?.')
     arguments = parser.parse_args()
     path = arguments.file
+    old_version = arguments.oldv
 
     p = cPickle.load(open(path, 'rb'))
 
     #TODO: this is horrible. Consistency!
-    if 'pycrf' in path:
+    if old_version:
         y_t = [true for sent in p.values() for _,_,true in sent]
         y_p = [pred for sent in p.values() for _,pred,_ in sent]
     else:
