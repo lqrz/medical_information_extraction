@@ -1196,7 +1196,7 @@ if __name__ == '__main__':
         # if y_idx[0] == 0:
         #     save_predictions_to_file(predicted_tags, y_test, logger_predictions)
 
-        prediction_results[y_idx[0]] = [(word,pred,true) for (word,pred),true in zip(predicted_tags, [tag for tag in chain(*y_test)])]
+        prediction_results[y_idx[0]] = [(pred,true) for pred,true in zip(predicted_tags, [tag for tag in chain(*y_test)])]
 
     logging.info('Pickling prediction results')
     run_params = '_'.join(map(str,['metamap',incl_metamap,'w2vsim',w2v_similar_words,'kmeans',kmeans,'w2vvec',w2v_vector_features,
