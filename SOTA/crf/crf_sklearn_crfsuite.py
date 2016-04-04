@@ -51,10 +51,20 @@ def memoize(func):
 
 class CRF:
 
-    def __init__(self, training_data, training_texts, test_data, output_model_filename, w2v_vector_features=False,
-                 w2v_similar_words=False, kmeans_features=False, lda_features=False, zip_features=False,
-                 original_include_metamap=True, original_inc_unk_score=False,
-                 w2v_model=None, w2v_vectors_dict=None,
+    def __init__(self, training_data,
+                 training_texts,
+                 test_data,
+                 output_model_filename,
+                 w2v_vector_features=False,
+                 w2v_similar_words=False,
+                 kmeans_features=False,
+                 kmeans_model=None,
+                 lda_features=False,
+                 zip_features=False,
+                 original_include_metamap=True,
+                 original_inc_unk_score=False,
+                 w2v_model=None,
+                 w2v_vectors_dict=None,
                  full_representation=False):
 
         self.training_data = training_data
@@ -68,6 +78,7 @@ class CRF:
 
         # use top 5 most similar word from word2vec or kmeans (it also uses the word representation)
         self.kmeans_features = kmeans_features
+        self.kmeans_model = kmeans_model
         self.w2v_similar_words = w2v_similar_words
         self.w2v_model = None
         self.w2v_vector_features = w2v_vector_features
@@ -95,7 +106,8 @@ class CRF:
         # use the kmeans cluster as feature
         self.kmeans_model = None
         if self.kmeans_features:
-            model_filename = 'kmeans.model'
+            logger.info('Loading Kmeans model: %s' % self.kmeans_model)
+            model_filename = self.kmeans_model
             self.kmeans_model = self.load_kmeans_model(get_kmeans_path(model_filename))
 
         # use the lda 5 most promising topics as feature
@@ -1102,6 +1114,7 @@ if __name__ == '__main__':
     parser.add_argument('--w2vmodel', action='store', type=str, default=None)
     parser.add_argument('--w2vvectorscache', action='store', type=str, default=None)
     parser.add_argument('--kmeans', action='store_true', default=False)
+    parser.add_argument('--kmeansmodel', action='store', type=str, default=None)
     parser.add_argument('--lda', action='store_true', default=False)
     parser.add_argument('--unkscore', action='store_true', default=False)
     parser.add_argument('--metamap', action='store_true', default=False)
@@ -1122,6 +1135,7 @@ if __name__ == '__main__':
     w2v_model_file = arguments.w2vmodel
     w2v_vectors_cache = arguments.w2vvectorscache
     kmeans = arguments.kmeans
+    kmeans_model = arguments.kmeansmodel
     lda = arguments.lda
     incl_unk_score = arguments.unkscore
     incl_metamap = arguments.metamap
@@ -1143,12 +1157,20 @@ if __name__ == '__main__':
     # test_data = Dataset.get_crf_training_data(test_data_filename)
 
     #TODO: im setting output_model_filename to None. Im not using it, currently.
-    crf_model = CRF(training_data, training_texts, test_data=None, output_model_filename=None,
+    crf_model = CRF(training_data,
+                    training_texts,
+                    test_data=None,
+                    output_model_filename=None,
                     w2v_vector_features=w2v_vector_features,
-                    w2v_similar_words=w2v_similar_words, kmeans_features=kmeans, lda_features=lda,
-                    zip_features=zip_features, original_inc_unk_score=incl_unk_score,
+                    w2v_similar_words=w2v_similar_words,
+                    kmeans_features=kmeans,
+                    kmeans_model=kmeans_model,
+                    lda_features=lda,
+                    zip_features=zip_features,
+                    original_inc_unk_score=incl_unk_score,
                     original_include_metamap=incl_metamap,
-                    w2v_model=w2v_model_file, w2v_vectors_dict=w2v_vectors_cache)
+                    w2v_model=w2v_model_file,
+                    w2v_vectors_dict=w2v_vectors_cache)
 
     if use_original_paper_features:
         feature_function = crf_model.get_original_paper_word_features
