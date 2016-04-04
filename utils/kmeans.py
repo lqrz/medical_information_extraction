@@ -1,4 +1,7 @@
 __author__ = 'root'
+import os
+import sys
+sys.path.append(os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
 
 from sklearn.cluster import KMeans
 import logging
@@ -8,8 +11,11 @@ from data.dataset import Dataset
 from nltk import word_tokenize
 import numpy as np
 import utils
+import argparse
+from trained_models import get_kmeans_path
 
 def filter_w2v_model(w2v_model):
+
     training_data_filename = 'handoverdata.zip'
     sentences = Dataset.get_training_file_text(training_data_filename,
                                                     Dataset.TRAINING_SENTENCES_PATH,
@@ -17,7 +23,7 @@ def filter_w2v_model(w2v_model):
     sentences = sentences.values()
     words = set()
     for sentence in sentences:
-        words = words.union([w.lower() for w in word_tokenize(sentence[0]) if w.isalpha()])
+        words = words.union([w.lower() for w in word_tokenize(sentence) if w.isalpha()])
 
     vectors = dict()
     for word in words:
@@ -37,14 +43,19 @@ def filter_w2v_model(w2v_model):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Kmeans trainer')
+    parser.add_argument('--w2vmodel', default=None, type=str, required=True)
+    parser.add_argument('--outputname', default=None, type=str, required=True)
 
-    model_output_filename = 'kmeans.model'
+    arguments = parser.parse_args()
+
+    W2V_PRETRAINED_FILENAME = arguments.w2vmodel
+    model_output_filename = get_kmeans_path(arguments.outputname)
 
     logging.basicConfig(level=logging.DEBUG)
     logger = logging.getLogger(__name__)
 
     logger.info('Loading W2V model')
-    W2V_PRETRAINED_FILENAME = 'GoogleNews-vectors-negative300.bin.gz'
     w2v_model = utils.Word2Vec.load_w2v(get_w2v_model(W2V_PRETRAINED_FILENAME))
 
     logger.info('Filtering w2v model')
