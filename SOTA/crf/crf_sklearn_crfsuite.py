@@ -58,7 +58,7 @@ class CRF:
                  w2v_vector_features=False,
                  w2v_similar_words=False,
                  kmeans_features=False,
-                 kmeans_model=None,
+                 kmeans_model_name=None,
                  lda_features=False,
                  zip_features=False,
                  original_include_metamap=True,
@@ -76,9 +76,10 @@ class CRF:
         self.output_model_filename = output_model_filename
         self.model = None
 
+        self.kmeans_model_name = kmeans_model_name
+
         # use top 5 most similar word from word2vec or kmeans (it also uses the word representation)
         self.kmeans_features = kmeans_features
-        self.kmeans_model = kmeans_model
         self.w2v_similar_words = w2v_similar_words
         self.w2v_model = None
         self.w2v_vector_features = w2v_vector_features
@@ -105,9 +106,9 @@ class CRF:
 
         # use the kmeans cluster as feature
         self.kmeans_model = None
-        if self.kmeans_features:
-            logger.info('Loading Kmeans model: %s' % self.kmeans_model)
-            model_filename = self.kmeans_model
+        if self.kmeans_features and self.kmeans_model_name:
+            logger.info('Loading Kmeans model: %s' % self.kmeans_model_name)
+            model_filename = self.kmeans_model_name
             self.kmeans_model = self.load_kmeans_model(get_kmeans_path(model_filename))
 
         # use the lda 5 most promising topics as feature
@@ -1164,7 +1165,7 @@ if __name__ == '__main__':
                     w2v_vector_features=w2v_vector_features,
                     w2v_similar_words=w2v_similar_words,
                     kmeans_features=kmeans,
-                    kmeans_model=kmeans_model,
+                    kmeans_model_name=kmeans_model,
                     lda_features=lda,
                     zip_features=zip_features,
                     original_inc_unk_score=incl_unk_score,
