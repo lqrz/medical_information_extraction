@@ -65,6 +65,7 @@ class CRF:
                  w2v_model_file=None,
                  w2v_vectors_cache=None,
                  full_representation=False,
+                 crf_iters = None,
                  **kwargs):
 
         self.training_data = training_data
@@ -125,6 +126,9 @@ class CRF:
 
         # do i want all word to have the same nr of features? (needed for nnet ensemble)
         self.full_representation = full_representation
+
+        # how many training iters for the crf
+        self.crf_iters = crf_iters
 
     def load_w2v_model_and_cache(self, w2v_model, w2v_vectors_dict):
 
@@ -803,7 +807,7 @@ class CRF:
             algorithm='lbfgs',
             c1=1.0,
             c2=1e-3,
-            max_iterations=50,
+            max_iterations=self.crf_iters,
             all_possible_transitions=True,
             verbose=verbose
         )
@@ -1195,11 +1199,12 @@ def pickle_results(prediction_results,
                    use_original_paper_features=False,
                    use_custom_features=False,
                    use_leave_one_out=False,
+                   crf_iters=0,
                    **kwargs):
 
     logger.info('Pickling prediction results')
     run_params = '_'.join(map(str,['metamap',incl_metamap,'w2vsim',w2v_similar_words,'kmeans',kmeans_features,'w2vvec',w2v_vector_features,
-                           'lda',lda_features,'loo',use_leave_one_out,'zip',zip_features]))
+                           'lda',lda_features,'loo',use_leave_one_out,'zip',zip_features,'crfiters',crf_iters]))
 
     if outputaddid:
         #append string identifier if supplied.
@@ -1233,6 +1238,7 @@ def parse_arguments():
     parser.add_argument('--outputaddid', default=None, type=str, help='Output folder for the model and logs')
     parser.add_argument('--leaveoneout', action='store_true', default=False)
     parser.add_argument('--cviters', action='store', type=int, default=0)
+    parser.add_argument('--crfiters', action='store', type=int, default=50)
 
     arguments = parser.parse_args()
 
@@ -1254,6 +1260,7 @@ def parse_arguments():
     args['max_cv_iters'] = arguments.cviters
     args['outputaddid'] = arguments.outputaddid
     args['use_leave_one_out'] = arguments.leaveoneout
+    args['crf_iters'] = arguments.crfiters
 
     return args
 
