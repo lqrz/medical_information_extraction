@@ -52,8 +52,7 @@ def memoize(func):
 class CRF:
 
     def __init__(self, training_data,
-                 training_texts,
-                 test_data,
+                 testing_data,
                  output_model_filename,
                  w2v_vector_features=False,
                  w2v_similar_words=False,
@@ -61,17 +60,16 @@ class CRF:
                  kmeans_model_name=None,
                  lda_features=False,
                  zip_features=False,
-                 original_include_metamap=True,
-                 original_inc_unk_score=False,
-                 w2v_model=None,
-                 w2v_vectors_dict=None,
-                 full_representation=False):
+                 incl_metamap=True,
+                 incl_unk_score=False,
+                 w2v_model_file=None,
+                 w2v_vectors_cache=None,
+                 full_representation=False,
+                 **kwargs):
 
         self.training_data = training_data
-        self.file_texts = training_texts
-        # self.file_texts = dataset.get_training_file_sentences(training_data_filename)
 
-        self.test_data = test_data
+        self.testing_data = testing_data
 
         self.output_model_filename = output_model_filename
         self.model = None
@@ -91,7 +89,7 @@ class CRF:
 
         self.w2v_ndims = None   #w2v model dimensions
 
-        self.load_w2v_model_and_cache(w2v_model,w2v_vectors_dict )
+        self.load_w2v_model_and_cache(w2v_model_file, w2v_vectors_cache)
         # if self.w2v_similar_words or self.kmeans_features or self.w2v_vector_features:
         #     # load w2v model from specified file
         #     #W2V_PRETRAINED_FILENAME = 'GoogleNews-vectors-negative300.bin.gz'
@@ -121,9 +119,9 @@ class CRF:
         self.zip_features = zip_features
 
         # include Metamap features when retrieving original features?
-        self.original_include_metamap = original_include_metamap
+        self.original_include_metamap = incl_metamap
         # include the unk_score from the original features?
-        self.original_inc_unk_score = original_inc_unk_score
+        self.original_inc_unk_score = incl_unk_score
 
         # do i want all word to have the same nr of features? (needed for nnet ensemble)
         self.full_representation = full_representation
@@ -179,11 +177,11 @@ class CRF:
     #     return [self.get_sentence_labels(sentence, file_idx)
     #             for file_idx, sentence in enumerate(self.file_texts)]
 
-    def get_labels_from_crf_training_data(self):
+    def get_labels_from_crf_training_data(self, data):
         # return [self.get_sentence_labels(sentence, file_idx)
         #         for file_idx, sentences in self.training_data.iteritems() for sentence in sentences]
         document_sentence_tag = defaultdict(list)
-        for doc_nr, sentences in self.training_data.iteritems():
+        for doc_nr, sentences in data.iteritems():
             for sentence in sentences:
                 document_sentence_tag[doc_nr].append(self.get_sentence_labels(sentence, doc_nr))
 
@@ -787,11 +785,11 @@ class CRF:
     # def get_features_from_crf_training_data(self, feature_function):
     #     return [self.get_sentence_features(sentence, file_idx, feature_function)
     #             for file_idx, sentences in self.file_texts.iteritems() for sentence in sentences]
-    def get_features_from_crf_training_data(self, feature_function):
+    def get_features_from_crf_training_data(self, data, feature_function):
         # return [self.get_sentence_features(sentence, feature_function)
         #         for file_idx, sentences in self.training_data.iteritems() for sentence in sentences]
         document_sentence_features = defaultdict(list)
-        for doc_nr, sentences in self.training_data.iteritems():
+        for doc_nr, sentences in data.iteritems():
             for sentence in sentences:
                 document_sentence_features[doc_nr].append(self.get_sentence_features(sentence, feature_function))
 
@@ -1104,91 +1102,12 @@ def save_predictions_to_file(predicted_labels, true_labels, logger):
 
     return
 
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='CRF Sklearn')
-    # parser.add_argument('--outputfolder', default='./', type=str, help='Output folder for the model and logs')
-    parser.add_argument('--originalfeatures', action='store_true', default=False)
-    parser.add_argument('--customfeatures', action='store_true', default=False)
-    parser.add_argument('--w2vsimwords', action='store_true', default=False)
-    parser.add_argument('--w2vvectors', action='store_true', default=False)
-    parser.add_argument('--w2vmodel', action='store', type=str, default=None)
-    parser.add_argument('--w2vvectorscache', action='store', type=str, default=None)
-    parser.add_argument('--kmeans', action='store_true', default=False)
-    parser.add_argument('--kmeansmodel', action='store', type=str, default=None)
-    parser.add_argument('--lda', action='store_true', default=False)
-    parser.add_argument('--unkscore', action='store_true', default=False)
-    parser.add_argument('--metamap', action='store_true', default=False)
-    parser.add_argument('--zipfeatures', action='store_true', default=False)
-    parser.add_argument('--outputaddid', default=None, type=str, help='Output folder for the model and logs')
-    parser.add_argument('--cviters', action='store', type=int, default=0)
-
-    arguments = parser.parse_args()
-
-    training_data_filename = 'handoverdata.zip'
-    test_data_filename = 'handover-set2.zip'
-    # output_model_filename = arguments.outputfolder+ '/' + 'crf_trained.model'
-
-    use_original_paper_features = arguments.originalfeatures
-    use_custom_features = arguments.customfeatures
-    w2v_similar_words = arguments.w2vsimwords
-    w2v_vector_features = arguments.w2vvectors
-    w2v_model_file = arguments.w2vmodel
-    w2v_vectors_cache = arguments.w2vvectorscache
-    kmeans = arguments.kmeans
-    kmeans_model = arguments.kmeansmodel
-    lda = arguments.lda
-    incl_unk_score = arguments.unkscore
-    incl_metamap = arguments.metamap
-    zip_features = arguments.zipfeatures
-    max_cv_iters = arguments.cviters
-    outputaddid = arguments.outputaddid
-
-    # check consistency in arguments
-    # if w2v_similar_words and not w2v_model_file:
-    #     logger.error('Provide a word2vec model for similar word extraction.')
-    #     exit()
-    #TODO: i shouldnt load the model if its for using kmeans or vector-features and a cache-dict is provided
-    if (w2v_similar_words or kmeans or w2v_vector_features) and not (w2v_model_file or w2v_vectors_cache):
-        logger.error('Provide a word2vec model or vector dictionary for vector extraction.')
-        exit()
-
-    training_data, training_texts, _, _ = Dataset.get_crf_training_data_by_sentence(training_data_filename)
-
-    # test_data = Dataset.get_crf_training_data(test_data_filename)
-
-    #TODO: im setting output_model_filename to None. Im not using it, currently.
-    crf_model = CRF(training_data,
-                    training_texts,
-                    test_data=None,
-                    output_model_filename=None,
-                    w2v_vector_features=w2v_vector_features,
-                    w2v_similar_words=w2v_similar_words,
-                    kmeans_features=kmeans,
-                    kmeans_model_name=kmeans_model,
-                    lda_features=lda,
-                    zip_features=zip_features,
-                    original_inc_unk_score=incl_unk_score,
-                    original_include_metamap=incl_metamap,
-                    w2v_model=w2v_model_file,
-                    w2v_vectors_dict=w2v_vectors_cache)
-
-    if use_original_paper_features:
-        feature_function = crf_model.get_original_paper_word_features
-    elif use_custom_features:
-        feature_function = crf_model.get_custom_word_features
-
-    logger.info('Extracting features with: '+feature_function.__str__())
-
-    logger.info('Using w2v_similar_words:%s kmeans:%s lda:%s zip:%s' % (w2v_similar_words, kmeans, lda, zip_features))
-    logger.info('Using w2v_model: %s and vector_dictionary: %s' % (w2v_model_file, w2v_vectors_cache))
-
+def perform_leave_one_out(training_data, max_cv_iters, crf_model, feature_function):
+    prediction_results = dict()
     results_accuracy = []
     results_precision = []
     results_recall = []
     results_f1 = []
-
-    prediction_results = dict()
 
     loo = LeaveOneOut(training_data.__len__())
     for i, (x_idx, y_idx) in enumerate(loo):
@@ -1199,7 +1118,7 @@ if __name__ == '__main__':
         logger.info('Cross validation '+str(i)+' (train+predict)')
         # print x_idx, y_idx
 
-        x = crf_model.get_features_from_crf_training_data(feature_function)
+        x = crf_model.get_features_from_crf_training_data(crf_model.training_data, feature_function)
         y = crf_model.get_labels_from_crf_training_data()
         x_train, y_train = crf_model.filter_by_doc_nr(x, y, x_idx)
 
@@ -1223,7 +1142,53 @@ if __name__ == '__main__':
         flat_pred = [tag for tag in chain(*predicted_tags)]
         prediction_results[y_idx[0]] = (flat_true, flat_pred)
 
-    logging.info('Pickling prediction results')
+    return prediction_results
+
+def use_testing_dataset(testing_data, crf_model, feature_function):
+    prediction_results = dict()
+    results_accuracy = []
+    results_precision = []
+    results_recall = []
+    results_f1 = []
+
+    # set the testing_data attribute of the model
+    crf_model.testing_data = testing_data
+
+    # get training features
+    x = crf_model.get_features_from_crf_training_data(crf_model.training_data, feature_function)
+    y = crf_model.get_labels_from_crf_training_data(crf_model.training_data)
+
+    x_train = list(chain(*x.values()))
+    y_train = list(chain(*y.values()))
+
+    # get testing geatures
+    x = crf_model.get_features_from_crf_training_data(crf_model.testing_data, feature_function)
+    y = crf_model.get_labels_from_crf_training_data(crf_model.testing_data)
+
+    x_test = list(chain(*x.values()))
+    y_test = list(chain(*y.values()))
+
+    logger.info('Training the model')
+    crf_model.train(x_train, y_train, verbose=True)
+
+    logger.info('Predicting')
+    predicted_tags, accuracy, precision, recall, f1_score = crf_model.predict(x_test, y_test)
+    results_accuracy.append(accuracy)
+    results_precision.append(precision)
+    results_recall.append(recall)
+    results_f1.append(f1_score)
+
+    flat_true = [tag for tag in chain(*y_test)]
+    flat_pred = [tag for tag in chain(*predicted_tags)]
+    prediction_results[0] = (flat_true, flat_pred)  #TODO
+
+    return prediction_results
+
+def pickle_results(prediction_results, incl_metamap=False, w2v_similar_words= False, kmeans=False, w2v_vector_features=False,
+                   lda=False, zip_features=False, outputaddid=False, use_original_paper_features=False,
+                   use_custom_features=False, **kwargs):
+
+    logger.info('Pickling prediction results')
     run_params = '_'.join(map(str,['metamap',incl_metamap,'w2vsim',w2v_similar_words,'kmeans',kmeans,'w2vvec',w2v_vector_features,
                            'lda',lda,'zip',zip_features]))
 
@@ -1239,9 +1204,101 @@ if __name__ == '__main__':
 
     pickle.dump(prediction_results, open(output_folder+'prediction_results_'+run_params+'.p','wb'))
 
-    print 'Accuracy: ', results_accuracy
-    print 'F1: ', results_f1
-    print 'Mean accuracy: ', np.mean(results_accuracy)
-    print 'Mean precision: ', np.mean(results_precision)
-    print 'Mean recall: ', np.mean(results_recall)
-    print 'Mean f1: ', np.mean(results_f1)
+    return True
+
+def parse_arguments():
+
+    parser = argparse.ArgumentParser(description='CRF Sklearn')
+    # parser.add_argument('--outputfolder', default='./', type=str, help='Output folder for the model and logs')
+    parser.add_argument('--originalfeatures', action='store_true', default=False)
+    parser.add_argument('--customfeatures', action='store_true', default=False)
+    parser.add_argument('--w2vsimwords', action='store_true', default=False)
+    parser.add_argument('--w2vvectors', action='store_true', default=False)
+    parser.add_argument('--w2vmodel', action='store', type=str, default=None)
+    parser.add_argument('--w2vvectorscache', action='store', type=str, default=None)
+    parser.add_argument('--kmeans', action='store_true', default=False)
+    parser.add_argument('--kmeansmodel', action='store', type=str, default=None)
+    parser.add_argument('--lda', action='store_true', default=False)
+    parser.add_argument('--unkscore', action='store_true', default=False)
+    parser.add_argument('--metamap', action='store_true', default=False)
+    parser.add_argument('--zipfeatures', action='store_true', default=False)
+    parser.add_argument('--outputaddid', default=None, type=str, help='Output folder for the model and logs')
+    parser.add_argument('--leaveoneout', action='store_true', default=False)
+    parser.add_argument('--cviters', action='store', type=int, default=0)
+
+    arguments = parser.parse_args()
+
+    # output_model_filename = arguments.outputfolder+ '/' + 'crf_trained.model'
+
+    args = dict()
+    args['use_original_paper_features'] = arguments.originalfeatures
+    args['use_custom_features'] = arguments.customfeatures
+    args['w2v_similar_words'] = arguments.w2vsimwords
+    args['w2v_vector_features'] = arguments.w2vvectors
+    args['w2v_model_file'] = arguments.w2vmodel
+    args['w2v_vectors_cache'] = arguments.w2vvectorscache
+    args['kmeans_features'] = arguments.kmeans
+    args['kmeans_model_name'] = arguments.kmeansmodel
+    args['lda_features'] = arguments.lda
+    args['incl_unk_score'] = arguments.unkscore
+    args['incl_metamap'] = arguments.metamap
+    args['zip_features'] = arguments.zipfeatures
+    args['max_cv_iters'] = arguments.cviters
+    args['outputaddid'] = arguments.outputaddid
+    args['use_leave_one_out'] = arguments.leaveoneout
+
+    return args
+
+def check_arguments_consistency(args):
+    #TODO: i shouldnt load the model if its for using kmeans or vector-features and a cache-dict is provided
+    if (args['w2v_similar_words'] or args['kmeans_features'] or args['w2v_vector_features']) \
+            and not (args['w2v_model_file'] or args['w2v_vectors_cache']):
+        logger.error('Provide a word2vec model or vector dictionary for vector extraction.')
+        exit()
+
+    return True
+
+
+if __name__ == '__main__':
+    training_data_filename = 'handoverdata.zip'
+    test_data_filename = 'handover-set2.zip'
+
+    args = parse_arguments()
+
+    check_arguments_consistency(args)
+
+    training_data, training_texts, _, _ = Dataset.get_crf_training_data_by_sentence(training_data_filename)
+
+    # test_data = Dataset.get_crf_training_data(test_data_filename)
+
+    #TODO: im setting output_model_filename to None. Im not using it, currently.
+    crf_model = CRF(training_data,
+                    testing_data=None,
+                    output_model_filename=None,
+                    **args)
+
+    if args['use_original_paper_features']:
+        feature_function = crf_model.get_original_paper_word_features
+    elif args['use_custom_features']:
+        feature_function = crf_model.get_custom_word_features
+
+    logger.info('Extracting features with: '+feature_function.__str__())
+
+    logger.info('Using w2v_similar_words:%s kmeans:%s lda:%s zip:%s' %
+                (args['w2v_similar_words'], args['kmeans_features'], args['lda_features'], args['zip_features']))
+
+    logger.info('Using w2v_model: %s and vector_dictionary: %s' % (args['w2v_model_file'], args['w2v_vectors_cache']))
+
+    if args['use_leave_one_out']:
+        # use 101 training documents, and perform leave one out cross validation.
+        prediction_results = perform_leave_one_out(training_data, args['max_cv_iters'], crf_model, feature_function)
+    else:
+        # train on 101 training documents, and predict on 100 testing documents.
+        testing_data, testing_texts, _, _ = \
+            Dataset.get_crf_training_data_by_sentence(file_name=test_data_filename,
+                                                      path=Dataset.TESTING_FEATURES_PATH+'test',
+                                                      extension=Dataset.TESTING_FEATURES_EXTENSION)
+
+        prediction_results = use_testing_dataset(testing_data, crf_model, feature_function)
+
+    pickle_results(prediction_results,**args)
