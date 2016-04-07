@@ -1119,7 +1119,7 @@ def perform_leave_one_out(training_data, max_cv_iters, crf_model, feature_functi
         # print x_idx, y_idx
 
         x = crf_model.get_features_from_crf_training_data(crf_model.training_data, feature_function)
-        y = crf_model.get_labels_from_crf_training_data()
+        y = crf_model.get_labels_from_crf_training_data(crf_model.training_data)
         x_train, y_train = crf_model.filter_by_doc_nr(x, y, x_idx)
 
         crf_model.train(x_train, y_train, verbose=True)
@@ -1180,23 +1180,32 @@ def use_testing_dataset(testing_data, crf_model, feature_function):
 
     flat_true = [tag for tag in chain(*y_test)]
     flat_pred = [tag for tag in chain(*predicted_tags)]
-    prediction_results[0] = (flat_true, flat_pred)  #TODO
+    prediction_results[0] = (flat_true, flat_pred)  #TODO: do i want it by document?
 
     return prediction_results
 
-def pickle_results(prediction_results, incl_metamap=False, w2v_similar_words= False, kmeans=False, w2v_vector_features=False,
-                   lda=False, zip_features=False, outputaddid=False, use_original_paper_features=False,
-                   use_custom_features=False, **kwargs):
+def pickle_results(prediction_results,
+                   incl_metamap=False,
+                   w2v_similar_words= False,
+                   kmeans_features=False,
+                   w2v_vector_features=False,
+                   lda_features=False,
+                   zip_features=False,
+                   outputaddid=False,
+                   use_original_paper_features=False,
+                   use_custom_features=False,
+                   use_leave_one_out=False,
+                   **kwargs):
 
     logger.info('Pickling prediction results')
-    run_params = '_'.join(map(str,['metamap',incl_metamap,'w2vsim',w2v_similar_words,'kmeans',kmeans,'w2vvec',w2v_vector_features,
-                           'lda',lda,'zip',zip_features]))
+    run_params = '_'.join(map(str,['metamap',incl_metamap,'w2vsim',w2v_similar_words,'kmeans',kmeans_features,'w2vvec',w2v_vector_features,
+                           'lda',lda_features,'loo',use_leave_one_out,'zip',zip_features]))
 
     if outputaddid:
         #append string identifier if supplied.
         run_params = '_'.join([run_params,outputaddid])
 
-    output_folder = './'
+    output_folder = None
     if use_original_paper_features:
         output_folder = get_pycrf_originalfeats_folder()
     elif use_custom_features:
@@ -1209,7 +1218,6 @@ def pickle_results(prediction_results, incl_metamap=False, w2v_similar_words= Fa
 def parse_arguments():
 
     parser = argparse.ArgumentParser(description='CRF Sklearn')
-    # parser.add_argument('--outputfolder', default='./', type=str, help='Output folder for the model and logs')
     parser.add_argument('--originalfeatures', action='store_true', default=False)
     parser.add_argument('--customfeatures', action='store_true', default=False)
     parser.add_argument('--w2vsimwords', action='store_true', default=False)
