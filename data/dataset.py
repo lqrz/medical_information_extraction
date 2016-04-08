@@ -12,10 +12,13 @@ class Dataset:
     CRF_FEATURES_PATH = 'handoverdata/101informationextraction/documents/'
     CRF_FEATURES_EXTENSION = '.txt'
 
-    TRAINING_SENTENCES_PATH = '101writtenfreetextreports/'
+    TESTING_FEATURES_PATH = 'handover-set2/100informationextraction/documents/100informationextraction-output-C=1/documents/'
+    TESTING_FEATURES_EXTENSION = '.xml.data'
+
+    TRAINING_SENTENCES_PATH = 'handoverdata/101writtenfreetextreports/'
     TRAINING_SENTENCES_EXTENSION = '.txt'
 
-    I2B2_PATH = ''
+    I2B2_PATH = 'patients_separated/'
     I2B2_EXTENSION = '.txt'
 
     # List of contractions adapted from Robert MacIntyre's tokenizer.
@@ -156,7 +159,7 @@ class Dataset:
             zip_file = zipfile.ZipFile(resource, mode='r')
             for fname in zip_file.namelist():
                 if filename_match in fname and extension_match in fname:
-                    doc_nr = int(fname.replace(filename_match+'output','').replace(extension_match,''))
+                    doc_nr = int(fname.replace(filename_match,'').replace(extension_match,''))
                     # f = zip_file.read(fname)
                     zip_item = zip_file.open(fname)
                     zip_item = io.TextIOWrapper(zip_item, encoding='utf-8', newline='\n')
@@ -184,7 +187,7 @@ class Dataset:
         return training_data, sentences
 
     @staticmethod
-    def get_crf_training_data_by_sentence(file_name):
+    def get_crf_training_data_by_sentence(file_name, path=CRF_FEATURES_PATH+'output', extension=CRF_FEATURES_EXTENSION):
         """
         returns a dictionary indexed in the following way:
             -doc_nr
@@ -195,7 +198,7 @@ class Dataset:
         :param file_name:
         :return:
         """
-        f = Dataset.get_filename(file_name, Dataset.CRF_FEATURES_PATH, Dataset.CRF_FEATURES_EXTENSION)
+        f = Dataset.get_filename(file_name, path, extension)
 
         # training_data = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(list))))
         sentences = defaultdict(list)
@@ -238,8 +241,14 @@ class Dataset:
 
 if __name__ == '__main__':
     training_data_filename = 'handoverdata.zip'
+    testing_data_filename = 'handover-set2.zip'
 
     dataset = Dataset()
+
+    testing_data, sentences, document_sentence_words, document_sentence_tags = \
+        Dataset.get_crf_training_data_by_sentence(testing_data_filename,
+                                                  Dataset.TESTING_FEATURES_PATH+'test',
+                                                  Dataset.TESTING_FEATURES_EXTENSION)
 
     # files_text = Dataset.get_training_file_tokenized_sentences(training_data_filename)
     #
@@ -249,6 +258,6 @@ if __name__ == '__main__':
     #                                                       Dataset.TRAINING_SENTENCES_PATH,
     #                                                       Dataset.TRAINING_SENTENCES_EXTENSION)
 
-    training_data, sentences = dataset.get_crf_training_data(training_data_filename)
+    # training_data, sentences = dataset.get_crf_training_data(training_data_filename)
 
     print 'End'
