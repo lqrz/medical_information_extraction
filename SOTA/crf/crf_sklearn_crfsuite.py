@@ -1113,6 +1113,9 @@ def perform_leave_one_out(training_data, max_cv_iters, crf_model, feature_functi
     results_recall = []
     results_f1 = []
 
+    x = crf_model.get_features_from_crf_training_data(crf_model.training_data, feature_function)
+    y = crf_model.get_labels_from_crf_training_data(crf_model.training_data)
+
     loo = LeaveOneOut(training_data.__len__())
     for i, (x_idx, y_idx) in enumerate(loo):
 
@@ -1122,8 +1125,6 @@ def perform_leave_one_out(training_data, max_cv_iters, crf_model, feature_functi
         logger.info('Cross validation '+str(i)+' (train+predict)')
         # print x_idx, y_idx
 
-        x = crf_model.get_features_from_crf_training_data(crf_model.training_data, feature_function)
-        y = crf_model.get_labels_from_crf_training_data(crf_model.training_data)
         x_train, y_train = crf_model.filter_by_doc_nr(x, y, x_idx)
 
         crf_model.train(x_train, y_train, verbose=True)
@@ -1269,6 +1270,10 @@ def check_arguments_consistency(args):
     if (args['w2v_similar_words'] or args['kmeans_features'] or args['w2v_vector_features']) \
             and not (args['w2v_model_file'] or args['w2v_vectors_cache']):
         logger.error('Provide a word2vec model or vector dictionary for vector extraction.')
+        exit()
+
+    if args['kmeans_features'] and not args['kmeans_model_name']:
+        logger.error('Provide a Kmeans model when using Kmeans-features')
         exit()
 
     return True
