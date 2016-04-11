@@ -1071,16 +1071,16 @@ class CRF:
             # features.extend(similar_words)
 
         # kmeans features
-        if (self.kmeans_features and self.kmeans_model) and self.w2v_model:
+        if (self.kmeans_features and self.kmeans_model) and (self.w2v_model or self.word_vector_cache):
             cluster = self.get_kmeans_cluster(word)
-            features['kmeans_cluster'] = cluster
+            features['kmeans_cluster'] = str(cluster)
             # features.append(str(cluster))
 
         # lda features
         if self.lda_features and self.lda_model:
             topics = self.get_lda_topics(word, self.word_lda_topics, topn=5)
             for j,topic in enumerate(topics):
-                features['lda_topic_'+str(j)] = topic
+                features['lda_topic_'+str(j)] = str(topic)
             # features.extend(topics)
 
         # word2vec dimensions features
