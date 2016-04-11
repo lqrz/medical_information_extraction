@@ -54,6 +54,15 @@ def get_crpp_path(file_name):
 
     return path
 
+def get_single_mlp_path(file_name):
+
+    path = pkg_resources.resource_filename('trained_models', 'single_mlp/'+file_name)
+    dir = os.path.dirname(path)
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+    return path
+
 def get_pycrf_customfeats_folder():
     path = pkg_resources.resource_filename('trained_models', 'pycrf/custom_feats/')
     dir = os.path.dirname(path)
