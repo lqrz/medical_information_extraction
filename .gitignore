@@ -6,3 +6,4 @@ data/*.zip
 data/word2vec/*
 data/handoverdata/*
 SOTA/crf++/*
+*.p
