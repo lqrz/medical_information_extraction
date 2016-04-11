@@ -28,12 +28,25 @@ np.random.seed(1234)
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-def construct_indexes(crf_training_data_filename, add_tags=[]):
+def construct_indexes(crf_training_data_filename, crf_testing_data_filename=None, add_tags=[]):
 
-    _, _, document_sentence_words, document_sentence_tags = Dataset.get_crf_training_data_by_sentence(crf_training_data_filename)
+    _, _, train_document_sentence_words, train_document_sentence_tags = Dataset.get_crf_training_data_by_sentence(crf_training_data_filename)
 
-    unique_words = list(set([word for doc_sentences in document_sentence_words.values() for sentence in doc_sentences for word in sentence]))
-    unique_labels = list(set([tag for doc_sentences in document_sentence_tags.values() for sentence in doc_sentences for tag in sentence]))
+    document_sentence_words = []
+    document_sentence_tags = []
+    document_sentence_words.extend(train_document_sentence_words.values())
+    document_sentence_tags.extend(train_document_sentence_tags.values())
+
+    if crf_testing_data_filename:
+        _, _, test_document_sentence_words, test_document_sentence_tags = \
+            Dataset.get_crf_training_data_by_sentence(file_name=test_data_filename,
+                                                      path=Dataset.TESTING_FEATURES_PATH+'test',
+                                                      extension=Dataset.TESTING_FEATURES_EXTENSION)
+        document_sentence_words.extend(test_document_sentence_words.values())
+        document_sentence_tags.extend(test_document_sentence_tags.values())
+
+    unique_words = list(set([word for doc_sentences in document_sentence_words for sentence in doc_sentences for word in sentence]))
+    unique_labels = list(set([tag for doc_sentences in document_sentence_tags for sentence in doc_sentences for tag in sentence]))
 
     index2word = dict()
     word2index = dict()
@@ -80,7 +93,6 @@ def representation_sentence_to_index(representation_sentence, rep2index):
 
 def perform_leave_one_out(training_data,
                           crf_model,
-                          label2index,
                           hidden_f,
                           out_f,
                           tag_dim,
@@ -94,6 +106,9 @@ def perform_leave_one_out(training_data,
     logger.info('Using Leave one out cross validation')
 
     results = dict()
+
+    logger.info('Constructing word and label indexes')
+    index2word, word2index, index2label, label2index = construct_indexes(crf_training_data_filename, crf_testing_data_filename=None, add_tags=add_tags)
 
     logger.info('Getting CRF training data')
     x = crf_model.get_features_from_crf_training_data(crf_model.training_data, feature_function)
@@ -147,7 +162,8 @@ def perform_leave_one_out(training_data,
         x_train = np.array(list(chain(*x_train_crf_features)))#TODO: for no-cw-mlp
         x_test = np.array(list(chain(*x_test_crf_features)))#TODO: for no-cw-mlp
         y_train = list(chain(*y_train))
-        y_test = list(chain(*predictions))
+        # y_test = list(chain(*predictions))
+        y_test = list(chain(*y_test))
 
         y_train = np.array(items_to_index(y_train, label2index))
         y_test = np.array(items_to_index(y_test, label2index))
@@ -205,10 +221,8 @@ def perform_leave_one_out(training_data,
 
     return results
 
-def use_testing_dataset(testing_data,
-                        crf_model,
+def use_testing_dataset(crf_model,
                         feature_function,
-                        label2index,
                         hidden_f,
                         out_f,
                         tag_dim,
@@ -223,8 +237,17 @@ def use_testing_dataset(testing_data,
 
     results = dict()
 
+    # train on 101 training documents, and predict on 100 testing documents.
+    testing_data, testing_texts, _, _ = \
+        Dataset.get_crf_training_data_by_sentence(file_name=test_data_filename,
+                                                  path=Dataset.TESTING_FEATURES_PATH+'test',
+                                                  extension=Dataset.TESTING_FEATURES_EXTENSION)
+
     # set the testing_data attribute of the model
     crf_model.testing_data = testing_data
+
+    logger.info('Constructing word and label indexes')
+    index2word, word2index, index2label, label2index = construct_indexes(crf_training_data_filename, test_data_filename, add_tags=add_tags)
 
     # get training features
     x = crf_model.get_features_from_crf_training_data(crf_model.training_data, feature_function)
@@ -236,7 +259,7 @@ def use_testing_dataset(testing_data,
     logger.info('Training the CRF model')
     crf_model.train(x_train, y_train, verbose=True)
 
-    # get testing geatures
+    # get testing features
     x = crf_model.get_features_from_crf_training_data(crf_model.testing_data, feature_function)
     y = crf_model.get_labels_from_crf_training_data(crf_model.testing_data)
 
@@ -278,7 +301,8 @@ def use_testing_dataset(testing_data,
     x_train = np.array(list(chain(*x_train_crf_features)))#TODO: for no-cw-mlp
     x_test = np.array(list(chain(*x_test_crf_features)))#TODO: for no-cw-mlp
     y_train = list(chain(*y_train))
-    y_test = list(chain(*predictions))
+    # y_test = list(chain(*predictions))
+    y_test = list(chain(*y_test))
 
     y_train = np.array(items_to_index(y_train, label2index))
     y_test = np.array(items_to_index(y_test, label2index))
@@ -364,6 +388,7 @@ def parse_arguments():
     parser.add_argument('--w2vmodel', action='store', type=str, default=None)
     parser.add_argument('--w2vvectorscache', action='store', type=str, default=None)
     parser.add_argument('--kmeans', action='store_true', default=False)
+    parser.add_argument('--kmeansmodel', action='store', type=str, default=None)
     parser.add_argument('--lda', action='store_true', default=False)
     parser.add_argument('--unkscore', action='store_true', default=False)
     parser.add_argument('--metamap', action='store_true', default=False)
@@ -394,6 +419,7 @@ def parse_arguments():
     args['w2v_model_file'] = arguments.w2vmodel
     args['w2v_vectors_cache'] = arguments.w2vvectorscache
     args['kmeans_features'] = arguments.kmeans
+    args['kmeans_model_name'] = arguments.kmeansmodel
     args['lda_features'] = arguments.lda
     args['incl_unk_score'] = arguments.unkscore
     args['incl_metamap'] = arguments.metamap
@@ -505,29 +531,17 @@ if __name__=='__main__':
 
     logger.info('Using w2v_model: %s and vector_dictionary: %s' % (args['w2v_model_file'], args['w2v_vectors_cache']))
 
-    logger.info('Constructing word and label indexes')
-    index2word, word2index, index2label, label2index = construct_indexes(crf_training_data_filename, add_tags=add_tags)
-
     if args['use_leave_one_out']:
         results = perform_leave_one_out(training_data,
                                         crf_model,
-                                        label2index,
                                         hidden_f,
                                         out_f,
                                         tag_dim,
                                         n_window,
                                         **args)
     else:
-        # train on 101 training documents, and predict on 100 testing documents.
-        testing_data, testing_texts, _, _ = \
-            Dataset.get_crf_training_data_by_sentence(file_name=test_data_filename,
-                                                      path=Dataset.TESTING_FEATURES_PATH+'test',
-                                                      extension=Dataset.TESTING_FEATURES_EXTENSION)
-
-        results = use_testing_dataset(testing_data,
-                                      crf_model,
+        results = use_testing_dataset(crf_model,
                                       feature_function,
-                                      label2index,
                                       hidden_f,
                                       out_f,
                                       tag_dim,
