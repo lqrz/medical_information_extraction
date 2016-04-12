@@ -33,4 +33,4 @@ if __name__=='__main__':
         print Metrics.compute_classification_report(y_t, y_p, labels=index2labels.keys(),
                                                     target_names=index2labels.values())
     else:
-        print Metrics.compute_classification_report(y_t, y_p)
+        print Metrics.compute_classification_report(y_t, y_p, labels=None)
