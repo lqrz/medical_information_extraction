@@ -39,7 +39,7 @@ def construct_indexes(crf_training_data_filename, crf_testing_data_filename=None
 
     if crf_testing_data_filename:
         _, _, test_document_sentence_words, test_document_sentence_tags = \
-            Dataset.get_crf_training_data_by_sentence(file_name=test_data_filename,
+            Dataset.get_crf_training_data_by_sentence(file_name=crf_testing_data_filename,
                                                       path=Dataset.TESTING_FEATURES_PATH+'test',
                                                       extension=Dataset.TESTING_FEATURES_EXTENSION)
         document_sentence_words.extend(test_document_sentence_words.values())
