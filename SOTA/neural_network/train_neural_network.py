@@ -242,14 +242,6 @@ def use_testing_dataset(nn_class,
 
     results = dict()
 
-    # train on 101 training documents, and predict on 100 testing documents.
-    # testing_data, testing_texts, _, _ = \
-    #     Dataset.get_crf_training_data_by_sentence(file_name=test_data_filename,
-    #                                               path=Dataset.TESTING_FEATURES_PATH+'test',
-    #                                               extension=Dataset.TESTING_FEATURES_EXTENSION)
-
-    # logger.info('Constructing word and label indexes')
-    # index2word, word2index, index2label, label2index = construct_indexes(crf_training_data_filename, test_data_filename, add_tags=add_tags)
     logger.info('Loading CRF training data')
 
     x_train, y_train, x_test, y_test, word2index, index2word, label2index, index2label = nn_class.get_data(crf_training_data_filename, test_data_filename,
@@ -257,27 +249,9 @@ def use_testing_dataset(nn_class,
     n_out = len(label2index.keys())
     unique_words = word2index.keys()
 
-    # index2word, word2index, index2label, label2index, test_document_sentence_words, test_document_sentence_tags, \
-    # train_document_sentence_words, train_document_sentence_tags, unique_words, n_out, n_unique_words = nn_class.get_data2()
-
     pretrained_embeddings = nn_class.initialize_w(w2v_dims, unique_words, w2v_vectors=w2v_vectors, w2v_model=w2v_model)
 
     logger.info('Instantiating Neural network')
-
-    # x_train = []
-    # y_train = []
-    # for doc_nr, doc_sentences in train_document_sentence_words.iteritems():
-    #         x_train.extend([map(lambda x: word2index[x], sent_window) for sentence in doc_sentences
-    #                              for sent_window in utils.NeuralNetwork.context_window(sentence, n_window)])
-    #         y_train.extend([tag for tag in chain(*[map(lambda x: label2index[x],sent)
-    #                                                for sent in train_document_sentence_tags[doc_nr]])])
-    # x_test = []
-    # y_test = []
-    # for doc_nr, doc_sentences in test_document_sentence_words.iteritems():
-    #         x_test.extend([map(lambda x: word2index[x], sent_window) for sentence in doc_sentences
-    #                              for sent_window in utils.NeuralNetwork.context_window(sentence, n_window)])
-    #         y_test.extend([tag for tag in chain(*[map(lambda x: label2index[x],sent)
-    #                                                for sent in test_document_sentence_tags[doc_nr]])])
 
     pad_tag, unk_tag, pad_word = determine_key_indexes(label2index, word2index)
 
@@ -290,19 +264,6 @@ def use_testing_dataset(nn_class,
         'out_activation_f': out_f,
         'n_window': n_window,
         'pretrained_embeddings': pretrained_embeddings,
-        # 'words_per_document': None,
-        # 'tags_per_document': None,
-        # 'train_document_sentences_words': train_document_sentence_words,
-        # 'train_document_sentences_tags': train_document_sentence_tags,
-        # 'test_document_sentences_words': test_document_sentence_words,
-        # 'test_document_sentences_tags': test_document_sentence_tags,
-        # 'unique_words': unique_words,
-        # 'unique_labels': unique_labels,
-        # 'index2word': index2word,
-        # 'word2index': word2index,
-        # 'index2label': index2label,
-        # 'label2index': label2index,
-        # 'n_unique_words': n_unique_words,
         'n_out': n_out,
         'regularization': regularization,
         'pad_tag': pad_tag,
