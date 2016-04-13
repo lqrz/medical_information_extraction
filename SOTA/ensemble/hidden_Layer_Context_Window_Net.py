@@ -237,7 +237,7 @@ class Hidden_Layer_Context_Window_Net(object):
             L1 = T.sum(abs(w1))
 
             # symbolic Theano variable that represents the squared L2 term
-            L2 = T.sum(w1 ** 2)
+            L2 = T.sum(w1 ** 2) + T.sum(w2 ** 2)
 
         if use_scan:
             #TODO: DO I NEED THE SCAN AT ALL: NO! Im leaving it for reference only.
