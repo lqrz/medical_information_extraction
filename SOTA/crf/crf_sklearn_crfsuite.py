@@ -423,9 +423,9 @@ class CRF:
                 #TODO: review
 
         if self.knowledge_graph:
-            top_n = 1
-            #TODO: set or directly top_n?
-            for entity_nr, entity in enumerate(set(self.knowledge_graph[word][:top_n])):
+            top_n = 3   # 3 works better than 1 and than 5
+            # set or directly top_n? list works better
+            for entity_nr, entity in enumerate(self.knowledge_graph[word][:top_n]):
                 features['entity_'+str(entity_nr)] = entity
 
         return features
