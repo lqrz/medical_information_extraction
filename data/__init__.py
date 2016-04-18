@@ -18,3 +18,6 @@ def get_w2v_training_data_vectors(file_name):
 
 def get_w2v_directory(file_name):
     return pkg_resources.resource_filename('data', 'word2vec/%s' % file_name)
+
+def get_google_knowled_graph_cache(file_name):
+    return pkg_resources.resource_filename('data', 'google_knowledge_graph/%s' % file_name)

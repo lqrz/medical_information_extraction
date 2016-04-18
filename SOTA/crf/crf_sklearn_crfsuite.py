@@ -20,6 +20,7 @@ from utils import utils
 from itertools import chain
 from trained_models import get_pycrf_customfeats_folder, get_pycrf_originalfeats_folder
 from trained_models import get_kmeans_path, get_lda_path
+from data import get_google_knowled_graph_cache
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -66,6 +67,8 @@ class CRF:
                  w2v_vectors_cache=None,
                  full_representation=False,
                  crf_iters = None,
+                 nnet_ensemble=None,
+                 knowledge_graph=None,
                  **kwargs):
 
         self.training_data = training_data
@@ -129,6 +132,14 @@ class CRF:
 
         # how many training iters for the crf
         self.crf_iters = crf_iters
+
+        # nnet to predict tag and use as additional feature
+        self.nnet_ensemble = nnet_ensemble
+
+        self.knowledge_graph = self.load_knowledge_graph_cache(knowledge_graph)
+
+    def load_knowledge_graph_cache(self, path):
+        return pickle.load(open(get_google_knowled_graph_cache(path), 'rb'))
 
     def load_w2v_model_and_cache(self, w2v_model, w2v_vectors_dict):
 
@@ -410,6 +421,12 @@ class CRF:
                 # features['w2v_dim_'+str(j)] = dim_val
                 features['w2v_dim_'+str(dim_nr)] = str(dim_val)[:4] if dim_val > 0 else str(dim_val)[:5]
                 #TODO: review
+
+        if self.knowledge_graph:
+            top_n = 1
+            #TODO: set or directly top_n?
+            for entity_nr, entity in enumerate(set(self.knowledge_graph[word][:top_n])):
+                features['entity_'+str(entity_nr)] = entity
 
         return features
 
@@ -1096,6 +1113,11 @@ class CRF:
 
         return features
 
+    def get_ensemble_nnet_custom_features(self, sentence, word_idx):
+        features = self.get_custom_word_features(sentence, word_idx)
+        features['nnet_pred'] = self.nnet_ensemble.predict_sample()
+        #TODO: FINISH
+
 def print_state_features(state_features):
     for (attr, label), weight in state_features:
         print("%0.6f %-8s %s" % (weight, label, attr))
@@ -1240,6 +1262,7 @@ def parse_arguments():
     parser.add_argument('--leaveoneout', action='store_true', default=False)
     parser.add_argument('--cviters', action='store', type=int, default=0)
     parser.add_argument('--crfiters', action='store', type=int, default=50)
+    parser.add_argument('--knowledgegraph', action='store', type=str, default=False)
 
     arguments = parser.parse_args()
 
@@ -1262,6 +1285,7 @@ def parse_arguments():
     args['outputaddid'] = arguments.outputaddid
     args['use_leave_one_out'] = arguments.leaveoneout
     args['crf_iters'] = arguments.crfiters
+    args['knowledge_graph'] = arguments.knowledgegraph
 
     return args
 
@@ -1304,8 +1328,9 @@ if __name__ == '__main__':
 
     logger.info('Extracting features with: '+feature_function.__str__())
 
-    logger.info('Using w2v_similar_words:%s kmeans:%s lda:%s zip:%s' %
-                (args['w2v_similar_words'], args['kmeans_features'], args['lda_features'], args['zip_features']))
+    logger.info('Using w2v_similar_words:%s kmeans:%s lda:%s zip:%s knowledge_graph:%s' %
+                (args['w2v_similar_words'], args['kmeans_features'], args['lda_features'], args['zip_features'],
+                 args['knowledge_graph']))
 
     logger.info('Using w2v_model: %s and vector_dictionary: %s' % (args['w2v_model_file'], args['w2v_vectors_cache']))
 
@@ -1321,4 +1346,4 @@ if __name__ == '__main__':
 
         prediction_results = use_testing_dataset(testing_data, crf_model, feature_function)
 
-    pickle_results(prediction_results,**args)
+    pickle_results(prediction_results, **args)
