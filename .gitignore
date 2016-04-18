@@ -7,3 +7,4 @@ data/word2vec/*
 data/handoverdata/*
 SOTA/crf++/*
 *.p
+.api_key
