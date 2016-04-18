@@ -34,6 +34,7 @@ if __name__ == '__main__':
         extension=Dataset.TESTING_FEATURES_EXTENSION)
 
     train_and_test_words = set(chain(*chain(*train_document_sentence_words.values())))
+    train_and_test_words = train_and_test_words.union(set(chain(*chain(*test_document_sentence_words.values()))))
 
     service_url = 'https://kgsearch.googleapis.com/v1/entities:search'
     params = {
