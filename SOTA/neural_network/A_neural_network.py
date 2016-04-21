@@ -6,6 +6,7 @@ import numpy as np
 from utils import utils
 from itertools import chain
 from collections import OrderedDict
+import time
 
 class A_neural_network():
 
@@ -19,6 +20,7 @@ class A_neural_network():
                  n_out,
                  n_window,
                  pretrained_embeddings,
+                 get_output_path,
                  **kwargs):
         """
         common constructor for all neural nets.
@@ -77,6 +79,10 @@ class A_neural_network():
 
         #pretrained w1 matrix (word embeddings)
         self.pretrained_embeddings = pretrained_embeddings
+        self.n_emb = self.pretrained_embeddings.shape[1]
+
+        #output path get function
+        self.get_output_path = get_output_path
 
     @abstractmethod
     def to_string(self):
@@ -350,3 +356,62 @@ class A_neural_network():
         pretrained_embeddings = utils.NeuralNetwork.replace_with_word_embeddings(w, unique_words, w2v_vectors=w2v_vectors, w2v_model=w2v_model)
 
         return pretrained_embeddings
+    
+    def plot_training_cost_and_error(self, train_costs_list, train_errors_list, test_costs_list, test_errors_list, 
+                                     actual_time):
+
+        assert train_costs_list.__len__() == train_errors_list.__len__()
+        assert train_costs_list.__len__() == test_costs_list.__len__()
+        assert train_costs_list.__len__() == test_errors_list.__len__()
+
+        data = {
+            'epoch': np.arange(train_costs_list.__len__(), dtype='int'),
+            'Train_cost': train_costs_list,
+            'Train_error': train_errors_list,
+            'Test_cost': test_costs_list,
+            'Test_error': test_errors_list
+        }
+        output_filename = self.get_output_path('training_cost_plot_' + actual_time)
+        utils.NeuralNetwork.plot(data, x_axis='epoch', x_label='Epochs', y_label='Value',
+                                 title='Training and Testing cost and error evolution',
+                                 output_filename=output_filename)
+        
+        return True
+    
+    def plot_scores(self, precision_list, recall_list, f1_score_list, actual_time):
+
+        assert precision_list.__len__() == recall_list.__len__()
+        assert precision_list.__len__() == f1_score_list.__len__()
+        
+        data = {
+            'epoch': np.arange(precision_list.__len__(), dtype='int'),
+            'Precision': precision_list,
+            'Recall': recall_list,
+            'F1_score': f1_score_list
+        }
+        output_filename = self.get_output_path('training_scores_plot' + actual_time)
+        utils.NeuralNetwork.plot(data, x_axis='epoch', x_label='Epochs', y_label='Score ',
+                                 title='Training scores evolution',
+                                 output_filename=output_filename)
+
+        return True
+
+    def plot_penalties(self, l2_w1_list, l2_w2_list, l2_ww_fw_list, l2_ww_bw_list, actual_time):
+
+        assert l2_w1_list.__len__() == l2_w2_list.__len__()
+        assert l2_w1_list.__len__() == l2_ww_fw_list.__len__()
+        assert l2_w1_list.__len__() == l2_ww_bw_list.__len__()
+
+        data = {
+            'epoch': np.arange(l2_w1_list.__len__(), dtype='int'),
+            'L2_W1[0]': l2_w1_list,
+            'L2_W2_sum': l2_w2_list,
+            'L2_WW_Fw_sum': l2_ww_fw_list,
+            'L2_WW_Bw_sum': l2_ww_bw_list
+        }
+        output_filename = self.get_output_path('training_L2_penalty_plot' + actual_time)
+        utils.NeuralNetwork.plot(data, x_axis='epoch', x_label='Epochs', y_label='Penalty',
+                                 title='Training penalties evolution',
+                                 output_filename=output_filename)
+
+        return True
