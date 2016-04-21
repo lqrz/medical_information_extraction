@@ -203,9 +203,9 @@ if __name__ == '__main__':
     print 'MACRO results'
     print Metrics.compute_all_metrics(flat_true,flat_predictions,average='macro')
 
-    cPickle.dump(train_costs_list, open('train_costs.p', 'wb'))
-    cPickle.dump(train_errors_list, open('train_errors.p', 'wb'))
-    cPickle.dump(test_costs_list, open('test_costs.p', 'wb'))
-    cPickle.dump(test_errors_list, open('test_errors.p', 'wb'))
+    # cPickle.dump(train_costs_list, open('train_costs.p', 'wb'))
+    # cPickle.dump(train_errors_list, open('train_errors.p', 'wb'))
+    # cPickle.dump(test_costs_list, open('test_costs.p', 'wb'))
+    # cPickle.dump(test_errors_list, open('test_errors.p', 'wb'))
 
     print 'End'
