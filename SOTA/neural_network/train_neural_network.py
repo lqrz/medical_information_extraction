@@ -4,28 +4,29 @@ import sys
 sys.path.append(os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
 
 from sklearn.cross_validation import LeaveOneOut
-from data import get_w2v_training_data_vectors
-from data import get_w2v_model
 from utils import utils
 import cPickle
 import logging
+import argparse
+import numpy as np
+import time
+from itertools import chain
+from utils.metrics import Metrics
+
+from data import get_w2v_training_data_vectors
+from data import get_w2v_model
 from last_tag_neural_network import Last_tag_neural_network_trainer
 from recurrent_net import Recurrent_net
 from single_Layer_Context_Window_Net import Single_Layer_Context_Window_Net
 from recurrent_Context_Window_net import Recurrent_Context_Window_net
-import argparse
-import numpy as np
+from hidden_Layer_Context_Window_Net import Hidden_Layer_Context_Window_Net
+from vector_Tag_Contex_Window_Net import Vector_Tag_Contex_Window_Net
 from trained_models import get_vector_tag_path
-from trained_models import get_cwnn_path
 from trained_models import get_last_tag_path
 from trained_models import get_rnn_path
 from trained_models import get_single_mlp_path
-import time
-from data.dataset import Dataset
-from itertools import chain
-from utils.metrics import Metrics
-from hidden_Layer_Context_Window_Net import Hidden_Layer_Context_Window_Net
-from vector_Tag_Contex_Window_Net import Vector_Tag_Contex_Window_Net
+from trained_models import get_cw_rnn_path
+from trained_models import get_cwnn_path
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -193,6 +194,7 @@ def determine_nnclass_and_parameters(args):
     if args['nn_name'] == 'hidden_cw':
         # one hidden layer with context window. Either minibatch or SGD.
         nn_class = Hidden_Layer_Context_Window_Net
+        get_output_path = get_cwnn_path
         add_tags = ['<PAD>']
     elif args['nn_name'] == 'vector_tag':
         nn_class = Vector_Tag_Contex_Window_Net
@@ -208,9 +210,8 @@ def determine_nnclass_and_parameters(args):
         get_output_path = get_rnn_path
         n_window = 1
     elif args['nn_name'] == 'cw_rnn':
-        #the RNN init function overwrites the n_window param and sets it to 1.
         nn_class = Recurrent_Context_Window_net
-        get_output_path = get_rnn_path
+        get_output_path = get_cw_rnn_path
         add_tags = ['<PAD>']
 
     return nn_class, hidden_f, out_f, add_tags, tag_dim, n_window, get_output_path
@@ -297,7 +298,7 @@ def use_testing_dataset(nn_class,
 
     return results, index2label
 
-if __name__=='__main__':
+if __name__ == '__main__':
     start = time.time()
 
     crf_training_data_filename = 'handoverdata.zip'
@@ -328,8 +329,8 @@ if __name__=='__main__':
                                                    get_output_path,
                                                    **args)
 
-    cPickle.dump(results, open('prediction_results.p','wb'))
-    cPickle.dump(index2label, open('index2labels.p','wb'))
+    cPickle.dump(results, open(get_output_path('prediction_results.p'),'wb'))
+    cPickle.dump(index2label, open(get_output_path('index2labels.p'),'wb'))
 
     y_true = list(chain(*[true for true, _ in results.values()]))
     y_pred = list(chain(*[pred for _, pred in results.values()]))
