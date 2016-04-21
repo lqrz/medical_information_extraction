@@ -5,22 +5,25 @@ sys.path.append(os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(
 
 import sklearn_crfsuite
 import logging
-from data.dataset import Dataset
 from sklearn.cross_validation import LeaveOneOut
 import numpy as np
 from joblib import load, dump
 import re
-from data import get_w2v_model, get_w2v_training_data_vectors
 from collections import defaultdict
 from functools import wraps
 import argparse
 import cPickle as pickle
 from collections import OrderedDict
-from utils import utils
 from itertools import chain
+
+from utils import utils
+from utils.metrics import Metrics
 from trained_models import get_pycrf_customfeats_folder, get_pycrf_originalfeats_folder
 from trained_models import get_kmeans_path, get_lda_path
+from data.dataset import Dataset
 from data import get_google_knowled_graph_cache
+from data import get_w2v_model
+from data import get_w2v_training_data_vectors
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -876,10 +879,10 @@ class CRF:
         flat_y_test = [tag for tag in chain(*y_test)]
         flat_predictions = [tag for tag in chain(*predictions)]
 
-        accuracy = utils.Metrics.compute_accuracy_score(flat_y_test, flat_predictions)
-        precision = utils.Metrics.compute_precision_score(flat_y_test, flat_predictions, average='micro')
-        recall = utils.Metrics.compute_recall_score(flat_y_test, flat_predictions, average='micro')
-        f1_score = utils.Metrics.compute_f1_score(flat_y_test, flat_predictions, average='micro')
+        accuracy = Metrics.compute_accuracy_score(flat_y_test, flat_predictions)
+        precision = Metrics.compute_precision_score(flat_y_test, flat_predictions, average='micro')
+        recall = Metrics.compute_recall_score(flat_y_test, flat_predictions, average='micro')
+        f1_score = Metrics.compute_f1_score(flat_y_test, flat_predictions, average='micro')
 
         # return predicted_tags, accuracy, precision, recall, f1_score
         return predictions, accuracy, precision, recall, f1_score
