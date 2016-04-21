@@ -12,6 +12,7 @@ import logging
 from last_tag_neural_network import Last_tag_neural_network_trainer
 from recurrent_net import Recurrent_net
 from single_Layer_Context_Window_Net import Single_Layer_Context_Window_Net
+from recurrent_Context_Window_net import Recurrent_Context_Window_net
 import argparse
 import numpy as np
 from trained_models import get_vector_tag_path
@@ -34,7 +35,7 @@ np.random.seed(1234)
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Neural net trainer')
     parser.add_argument('--net', type=str, action='store', required=True,
-                        choices=['single_cw','hidden_cw','vector_tag','last_tag','rnn'], help='NNet type')
+                        choices=['single_cw','hidden_cw','vector_tag','last_tag','rnn', 'cw_rnn'], help='NNet type')
     parser.add_argument('--window', type=int, action='store', required=True,
                         help='Context window size. 1 for RNN')
     parser.add_argument('--epochs', type=int, action='store', required=True,
@@ -48,6 +49,9 @@ def parse_arguments():
     parser.add_argument('--gradmeans', action='store_true', default=False)
     parser.add_argument('--w2vvectorscache', action='store', type=str, required=True)
     parser.add_argument('--w2vmodel', action='store', type=str, default=None)
+    parser.add_argument('--bidirectional', action='store_true', default=False)
+    parser.add_argument('--sharedparams', action='store_true', default=False)
+    parser.add_argument('--plot', action='store_true', default=False)
 
     #parse arguments
     arguments = parser.parse_args()
@@ -65,6 +69,9 @@ def parse_arguments():
     args['use_grad_means'] = arguments.gradmeans
     args['w2v_vectors_cache'] = arguments.w2vvectorscache
     args['w2v_model_name'] = arguments.w2vmodel
+    args['bidirectional'] = arguments.bidirectional
+    args['shared_params'] = arguments.sharedparams
+    args['plot'] = arguments.plot
 
     return args
 
@@ -200,9 +207,13 @@ def determine_nnclass_and_parameters(args):
         nn_class = Recurrent_net
         get_output_path = get_rnn_path
         n_window = 1
+    elif args['nn_name'] == 'cw_rnn':
+        #the RNN init function overwrites the n_window param and sets it to 1.
+        nn_class = Recurrent_Context_Window_net
+        get_output_path = get_rnn_path
         add_tags = ['<PAD>']
 
-    return nn_class, hidden_f, out_f, add_tags, tag_dim, n_window
+    return nn_class, hidden_f, out_f, add_tags, tag_dim, n_window, get_output_path
 
 def determine_key_indexes(label2index, word2index):
     pad_tag = None
@@ -232,6 +243,7 @@ def use_testing_dataset(nn_class,
                         w2v_dims,
                         add_tags,
                         tag_dim,
+                        get_output_path,
                         max_epochs=None,
                         minibatch_size=None,
                         regularization=None,
@@ -269,7 +281,8 @@ def use_testing_dataset(nn_class,
         'pad_tag': pad_tag,
         'unk_tag': unk_tag,
         'pad_word': pad_word,
-        'tag_dim': tag_dim
+        'tag_dim': tag_dim,
+        'get_output_path': get_output_path
     }
 
     nn_trainer = nn_class(**params)
@@ -278,7 +291,7 @@ def use_testing_dataset(nn_class,
     nn_trainer.train(learning_rate=.01, batch_size=minibatch_size, max_epochs=max_epochs, save_params=False, **kwargs)
 
     logger.info('Predicting')
-    flat_true, flat_predictions = nn_trainer.predict()
+    flat_true, flat_predictions = nn_trainer.predict(**kwargs)
 
     results[0] = (flat_true, flat_predictions)
 
@@ -296,7 +309,7 @@ if __name__=='__main__':
 
     w2v_vectors, w2v_model, w2v_dims = load_w2v_model_and_vectors_cache(args)
 
-    nn_class, hidden_f, out_f, add_tags, tag_dim, n_window = determine_nnclass_and_parameters(args)
+    nn_class, hidden_f, out_f, add_tags, tag_dim, n_window, get_output_path = determine_nnclass_and_parameters(args)
 
     logger.info('Using Neural class: %s with window size: %d for epochs: %d' % (args['nn_name'],n_window,args['max_epochs']))
 
@@ -304,15 +317,16 @@ if __name__=='__main__':
         results = perform_leave_one_out()
     else:
         results, index2label = use_testing_dataset(nn_class,
-                                      hidden_f,
-                                      out_f,
-                                      n_window,
-                                      w2v_model,
-                                      w2v_vectors,
-                                      w2v_dims,
-                                      add_tags,
-                                      tag_dim,
-                                      **args)
+                                                   hidden_f,
+                                                   out_f,
+                                                   n_window,
+                                                   w2v_model,
+                                                   w2v_vectors,
+                                                   w2v_dims,
+                                                   add_tags,
+                                                   tag_dim,
+                                                   get_output_path,
+                                                   **args)
 
     cPickle.dump(results, open('prediction_results.p','wb'))
     cPickle.dump(index2label, open('index2labels.p','wb'))
