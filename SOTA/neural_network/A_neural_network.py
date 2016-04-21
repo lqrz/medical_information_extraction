@@ -6,7 +6,6 @@ import numpy as np
 from utils import utils
 from itertools import chain
 from collections import OrderedDict
-import time
 
 class A_neural_network():
 
