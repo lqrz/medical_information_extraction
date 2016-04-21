@@ -3,6 +3,9 @@ import gensim
 import theano.tensor as T
 import numpy as np
 from sklearn import metrics
+import time
+import pandas
+from ggplot import *
 
 class Word2Vec:
 
@@ -65,6 +68,19 @@ class NeuralNetwork:
     @staticmethod
     def softmax_activation_function(x):
         return T.nnet.softmax(x)
+
+    @staticmethod
+    def plot(data, x_axis, x_label, y_label, title, output_filename=str(time.time())):
+        df = pandas.DataFrame(data)
+
+        p = ggplot(pandas.melt(df, id_vars=[x_axis]), aes(x=x_axis, y='value', color='variable')) + \
+            geom_line() + \
+            labs(x=x_label, y=y_label) + \
+            ggtitle(title)
+
+        ggsave(output_filename+'.png', p, dpi=100)
+
+        return True
 
 class Metrics:
 
