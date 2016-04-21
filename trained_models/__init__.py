@@ -12,6 +12,15 @@ def get_cwnn_path(file_name):
 
     return path
 
+def get_cw_rnn_path(file_name):
+
+    path = pkg_resources.resource_filename('trained_models', 'cw_rnn/'+file_name)
+    dir = os.path.dirname(path)
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+    return path
+
 def get_vector_tag_path(file_name):
 
     path = pkg_resources.resource_filename('trained_models', 'vector_tag/'+file_name)
