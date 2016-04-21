@@ -2,7 +2,6 @@ __author__ = 'root'
 import gensim
 import theano.tensor as T
 import numpy as np
-from sklearn import metrics
 import time
 import pandas
 from ggplot import *
