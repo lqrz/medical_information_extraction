@@ -302,7 +302,7 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
 
         return True
 
-    def predict(self):
+    def predict(self, **kwargs):
 
         self.x_test = self.x_test.astype(dtype=INT)
         self.y_test = self.y_test.astype(dtype=INT)
