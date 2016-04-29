@@ -1,7 +1,9 @@
 __author__ = 'lqrz'
+import os
+import sys
+sys.path.append(os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
 
 import argparse
-import numpy as np
 import logging
 import cPickle
 from itertools import chain
