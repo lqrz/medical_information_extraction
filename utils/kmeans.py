@@ -108,6 +108,6 @@ if __name__ == '__main__':
             str(args['use_valid']),
             'test',
             str(args['use_test'])
-        ])+'.p'
+        ])+'.model'
 
     dump(kmeans_model, get_kmeans_path(output_filename))
