@@ -1,0 +1,1 @@
+python ../SOTA/crf/crf_sklearn_crfsuite.py --customfeatures --kmeans --kmeansmodel clef_i2b2_300-100.model --w2vmodel GoogleNews-vectors-negative300.bin.gz --w2vvectorscache w2v_googlenews_representations.p --outaddid clef-i2b2-300 --cviters 0

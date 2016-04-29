@@ -1,0 +1,1 @@
+python ../SOTA/crf/crf_sklearn_crfsuite.py --customfeatures --kmeans --kmeansmodel kmeans_train_True_valid_True_test_False.model --w2vmodel GoogleNews-vectors-negative300.bin.gz --w2vvectorscache googlenews_representations_train_True_valid_True_test_False.p --zipfeatures

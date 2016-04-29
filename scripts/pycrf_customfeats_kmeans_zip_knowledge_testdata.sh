@@ -1,0 +1,1 @@
+python ../SOTA/crf/crf_sklearn_crfsuite.py --customfeatures --kmeans --kmeansmodel kmeans.model --w2vvectorscache w2v_googlenews_representations.p --cviters 0 --zipfeatures --knowledgegraph knowledge_graph_cache.p

@@ -1,0 +1,1 @@
+python ../SOTA/crf/crf_sklearn_crfsuite.py --customfeatures --w2vsimwords --kmeans --lda --w2vmodel GoogleNews-vectors-negative300.bin.gz --w2vvectorscache w2v_googlenews_representations.p --zipfeatures --cviters 0
