@@ -75,10 +75,17 @@ def get_representations(w2v_model, words):
 
     return representations
 
+def check_args_consistency(args):
+    if not args['use_train'] and not args['use_valid'] and not args['use_test']:
+        logger.error('Use at least one dataset.')
+        exit()
+
 if __name__ == '__main__':
 
     logger.info('...Parsing arguments')
     args = parse_arguments()
+
+    check_args_consistency(args)
 
     logger.info('...Loading w2v model')
     w2v_model = load_w2v_model(**args)
