@@ -139,6 +139,7 @@ class CRF:
         # nnet to predict tag and use as additional feature
         self.nnet_ensemble = nnet_ensemble
 
+        self.knowledge_graph = None
         if knowledge_graph:
             self.knowledge_graph = self.load_knowledge_graph_cache(knowledge_graph)
 
