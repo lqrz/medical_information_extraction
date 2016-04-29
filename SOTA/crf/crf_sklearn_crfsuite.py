@@ -139,7 +139,8 @@ class CRF:
         # nnet to predict tag and use as additional feature
         self.nnet_ensemble = nnet_ensemble
 
-        self.knowledge_graph = self.load_knowledge_graph_cache(knowledge_graph)
+        if knowledge_graph:
+            self.knowledge_graph = self.load_knowledge_graph_cache(knowledge_graph)
 
     def load_knowledge_graph_cache(self, path):
         return pickle.load(open(get_google_knowled_graph_cache(path), 'rb'))
