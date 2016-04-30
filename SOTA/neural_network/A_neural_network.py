@@ -88,7 +88,7 @@ class A_neural_network():
         pass
 
     @classmethod
-    def get_data(cls, crf_training_data_filename, testing_data_filename=None, add_tags=[], x_idx=None, n_window=None):
+    def get_data(cls, crf_training_data_filename, testing_data_filename=None, add_words=[], add_tags=[], x_idx=None, n_window=None):
         """
         this is at sentence level.
         gets the training data and organizes it into sentences per document.
@@ -107,7 +107,7 @@ class A_neural_network():
         document_sentence_tags.extend(train_document_sentence_tags.values())
         document_sentence_tags.extend(test_document_sentence_tags.values())
 
-        label2index, index2label, word2index, index2word = cls._construct_indexes(add_tags,
+        label2index, index2label, word2index, index2word = cls._construct_indexes(add_words, add_tags,
                                                                                 document_sentence_words,
                                                                                 document_sentence_tags)
 
@@ -150,7 +150,7 @@ class A_neural_network():
         return test_document_sentence_tags, test_document_sentence_words, train_document_sentence_tags, train_document_sentence_words
 
     @classmethod
-    def _construct_indexes(cls, add_tags, document_sentence_words, document_sentence_tags):
+    def _construct_indexes(cls, add_words, add_tags, document_sentence_words, document_sentence_tags):
         #word indexes
         index2word = OrderedDict()
         word2index = OrderedDict()
@@ -167,10 +167,10 @@ class A_neural_network():
         for i, word in enumerate(unique_words):
             index2word[i] = word
             word2index[word] = i
-        if add_tags:
-            for i, tag in enumerate(add_tags):
-                word2index[tag] = len(unique_words) + i
-                index2word[len(unique_words) + i] = tag #for consistency purposes
+        if add_words:
+            for i, word in enumerate(add_words):
+                word2index[word] = len(unique_words) + i
+                index2word[len(unique_words) + i] = word #for consistency purposes
 
         for i, label in enumerate(unique_labels):
             index2label[i] = label
@@ -395,19 +395,28 @@ class A_neural_network():
 
         return True
 
-    def plot_penalties(self, l2_w1_list, l2_w2_list, l2_ww_fw_list, l2_ww_bw_list, actual_time):
+    def plot_penalties(self, l2_w1_list, l2_w2_list, l2_ww_fw_list=None, l2_ww_bw_list=None, actual_time=None):
 
         assert l2_w1_list.__len__() == l2_w2_list.__len__()
-        assert l2_w1_list.__len__() == l2_ww_fw_list.__len__()
-        assert l2_w1_list.__len__() == l2_ww_bw_list.__len__()
 
-        data = {
-            'epoch': np.arange(l2_w1_list.__len__(), dtype='int'),
-            'L2_W1[0]': l2_w1_list,
-            'L2_W2_sum': l2_w2_list,
-            'L2_WW_Fw_sum': l2_ww_fw_list,
-            'L2_WW_Bw_sum': l2_ww_bw_list
-        }
+        if l2_ww_fw_list or l2_ww_bw_list:
+            assert l2_w1_list.__len__() == l2_ww_fw_list.__len__()
+            assert l2_w1_list.__len__() == l2_ww_bw_list.__len__()
+
+            data = {
+                'epoch': np.arange(l2_w1_list.__len__(), dtype='int'),
+                'L2_W1[0]': l2_w1_list,
+                'L2_W2_sum': l2_w2_list,
+                'L2_WW_Fw_sum': l2_ww_fw_list,
+                'L2_WW_Bw_sum': l2_ww_bw_list
+            }
+        else:
+            data = {
+                'epoch': np.arange(l2_w1_list.__len__(), dtype='int'),
+                'L2_W1[0]': l2_w1_list,
+                'L2_W2_sum': l2_w2_list
+            }
+
         output_filename = self.get_output_path('training_L2_penalty_plot' + actual_time)
         utils.NeuralNetwork.plot(data, x_axis='epoch', x_label='Epochs', y_label='Penalty',
                                  title='Training penalties evolution',
