@@ -5,13 +5,15 @@ import numpy as np
 import theano
 import theano.tensor as T
 import cPickle
-from trained_models import get_cwnn_path
 from collections import OrderedDict
-from utils import utils
 import time
-from A_neural_network import A_neural_network
 
-INT = 'int32'
+from A_neural_network import A_neural_network
+from trained_models import get_cwnn_path
+from utils import utils
+from utils.metrics import Metrics
+
+INT = 'int64'
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -21,11 +23,7 @@ logger = logging.getLogger(__name__)
 # theano.config.warn_float64='raise'
 # theano.config.floatX='float64'
 
-def transform_crf_training_data(dataset):
-    return [(token['word'],token['tag']) for archive in dataset.values() for token in archive.values()]
-
 class Vector_Tag_Contex_Window_Net(A_neural_network):
-
 
     def __init__(self,
                  hidden_activation_f,
@@ -44,11 +42,11 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
 
         self.regularization = regularization
 
-        self.tag_dim = np.int32(tag_dim)
-        self.pad_tag = np.int32(pad_tag)
-        self.unk_tag = np.int32(unk_tag)
+        self.tag_dim = tag_dim
+        self.pad_tag = pad_tag
+        self.unk_tag = unk_tag
 
-        self.pad_word = np.int32(pad_word)
+        self.pad_word = pad_word
 
         self.prev_preds = None
 
@@ -96,7 +94,7 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
     #     return [pred,result]
 
     def train_with_sgd(self, learning_rate=0.01, max_epochs=100,
-              alpha_L1_reg=0.001, alpha_L2_reg=0.01, save_params=False, use_grad_means=False, **kwargs):
+              alpha_L1_reg=0.001, alpha_L2_reg=0.01, save_params=False, use_grad_means=False, plot=False, **kwargs):
 
         logger.info('Mean gradients: '+str(use_grad_means))
 
@@ -119,7 +117,7 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
         b1 = theano.shared(value=np.zeros((self.n_window*(self.n_emb+self.tag_dim))).astype(dtype=theano.config.floatX), name='b1', borrow=True)
         b2 = theano.shared(value=np.zeros(self.n_out).astype(dtype=theano.config.floatX), name='b2', borrow=True)
 
-        n_tags = self.n_out + 2
+        n_tags = self.n_out
         # #include tag structure
         wt = theano.shared(value=utils.NeuralNetwork.initialize_weights(n_in=n_tags,n_out=self.tag_dim,function='tanh').astype(
             dtype=theano.config.floatX), name='wt', borrow=True)
@@ -165,7 +163,11 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
             L1 = T.sum(abs(w1)) + T.sum(abs(w2))
 
             # symbolic Theano variable that represents the squared L2 term
-            L2 = T.sum(w1[idxs] ** 2) + T.sum(w2 ** 2) + T.sum(wt[prev_preds] ** 2)
+            L2_w1 = T.sum(w1[idxs] ** 2)
+            L2_w2 = T.sum(w2 ** 2)
+            L2_wt = T.sum(wt[prev_preds] ** 2)
+
+            L2 = L2_w1 + L2_w2 + L2_wt
 
         if self.regularization:
             # TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
@@ -301,13 +303,44 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
                                 givens={
                                     idxs: train_x[train_index],
                                     y: train_y[train_index:train_index+1],
-                                    n_tokens: np.int32(1)
+                                    n_tokens: 1
                                 })
+
+        train_predict = theano.function(inputs=[idxs, y],
+                                        outputs=[cost, errors, y_predictions],
+                                        updates=[],
+                                        givens={
+                                            n_tokens: 1
+                                        })
+
+        if self.regularization:
+            train_l2_penalty = theano.function(inputs=[train_index],
+                                               outputs=[L2_w1, L2_w2, L2_wt],
+                                               givens={
+                                                   idxs: train_x[train_index]
+                                               })
+
+        flat_true = self.y_test
+
+        # plotting purposes
+        train_costs_list = []
+        train_errors_list = []
+        test_costs_list = []
+        test_errors_list = []
+        precision_list = []
+        recall_list = []
+        f1_score_list = []
+        l2_w1_list = []
+        l2_w2_list = []
+        l2_wt_list = []
 
         for epoch_index in range(max_epochs):
             start = time.time()
             epoch_cost = 0
             epoch_errors = 0
+            epoch_l2_w1 = 0
+            epoch_l2_w2 = 0
+            epoch_l2_wt = 0
             # predicted_tags = np.array(np.concatenate(([self.pad_tag]*(n_window/2),[self.unk_tag]*((n_window/2)+1))), dtype=INT)
             for i in range(self.n_samples):
                 # train_x_sample = train_x.get_value()[i]
@@ -319,8 +352,51 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
                 # predicted_tags = np.concatenate((predicted_tags[1:],[self.unk_tag]))
                 epoch_cost += cost_output
                 epoch_errors += errors_output
+
+                if self.regularization:
+                    l2_w1, l2_w2, l2_wt = train_l2_penalty(i)
+
+                if i==0:
+                    epoch_l2_w1 = l2_w1
+                epoch_l2_w2 += l2_w2
+                epoch_l2_wt += l2_wt
+
+            test_error = 0
+            test_cost = 0
+            predictions = []
+            for x_sample, y_sample in zip(self.x_test, self.y_test):
+                cost_output, errors_output, pred = train_predict(x_sample, [y_sample])
+                test_cost += cost_output
+                test_error += errors_output
+                predictions.append(np.asscalar(pred))
+
+            train_costs_list.append(epoch_cost)
+            train_errors_list.append(epoch_errors)
+            test_costs_list.append(test_cost)
+            test_errors_list.append(test_error)
+            l2_w1_list.append(epoch_l2_w1)
+            l2_w2_list.append(epoch_l2_w2)
+            l2_wt_list.append(epoch_l2_wt)
+
+            results = Metrics.compute_all_metrics(y_true=flat_true, y_pred=predictions, average='macro')
+            f1_score = results['f1_score']
+            precision = results['precision']
+            recall = results['recall']
+            precision_list.append(precision)
+            recall_list.append(recall)
+            f1_score_list.append(f1_score)
+
             end = time.time()
-            logger.info('Epoch %d Cost: %f Errors: %d Took: %f' % (epoch_index+1, epoch_cost, epoch_errors, end-start))
+            logger.info('Epoch %d Train_cost: %f Train_errors: %d Test_cost: %f Test_errors: %d F1-score: %f Took: %f'
+                        % (epoch_index + 1, epoch_cost, epoch_errors, test_cost, test_error, f1_score, end - start))
+
+        if plot:
+            actual_time = str(time.time())
+            self.plot_training_cost_and_error(train_costs_list, train_errors_list, test_costs_list,
+                                              test_errors_list,
+                                              actual_time)
+            self.plot_scores(precision_list, recall_list, f1_score_list, actual_time)
+            self.plot_penalties(l2_w1_list, l2_w2_list, actual_time=actual_time)
 
         if save_params:
             logger.info('Saving parameters to File system')
@@ -337,23 +413,23 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
 
         return True
 
-    def predict(self):
+    def predict(self, **kwargs):
 
-        self.x_valid = self.x_valid.astype(dtype='int32')
-        self.y_valid = self.y_valid.astype(dtype='int32')
+        self.x_test = self.x_test.astype(dtype=INT)
+        self.y_test = self.y_test.astype(dtype=INT)
 
-        test_x = theano.shared(value=self.x_valid.astype(dtype=INT), name='test_x', borrow=True)
-        test_y = theano.shared(value=self.y_valid.astype(dtype=INT), name='test_y', borrow=True)
+        test_x = theano.shared(value=self.x_test.astype(dtype=INT), name='test_x', borrow=True)
+        test_y = theano.shared(value=self.y_test.astype(dtype=INT), name='test_y', borrow=True)
 
         # y = T.vector(name='test_y', dtype='int64')
 
-        valid_idxs = T.vector(name="valid_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
+        test_idxs = T.vector(name="test_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
         # n_emb = self.pretrained_embeddings.shape[1] #embeddings dimension
         # n_tokens = self.x_train.shape[0]    #tokens in sentence
         # n_tokens = valid_idxs.shape[0]    #tokens in sentence
         # n_window = self.x_train.shape[1]    #context window size    #TODO: replace with self.n_win
 
-        w_x = self.params['w1'][valid_idxs]
+        w_x = self.params['w1'][test_idxs]
         # w_x2_ix = w_x2[valid_idxs]
         # w_res = w_x2_ix.shape
         # w_x_res = w_x.reshape((self.n_tokens, self.n_emb*self.n_window))
@@ -364,7 +440,7 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
         initial_tags = T.vector(name='initial_tags', dtype=INT)
         n_tokens = T.scalar(name='n_tokens', dtype=INT)
         test_index = T.scalar(name='test_index', dtype=INT)
-        test_idxs = T.vector(name='test_idxs', dtype=INT)
+        # test_idxs = T.vector(name='test_idxs', dtype=INT)
 
         self.prev_preds = theano.shared(value=np.array([self.unk_tag]*self.n_window, dtype=INT),
                                    name='previous_predictions', borrow=True)
@@ -385,7 +461,7 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
                                 updates=[],
                                 givens={
                                     test_idxs: test_x[test_index],
-                                    n_tokens: np.int32(1)
+                                    n_tokens: 1
                                 })
 
         predictions = []
@@ -403,7 +479,7 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
         # predictions = perform_prediction(self.x_test)
         # predictions = perform_prediction(valid_x.get_value())
 
-        return self.y_valid, predictions
+        return self.y_test, predictions, self.y_test, predictions
 
     def to_string(self):
         return 'Ensemble single layer MLP NN with no tags.'
