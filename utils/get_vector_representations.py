@@ -48,16 +48,15 @@ def get_words(training=False, validation=False, testing=False):
     words = []
 
     if training:
-        training_data_filename = 'handoverdata.zip'
-        _, sentences, _, _ = Dataset.get_crf_training_data_by_sentence(training_data_filename)
+        _, sentences, _, _ = Dataset.get_clef_training_dataset()
         words.extend(list(chain(*sentences.values())))
 
     if validation:
-        validation_data_filename = 'handover-set2.zip'
-        _, sentences, _, _ = \
-            Dataset.get_crf_training_data_by_sentence(validation_data_filename,
-                                                      Dataset.TESTING_FEATURES_PATH + 'test',
-                                                      Dataset.TESTING_FEATURES_EXTENSION)
+        _, sentences, _, _ = Dataset.get_clef_validation_dataset()
+        words.extend(list(chain(*sentences.values())))
+
+    if testing:
+        _, sentences, _, _ = Dataset.get_clef_testing_dataset()
         words.extend(list(chain(*sentences.values())))
 
     return set(words)
