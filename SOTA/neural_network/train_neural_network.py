@@ -27,6 +27,8 @@ from trained_models import get_rnn_path
 from trained_models import get_single_mlp_path
 from trained_models import get_cw_rnn_path
 from trained_models import get_cwnn_path
+from data import get_param
+from utils.plot_confusion_matrix import plot_confusion_matrix
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -53,6 +55,7 @@ def parse_arguments():
     parser.add_argument('--bidirectional', action='store_true', default=False)
     parser.add_argument('--sharedparams', action='store_true', default=False)
     parser.add_argument('--plot', action='store_true', default=False)
+    parser.add_argument('--tags', action='store', type=str, default=None)
 
     #parse arguments
     arguments = parser.parse_args()
@@ -73,6 +76,7 @@ def parse_arguments():
     args['bidirectional'] = arguments.bidirectional
     args['shared_params'] = arguments.sharedparams
     args['plot'] = arguments.plot
+    args['tags'] = arguments.tags
 
     return args
 
@@ -181,26 +185,28 @@ def determine_nnclass_and_parameters(args):
 
     hidden_f = utils.NeuralNetwork.tanh_activation_function
     out_f = utils.NeuralNetwork.softmax_activation_function
+    add_words = []
     add_tags = []
     tag_dim = None
     n_window = args['window_size']
     nn_class = None
+    get_output_path = None
 
     if args['nn_name'] == 'single_cw':
         nn_class = Single_Layer_Context_Window_Net
         hidden_f = None #no hidden layer in the single MLP.
         get_output_path = get_single_mlp_path
-        add_tags = ['<PAD>']
+        add_words = ['<PAD>']
     if args['nn_name'] == 'hidden_cw':
         # one hidden layer with context window. Either minibatch or SGD.
         nn_class = Hidden_Layer_Context_Window_Net
         get_output_path = get_cwnn_path
-        add_tags = ['<PAD>']
+        add_words = ['<PAD>']
     elif args['nn_name'] == 'vector_tag':
         nn_class = Vector_Tag_Contex_Window_Net
         get_output_path = get_vector_tag_path
         tag_dim = args['tagdim']
-        add_tags = ['<PAD>','<UNK>']
+        add_tags = ['<PAD>', '<UNK>']
     elif args['nn_name'] == 'last_tag':
         nn_class = Last_tag_neural_network_trainer
         get_output_path = get_last_tag_path
@@ -212,9 +218,9 @@ def determine_nnclass_and_parameters(args):
     elif args['nn_name'] == 'cw_rnn':
         nn_class = Recurrent_Context_Window_net
         get_output_path = get_cw_rnn_path
-        add_tags = ['<PAD>']
+        add_words = ['<PAD>']
 
-    return nn_class, hidden_f, out_f, add_tags, tag_dim, n_window, get_output_path
+    return nn_class, hidden_f, out_f, add_words, add_tags, tag_dim, n_window, get_output_path
 
 def determine_key_indexes(label2index, word2index):
     pad_tag = None
@@ -235,6 +241,57 @@ def determine_key_indexes(label2index, word2index):
 
     return pad_tag, unk_tag, pad_word
 
+def filter_tags_to_predict(x_train, y_train, x_test, y_test, label2index, index2label, tags):
+
+    default_tag = '<OTHER>'
+
+    y_train_labels = []
+    y_test_labels = []
+
+    #recurrent nets use lists of lists.
+    if isinstance(y_train[0], list):
+        for i, sent in enumerate(y_train):
+            y_train_labels.append(map(lambda x: index2label[x], sent))
+        for i, sent in enumerate(y_test):
+            y_test_labels.append(map(lambda x: index2label[x], sent))
+    else:
+        y_train_labels = map(lambda x: index2label[x], y_train)
+        y_test_labels = map(lambda x: index2label[x], y_test)
+
+    #recreate indexes so they are continuous and start from 0.
+    new_index2label = dict()
+    new_label2index = dict()
+    for i,tag in enumerate(tags):
+        new_label2index[tag] = i
+        new_index2label[i] = tag
+
+    #add the default tag
+    new_label2index[default_tag] = new_index2label.__len__()
+    new_index2label[new_index2label.__len__()] = default_tag
+
+    # tags_indexes = map(lambda x: label2index[x], tags)
+
+    def replace_tag(tag):
+        new_index = None
+        try:
+            new_index = new_label2index[tag]
+        except KeyError:
+            new_index = new_label2index[default_tag]
+
+        return new_index
+
+    if isinstance(y_train[0], list):
+        for i, sent in enumerate(y_train_labels):
+            y_train[i] = map(replace_tag, sent)
+        for i, sent in enumerate(y_test_labels):
+            y_test[i] = map(replace_tag, sent)
+    else:
+        y_train = map(replace_tag, y_train_labels)
+        y_test = map(replace_tag, y_test_labels)
+
+    #im returning the params, but python is gonna change the outer param anyways.
+    return y_train, y_test, new_label2index, new_index2label
+
 def use_testing_dataset(nn_class,
                         hidden_f,
                         out_f,
@@ -242,12 +299,14 @@ def use_testing_dataset(nn_class,
                         w2v_model,
                         w2v_vectors,
                         w2v_dims,
+                        add_words,
                         add_tags,
                         tag_dim,
                         get_output_path,
                         max_epochs=None,
                         minibatch_size=None,
                         regularization=None,
+                        tags=None,
                         **kwargs
                         ):
 
@@ -257,12 +316,20 @@ def use_testing_dataset(nn_class,
 
     logger.info('Loading CRF training data')
 
-    x_train, y_train, x_test, y_test, word2index, index2word, label2index, index2label = nn_class.get_data(crf_training_data_filename, test_data_filename,
-                                                                add_tags, x_idx=None, n_window=n_window)
-    n_out = len(label2index.keys())
+    x_train, y_train, x_test, y_test, word2index, index2word, label2index, index2label = \
+        nn_class.get_data(crf_training_data_filename, test_data_filename, add_words, add_tags,
+                          x_idx=None, n_window=n_window)
+
     unique_words = word2index.keys()
 
     pretrained_embeddings = nn_class.initialize_w(w2v_dims, unique_words, w2v_vectors=w2v_vectors, w2v_model=w2v_model)
+
+    if tags:
+        tags = get_param(tags)
+        y_train, y_test, label2index, index2label = \
+            filter_tags_to_predict(x_train, y_train, x_test, y_test, label2index, index2label, tags)
+
+    n_out = len(label2index.keys())
 
     logger.info('Instantiating Neural network')
 
@@ -292,7 +359,12 @@ def use_testing_dataset(nn_class,
     nn_trainer.train(learning_rate=.01, batch_size=minibatch_size, max_epochs=max_epochs, save_params=False, **kwargs)
 
     logger.info('Predicting')
-    flat_true, flat_predictions = nn_trainer.predict(**kwargs)
+    flat_true, flat_predictions, _, _ = nn_trainer.predict(**kwargs)
+
+    assert flat_true.__len__() == flat_predictions.__len__()
+
+    flat_true = map(lambda x: index2label[x], flat_true)
+    flat_predictions = map(lambda x: index2label[x], flat_predictions)
 
     results[0] = (flat_true, flat_predictions)
 
@@ -310,7 +382,7 @@ if __name__ == '__main__':
 
     w2v_vectors, w2v_model, w2v_dims = load_w2v_model_and_vectors_cache(args)
 
-    nn_class, hidden_f, out_f, add_tags, tag_dim, n_window, get_output_path = determine_nnclass_and_parameters(args)
+    nn_class, hidden_f, out_f, add_words, add_tags, tag_dim, n_window, get_output_path = determine_nnclass_and_parameters(args)
 
     logger.info('Using Neural class: %s with window size: %d for epochs: %d' % (args['nn_name'],n_window,args['max_epochs']))
 
@@ -324,6 +396,7 @@ if __name__ == '__main__':
                                                    w2v_model,
                                                    w2v_vectors,
                                                    w2v_dims,
+                                                   add_words,
                                                    add_tags,
                                                    tag_dim,
                                                    get_output_path,
@@ -336,6 +409,10 @@ if __name__ == '__main__':
     y_pred = list(chain(*[pred for _, pred in results.values()]))
     results_micro = Metrics.compute_all_metrics(y_true, y_pred, average='micro')
     results_macro = Metrics.compute_all_metrics(y_true, y_pred, average='macro')
+
+    labels_list = [label for label in index2label.values()]
+    cm = Metrics.compute_confusion_matrix(y_true, y_pred, labels=labels_list)
+    plot_confusion_matrix(cm, labels=labels_list, output_filename=get_output_path('confusion_matrix.png'))
 
     print 'MICRO results'
     print results_micro
