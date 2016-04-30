@@ -5,10 +5,12 @@ import numpy as np
 import theano
 import theano.tensor as T
 import cPickle
-from trained_models import get_cwnn_path
 from collections import OrderedDict
-from A_neural_network import A_neural_network
 import time
+
+from trained_models import get_cwnn_path
+from A_neural_network import A_neural_network
+from utils.metrics import Metrics
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -68,7 +70,7 @@ class Single_Layer_Context_Window_Net(A_neural_network):
         idxs = T.vector(name="idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
 
         self.n_emb = self.pretrained_embeddings.shape[1] #embeddings dimension
-        n_tokens = T.scalar(name='n_tokens', dtype='int32')    #tokens in sentence
+        n_tokens = T.scalar(name='n_tokens', dtype=INT)    #tokens in sentence
 
         w1 = theano.shared(value=np.array(self.pretrained_embeddings).astype(dtype=theano.config.floatX),
                            name='w1', borrow=True)
@@ -157,9 +159,18 @@ class Single_Layer_Context_Window_Net(A_neural_network):
                                 updates=updates,
                                 givens={
                                     idxs: train_x[train_idx],
-                                    n_tokens: np.int32(1)
+                                    n_tokens: 1
                                 })
         # theano.printing.debugprint(train)
+
+        train_predict = theano.function(inputs=[idxs, y],
+                                        outputs=[cost, errors, y_predictions],
+                                        updates=[],
+                                        givens={
+                                            n_tokens: 1
+                                        })
+
+        flat_true = self.y_test
 
         for epoch_index in range(max_epochs):
             start = time.time()
@@ -170,8 +181,24 @@ class Single_Layer_Context_Window_Net(A_neural_network):
                 cost_output, errors_output = train(i,[train_y.get_value()[i]])
                 epoch_cost += cost_output
                 epoch_errors += errors_output
+
+            test_error = 0
+            test_cost = 0
+            predictions = []
+            for x_sample, y_sample in zip(self.x_test, self.y_test):
+                cost_output, errors_output, pred = train_predict(x_sample, [y_sample])
+                test_cost += cost_output
+                test_error += errors_output
+                predictions.append(np.asscalar(pred))
+
+            results = Metrics.compute_all_metrics(y_true=flat_true, y_pred=predictions, average='macro')
+            f1_score = results['f1_score']
+            precision = results['precision']
+            recall = results['recall']
+
             end = time.time()
-            logger.info('Epoch %d Cost: %f Errors: %d Took: %f' % (epoch_index+1, epoch_cost, epoch_errors, end-start))
+            logger.info('Epoch %d Train_cost: %f Train_errors: %d Test_cost: %f Test_errors: %d F1-score: %f Took: %f'
+                        % (epoch_index+1, epoch_cost, epoch_errors, test_cost, test_error, f1_score, end-start))
 
         if save_params:
             logger.info('Saving parameters to File system')
@@ -286,21 +313,16 @@ class Single_Layer_Context_Window_Net(A_neural_network):
 
         return True
 
-    def predict(self):
+    def predict(self, **kwargs):
 
-        self.x_valid = self.x_valid.astype(dtype='int32')
-        self.y_valid = self.y_valid.astype(dtype='int32')
+        self.x_test = self.x_test.astype(dtype=INT)
+        self.y_test = self.y_test.astype(dtype=INT)
 
-        # test_x = theano.shared(value=self.x_valid.astype(dtype=INT), name='test_x', borrow=True)
-        # test_y = theano.shared(value=self.y_valid.astype(dtype=INT), name='test_y', borrow=True)
+        y = T.vector(name='test_y', dtype=INT)
 
-        y = T.vector(name='valid_y', dtype='int32')
+        idxs = T.matrix(name="test_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
 
-        idxs = T.matrix(name="valid_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
-        # n_emb = self.pretrained_embeddings.shape[1] #embeddings dimension
-        # n_tokens = self.x_train.shape[0]    #tokens in sentence
         n_tokens = idxs.shape[0]    #tokens in sentence
-        # n_window = self.x_train.shape[1]    #context window size    #TODO: replace with self.n_win
 
         w_x = self.params['w1'][idxs]
 
@@ -316,10 +338,10 @@ class Single_Layer_Context_Window_Net(A_neural_network):
                                 updates=[],
                                 givens=[])
 
-        predictions = perform_prediction(self.x_valid)
+        predictions = perform_prediction(self.x_test)
         # predictions = perform_prediction(valid_x.get_value())
 
-        return self.y_valid, predictions[-1]
+        return self.y_test, predictions[-1], self.y_test, predictions[-1]
 
     def to_string(self):
         return 'Single layer context window neural network with no tags.'
