@@ -5,11 +5,14 @@ import numpy as np
 import theano
 import theano.tensor as T
 import cPickle
-from trained_models import get_cwnn_path
 from collections import OrderedDict
 from utils import utils
 import time
+from itertools import chain
+
 from A_neural_network import A_neural_network
+from trained_models import get_cwnn_path
+from utils.metrics import Metrics
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -65,10 +68,12 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
         return self.out_activation_f(T.dot(h, weight_2)+bias_2)
 
     def train_with_sgd(self, learning_rate=0.01, max_epochs=100,
-              alpha_L1_reg=0.001, alpha_L2_reg=0.01, save_params=False, use_scan=False, **kwargs):
+              alpha_L1_reg=0.001, alpha_L2_reg=0.01, save_params=False, use_scan=False, plot=False, **kwargs):
 
         train_x = theano.shared(value=np.array(self.x_train, dtype=INT), name='train_x', borrow=True)
         train_y = theano.shared(value=np.array(self.y_train, dtype=INT), name='train_y', borrow=True)
+
+        test_x = theano.shared(value=np.array(self.x_test, dtype=INT), name='test_x', borrow=True)
 
         y = T.vector(name='y', dtype=INT)
 
@@ -96,10 +101,12 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
 
         if self.regularization:
             # symbolic Theano variable that represents the L1 regularization term
-            L1 = T.sum(abs(w1)) + T.sum(abs(w2))
+            # L1 = T.sum(abs(w1)) + T.sum(abs(w2))
 
             # symbolic Theano variable that represents the squared L2 term
-            L2 = T.sum(w1[idxs] ** 2) + T.sum(w2 ** 2)
+            L2_w1 = T.sum(w1[idxs] ** 2)
+            L2_w2 = T.sum(w2 ** 2)
+            L2 = L2_w1 + L2_w2
 
         if use_scan:
             #TODO: DO I NEED THE SCAN AT ALL: NO! Im leaving it for reference only.
@@ -112,7 +119,7 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
 
             if self.regularization:
                 # TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
-                cost = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y)) + alpha_L1_reg*L1 + alpha_L2_reg*L2
+                cost = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y)) + alpha_L2_reg*L2
             else:
                 cost = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y))
 
@@ -128,6 +135,10 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
                 cost = T.mean(T.nnet.categorical_crossentropy(out, y))
 
             y_predictions = T.argmax(out, axis=1)
+
+        cost_prediction = T.mean(T.nnet.categorical_crossentropy(out, y)) + alpha_L2_reg*L2
+        # cost_prediction = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y))
+        # cost_prediction = alpha_L2_reg*L2
 
         errors = T.sum(T.neq(y_predictions,y))
 
@@ -172,21 +183,90 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
                                 })
         # theano.printing.debugprint(train)
 
+        train_predict = theano.function(inputs=[idxs, y],
+                                             outputs=[cost_prediction, errors, y_predictions],
+                                             updates=[],
+                                             givens={
+                                                 n_tokens: 1
+                                             })
+
+        if self.regularization:
+            train_l2_penalty = theano.function(inputs=[train_idx],
+                                               outputs=[L2_w1, L2_w2],
+                                               givens={
+                                                   idxs: train_x[train_idx]
+                                               })
+
+        flat_true = self.y_test
+
+        # plotting purposes
+        train_costs_list = []
+        train_errors_list = []
+        test_costs_list = []
+        test_errors_list = []
+        precision_list = []
+        recall_list = []
+        f1_score_list = []
+        l2_w1_list = []
+        l2_w2_list = []
+
         for epoch_index in range(max_epochs):
             start = time.time()
             epoch_cost = 0
             epoch_errors = 0
+            epoch_l2_w1 = 0
+            epoch_l2_w2 = 0
             for i in np.random.permutation(self.n_samples):
                 # error = train(self.x_train, self.y_train)
                 cost_output, errors_output = train(i,[train_y.get_value()[i]])
                 epoch_cost += cost_output
                 epoch_errors += errors_output
+                if self.regularization:
+                    l2_w1, l2_w2 = train_l2_penalty(i)
+
+                if i==0:
+                    epoch_l2_w1 = l2_w1
+                epoch_l2_w2 += l2_w2
+
+            test_error = 0
+            test_cost = 0
+            predictions = []
+            for x_sample, y_sample in zip(self.x_test, self.y_test):
+                cost_output, errors_output, pred = train_predict(x_sample, [y_sample])
+                test_cost += cost_output
+                test_error += errors_output
+                predictions.append(np.asscalar(pred))
+
+            train_costs_list.append(epoch_cost)
+            train_errors_list.append(epoch_errors)
+            test_costs_list.append(test_cost)
+            test_errors_list.append(test_error)
+            l2_w1_list.append(epoch_l2_w1)
+            l2_w2_list.append(epoch_l2_w2)
+
+            results = Metrics.compute_all_metrics(y_true=flat_true, y_pred=predictions, average='macro')
+            f1_score = results['f1_score']
+            precision = results['precision']
+            recall = results['recall']
+            precision_list.append(precision)
+            recall_list.append(recall)
+            f1_score_list.append(f1_score)
+
             end = time.time()
-            logger.info('Epoch %d Cost: %f Errors: %d Took: %f' % (epoch_index+1, epoch_cost, epoch_errors, end-start))
+            logger.info('Epoch %d Train_cost: %f Train_errors: %d Test_cost: %f Test_errors: %d F1-score: %f Took: %f'
+                        % (epoch_index+1, epoch_cost, epoch_errors, test_cost, test_error, f1_score, end-start))
 
         if save_params:
             logger.info('Saving parameters to File system')
             self.save_params()
+
+        if plot:
+            actual_time = str(time.time())
+            self.plot_training_cost_and_error(train_costs_list, train_errors_list, test_costs_list,
+                                              test_errors_list,
+                                              actual_time)
+            self.plot_scores(precision_list, recall_list, f1_score_list, actual_time)
+            self.plot_penalties(l2_w1_list, l2_w2_list, actual_time=actual_time)
 
         return True
 
@@ -335,7 +415,7 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
         predictions = perform_prediction(self.x_test)
         # predictions = perform_prediction(valid_x.get_value())
 
-        return self.y_test, predictions[-1]
+        return self.y_test, predictions[-1], self.y_test, predictions[-1]
 
     def to_string(self):
         return 'One hidden layer context window neural network with no tags.'
