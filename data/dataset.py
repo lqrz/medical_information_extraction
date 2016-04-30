@@ -18,6 +18,9 @@ class Dataset:
     TRAINING_SENTENCES_PATH = 'handoverdata/101writtenfreetextreports/'
     TRAINING_SENTENCES_EXTENSION = '.txt'
 
+    CLEF_TESTING_PATH = 'CRF_noLabel/'
+    CLEF_TESTING_EXTENSION = '.xml.data'
+
     I2B2_PATH = 'patients_separated/'
     I2B2_EXTENSION = '.txt'
 
@@ -187,7 +190,10 @@ class Dataset:
         return training_data, sentences
 
     @staticmethod
-    def get_crf_training_data_by_sentence(file_name, path=CRF_FEATURES_PATH+'output', extension=CRF_FEATURES_EXTENSION):
+    def get_crf_training_data_by_sentence(file_name, path=CRF_FEATURES_PATH+'output',
+                                          extension=CRF_FEATURES_EXTENSION,
+                                          separator='\t',
+                                          include_tag=True):
         """
         returns a dictionary indexed in the following way:
             -doc_nr
@@ -224,10 +230,14 @@ class Dataset:
                         tag_sentence = []
                     continue
                 dict_word = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
-                line = line.strip().split('\t')
+                line = line.strip().split(separator)
                 dict_word['word'] = line[0]
-                dict_word['features'] = line[1:-2]
-                dict_word['tag'] = line[-2] # -2 is the true label, -1 is their predicted tag
+                if include_tag:
+                    dict_word['features'] = line[1:-2]
+                    dict_word['tag'] = line[-2] # -2 is the true label, -1 is their predicted tag
+                else:
+                    dict_word['features'] = line[1:-1]
+                    dict_word['tag'] = None
                 dict_sentence.append(dict_word)
                 word_sentence.append(dict_word['word'])
                 tag_sentence.append(dict_word['tag'])
@@ -238,17 +248,54 @@ class Dataset:
 
         return training_data, sentences, document_sentence_words, document_sentence_tags
 
+    @staticmethod
+    def get_clef_training_dataset():
+        training_data_filename = 'handoverdata.zip'
+        return Dataset.get_crf_training_data_by_sentence(training_data_filename,
+                                                      Dataset.CRF_FEATURES_PATH+'output',
+                                                      Dataset.CRF_FEATURES_EXTENSION)
+
+    @staticmethod
+    def get_clef_validation_dataset():
+        validation_data_filename = 'handover-set2.zip'
+        return Dataset.get_crf_training_data_by_sentence(validation_data_filename,
+                                                      Dataset.TESTING_FEATURES_PATH+'test',
+                                                      Dataset.TESTING_FEATURES_EXTENSION)
+
+    @staticmethod
+    def get_clef_testing_dataset():
+        testing_data_filename = 'CRF_noLabel.zip'
+        return Dataset.get_crf_training_data_by_sentence(testing_data_filename,
+                                                      Dataset.CLEF_TESTING_PATH,
+                                                      Dataset.CLEF_TESTING_EXTENSION,
+                                                      separator=' ',
+                                                      include_tag=False)
 
 if __name__ == '__main__':
-    training_data_filename = 'handoverdata.zip'
-    testing_data_filename = 'handover-set2.zip'
+    training_data, sentences, document_sentence_words, document_sentence_tags = \
+        Dataset.get_clef_training_dataset()
 
-    dataset = Dataset()
+    training_data, sentences, document_sentence_words, document_sentence_tags = \
+        Dataset.get_clef_validation_dataset()
 
-    testing_data, sentences, document_sentence_words, document_sentence_tags = \
-        Dataset.get_crf_training_data_by_sentence(testing_data_filename,
-                                                  Dataset.TESTING_FEATURES_PATH+'test',
-                                                  Dataset.TESTING_FEATURES_EXTENSION)
+    training_data, sentences, document_sentence_words, document_sentence_tags = \
+        Dataset.get_clef_testing_dataset()
+
+    # training_data_filename = 'handoverdata.zip'
+    # testing_data_filename = 'handover-set2.zip'
+    # clef_testing_data_filename = 'CRF_noLabel.zip'
+
+    # testing_data, sentences, document_sentence_words, document_sentence_tags = \
+    #     Dataset.get_crf_training_data_by_sentence(testing_data_filename,
+    #                                               Dataset.TESTING_FEATURES_PATH+'test',
+    #                                               Dataset.TESTING_FEATURES_EXTENSION)
+
+    # testing_data, sentences, document_sentence_words, document_sentence_tags = \
+    #     Dataset.get_crf_training_data_by_sentence(clef_testing_data_filename,
+    #                                               Dataset.CLEF_TESTING_PATH,
+    #                                               Dataset.CLEF_TESTING_EXTENSION,
+    #                                               separator=' ',
+    #                                               include_tag=False)
 
     # files_text = Dataset.get_training_file_tokenized_sentences(training_data_filename)
     #
