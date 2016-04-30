@@ -545,7 +545,7 @@ class Recurrent_net(A_neural_network):
             self.save_params()
 
         if plot:
-            actual_time = time.time()
+            actual_time = str(time.time())
             self.plot_training_cost_and_error(train_costs_list, train_errors_list, test_costs_list, test_errors_list,
                                               actual_time)
             self.plot_scores(precision_list, recall_list, f1_score_list, actual_time)
@@ -597,7 +597,7 @@ class Recurrent_net(A_neural_network):
         flat_predictions = list(chain(*predictions))
         flat_true = list(chain(*self.y_test))
 
-        return flat_true, flat_predictions
+        return flat_true, flat_predictions, self.y_test, predictions
 
     def predict_bidirectional_with_shared_params(self, **kwargs):
 
@@ -687,7 +687,7 @@ class Recurrent_net(A_neural_network):
         flat_predictions = list(chain(*predictions))
         flat_true = list(chain(*self.y_test))
 
-        return flat_true, flat_predictions
+        return flat_true, flat_predictions, self.y_test, predictions
 
     def to_string(self):
         return 'RNN.'
