@@ -634,7 +634,7 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
         if self.max_pool:
             w2v_max_conv_4 = pool_2d(input=w2v_conv_4, ds=(2, 1), ignore_border=True, mode='max')
-            w2v_max_conv_3 = pool_2d(input=w2v_conv_3, ds=(2, 1), ignore_border=True, mode='max')
+            w2v_max_conv_3 = pool_2d(input=w2v_conv_3, ds=(3, 1), ignore_border=True, mode='max')
             w2v_max_conv_2 = pool_2d(input=w2v_conv_2, ds=(4, 1), ignore_border=True, mode='max')
 
             conv_conc = T.concatenate([w2v_max_conv_4, w2v_max_conv_3, w2v_max_conv_2], axis=1)[:, :, 0, 0]
@@ -656,7 +656,7 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         if self.max_pool:
 
             pos_max_conv_4 = pool_2d(input=pos_conv_4, ds=(2, 1), ignore_border=True, mode='max')
-            pos_max_conv_3 = pool_2d(input=pos_conv_3, ds=(2, 1), ignore_border=True, mode='max')
+            pos_max_conv_3 = pool_2d(input=pos_conv_3, ds=(3, 1), ignore_border=True, mode='max')
             pos_max_conv_2 = pool_2d(input=pos_conv_2, ds=(4, 1), ignore_border=True, mode='max')
 
             conv_conc = T.concatenate([pos_max_conv_4, pos_max_conv_3, pos_max_conv_2], axis=1)[:, :, 0, 0]
