@@ -1,6 +1,7 @@
 __author__ = 'root'
 
 import pkg_resources
+import cPickle
 
 def get_resource(file_name):
     # file_name could be a file or an entire directory
@@ -21,3 +22,9 @@ def get_w2v_directory(file_name):
 
 def get_google_knowled_graph_cache(file_name):
     return pkg_resources.resource_filename('data', 'google_knowledge_graph/%s' % file_name)
+
+def get_param(file_name):
+    return cPickle.load(open(pkg_resources.resource_filename('data', 'params/%s' % file_name),'rb'))
+
+def get_classification_report_labels():
+    return cPickle.load(open(pkg_resources.resource_filename('data', 'params/classification_report/labels_order.p'),'rb'))
