@@ -21,14 +21,17 @@ from single_Layer_Context_Window_Net import Single_Layer_Context_Window_Net
 from recurrent_Context_Window_net import Recurrent_Context_Window_net
 from hidden_Layer_Context_Window_Net import Hidden_Layer_Context_Window_Net
 from vector_Tag_Contex_Window_Net import Vector_Tag_Contex_Window_Net
+from multi_feature_type_hidden_layer_context_window_net import Multi_Feature_Type_Hidden_Layer_Context_Window_Net
 from trained_models import get_vector_tag_path
 from trained_models import get_last_tag_path
 from trained_models import get_rnn_path
 from trained_models import get_single_mlp_path
 from trained_models import get_cw_rnn_path
 from trained_models import get_cwnn_path
+from trained_models import get_multi_hidden_cw_path
 from data import get_param
 from utils.plot_confusion_matrix import plot_confusion_matrix
+from data.dataset import Dataset
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -38,7 +41,8 @@ np.random.seed(1234)
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Neural net trainer')
     parser.add_argument('--net', type=str, action='store', required=True,
-                        choices=['single_cw','hidden_cw','vector_tag','last_tag','rnn', 'cw_rnn'], help='NNet type')
+                        choices=['single_cw','hidden_cw','vector_tag','last_tag','rnn', 'cw_rnn', 'multi_hidden_cw'],
+                        help='NNet type')
     parser.add_argument('--window', type=int, action='store', required=True,
                         help='Context window size. 1 for RNN')
     parser.add_argument('--epochs', type=int, action='store', required=True,
@@ -56,6 +60,9 @@ def parse_arguments():
     parser.add_argument('--sharedparams', action='store_true', default=False)
     parser.add_argument('--plot', action='store_true', default=False)
     parser.add_argument('--tags', action='store', type=str, default=None)
+    parser.add_argument('--cnnfilters', action='store', type=int, default=None)
+    parser.add_argument('--static', action='store_true', default=False)
+    parser.add_argument('--maxpool', action='store_true', default=False)
 
     #parse arguments
     arguments = parser.parse_args()
@@ -77,6 +84,9 @@ def parse_arguments():
     args['shared_params'] = arguments.sharedparams
     args['plot'] = arguments.plot
     args['tags'] = arguments.tags
+    args['n_filters'] = arguments.cnnfilters
+    args['static'] = arguments.static
+    args['max_pool'] = arguments.maxpool
 
     return args
 
@@ -170,7 +180,7 @@ def load_w2v_model_and_vectors_cache(args):
     training_vectors_filename = get_w2v_training_data_vectors(args['w2v_vectors_cache'])
 
     if os.path.exists(training_vectors_filename):
-        logger.info('Loading W2V vectors from pickle file')
+        logger.info('Loading W2V vectors from pickle file: '+args['w2v_vectors_cache'])
         w2v_vectors = cPickle.load(open(training_vectors_filename,'rb'))
         w2v_dims = len(w2v_vectors.values()[0])
     else:
@@ -187,6 +197,7 @@ def determine_nnclass_and_parameters(args):
     out_f = utils.NeuralNetwork.softmax_activation_function
     add_words = []
     add_tags = []
+    add_feats = []
     tag_dim = None
     n_window = args['window_size']
     nn_class = None
@@ -219,8 +230,13 @@ def determine_nnclass_and_parameters(args):
         nn_class = Recurrent_Context_Window_net
         get_output_path = get_cw_rnn_path
         add_words = ['<PAD>']
+    elif args['nn_name'] == 'multi_hidden_cw':
+        nn_class = Multi_Feature_Type_Hidden_Layer_Context_Window_Net
+        get_output_path = get_multi_hidden_cw_path
+        add_words = ['<PAD>']
+        add_feats = ['<PAD>']
 
-    return nn_class, hidden_f, out_f, add_words, add_tags, tag_dim, n_window, get_output_path
+    return nn_class, hidden_f, out_f, add_words, add_tags, add_feats, tag_dim, n_window, get_output_path
 
 def determine_key_indexes(label2index, word2index):
     pad_tag = None
@@ -301,6 +317,7 @@ def use_testing_dataset(nn_class,
                         w2v_dims,
                         add_words,
                         add_tags,
+                        add_feats,
                         tag_dim,
                         get_output_path,
                         max_epochs=None,
@@ -310,15 +327,22 @@ def use_testing_dataset(nn_class,
                         **kwargs
                         ):
 
+    #TODO: make the feat_pos an argument.
+
     logger.info('Using CLEF testing data')
 
     results = dict()
 
     logger.info('Loading CRF training data')
 
-    x_train, y_train, x_test, y_test, word2index, index2word, label2index, index2label = \
-        nn_class.get_data(crf_training_data_filename, test_data_filename, add_words, add_tags,
-                          x_idx=None, n_window=n_window)
+    x_train, y_train, x_train_feats, \
+    x_valid, y_valid, x_valid_feats, \
+    x_test, y_test, x_test_feats,\
+    word2index, index2word, \
+    label2index, index2label, \
+    feat2index, index2feat = \
+        nn_class.get_data(clef_training=True, clef_validation=True, clef_testing=True, add_words=add_words,
+                          add_tags=add_tags, add_feats=add_feats, x_idx=None, n_window=n_window, feat_positions=[2])
 
     unique_words = word2index.keys()
 
@@ -338,6 +362,8 @@ def use_testing_dataset(nn_class,
     params = {
         'x_train': x_train,
         'y_train': y_train,
+        'x_valid': x_valid,
+        'y_valid': y_valid,
         'x_test': x_test,
         'y_test': y_test,
         'hidden_activation_f': hidden_f,
@@ -350,31 +376,77 @@ def use_testing_dataset(nn_class,
         'unk_tag': unk_tag,
         'pad_word': pad_word,
         'tag_dim': tag_dim,
-        'get_output_path': get_output_path
+        'get_output_path': get_output_path,
+        'train_pos_feats': x_train_feats[2],    #refers to POS tag features.
+        'valid_pos_feats': x_valid_feats[2],    #refers to POS tag features.
+        'test_pos_feats': x_test_feats[2],    #refers to POS tag features.
+        'n_filters': args['n_filters']
     }
 
     nn_trainer = nn_class(**params)
 
-    logger.info(' '.join(['Training Neural network','with' if regularization else 'without', 'regularization']))
+    logger.info(' '.join(['Training Neural network', 'with' if regularization else 'without', 'regularization']))
     nn_trainer.train(learning_rate=.01, batch_size=minibatch_size, max_epochs=max_epochs, save_params=False, **kwargs)
 
-    logger.info('Predicting')
-    flat_true, flat_predictions, _, _ = nn_trainer.predict(**kwargs)
+    logger.info('Predicting on Training set')
+    nnet_results = nn_trainer.predict(on_training_set=True, **kwargs)
+    train_flat_predictions = nnet_results['flat_predictions']
 
-    assert flat_true.__len__() == flat_predictions.__len__()
+    logger.info('Predicting on Validation set')
+    nnet_results = nn_trainer.predict(on_validation_set=True, **kwargs)
+    valid_flat_true = nnet_results['flat_trues']
+    valid_flat_predictions = nnet_results['flat_predictions']
 
-    flat_true = map(lambda x: index2label[x], flat_true)
-    flat_predictions = map(lambda x: index2label[x], flat_predictions)
+    logger.info('Predicting on Testing set')
+    nnet_results = nn_trainer.predict(on_validation_set=False, **kwargs)
+    test_flat_predictions = nnet_results['flat_predictions']
 
-    results[0] = (flat_true, flat_predictions)
+    assert valid_flat_true.__len__() == valid_flat_predictions.__len__()
+
+    valid_flat_true = map(lambda x: index2label[x], valid_flat_true)
+    valid_flat_predictions = map(lambda x: index2label[x], valid_flat_predictions)
+    train_flat_predictions = map(lambda x: index2label[x], train_flat_predictions)
+    test_flat_predictions = map(lambda x: index2label[x], test_flat_predictions)
+
+    results[0] = (valid_flat_true, valid_flat_predictions, train_flat_predictions, test_flat_predictions)
 
     return results, index2label
+
+def write_to_file(fout_name, document_sentence_words, predictions, file_prefix, file_suffix):
+    fout = open(fout_name, 'wb')
+    word_count = 0
+    for doc_nr, sentences in document_sentence_words.iteritems():
+        doc_words = list(chain(*sentences))
+        doc_len = doc_words.__len__()
+        for word, tag in zip(doc_words, predictions[word_count:doc_len]):
+            line = '\t'.join([file_prefix+str(doc_nr)+file_suffix, word, tag])
+            fout.write(line+'\n')
+
+    fout.close()
+
+    return True
+
+def save_predictions_to_file(train_y_pred, valid_y_pred, test_y_pred, get_output_path):
+    train_fout_name = get_output_path('train_A.txt')
+    valid_fout_name = get_output_path('validation_A.txt')
+    test_fout_name = get_output_path('test_A.txt')
+
+    _, _, document_sentence_words, _ = Dataset.get_clef_training_dataset()
+    write_to_file(train_fout_name, document_sentence_words, train_y_pred, file_prefix='output', file_suffix='.txt')
+
+    _, _, document_sentence_words, _ = Dataset.get_clef_validation_dataset()
+    write_to_file(valid_fout_name, document_sentence_words, valid_y_pred, file_prefix='test', file_suffix='.xml.data')
+
+    _, _, document_sentence_words, _ = Dataset.get_clef_testing_dataset()
+    write_to_file(test_fout_name, document_sentence_words, test_y_pred, file_prefix='', file_suffix='.xml.data')
+
+    return True
 
 if __name__ == '__main__':
     start = time.time()
 
-    crf_training_data_filename = 'handoverdata.zip'
-    test_data_filename = 'handover-set2.zip'
+    # crf_training_data_filename = 'handoverdata.zip'
+    # test_data_filename = 'handover-set2.zip'
 
     args = parse_arguments()
 
@@ -382,7 +454,7 @@ if __name__ == '__main__':
 
     w2v_vectors, w2v_model, w2v_dims = load_w2v_model_and_vectors_cache(args)
 
-    nn_class, hidden_f, out_f, add_words, add_tags, tag_dim, n_window, get_output_path = determine_nnclass_and_parameters(args)
+    nn_class, hidden_f, out_f, add_words, add_tags, add_feats, tag_dim, n_window, get_output_path = determine_nnclass_and_parameters(args)
 
     logger.info('Using Neural class: %s with window size: %d for epochs: %d' % (args['nn_name'],n_window,args['max_epochs']))
 
@@ -398,6 +470,7 @@ if __name__ == '__main__':
                                                    w2v_dims,
                                                    add_words,
                                                    add_tags,
+                                                   add_feats,
                                                    tag_dim,
                                                    get_output_path,
                                                    **args)
@@ -405,19 +478,26 @@ if __name__ == '__main__':
     cPickle.dump(results, open(get_output_path('prediction_results.p'),'wb'))
     cPickle.dump(index2label, open(get_output_path('index2labels.p'),'wb'))
 
-    y_true = list(chain(*[true for true, _ in results.values()]))
-    y_pred = list(chain(*[pred for _, pred in results.values()]))
-    results_micro = Metrics.compute_all_metrics(y_true, y_pred, average='micro')
-    results_macro = Metrics.compute_all_metrics(y_true, y_pred, average='macro')
+    valid_y_true = list(chain(*[true for true, _, _, _ in results.values()]))
+    valid_y_pred = list(chain(*[pred for _, pred, _, _ in results.values()]))
+    train_y_pred = list(chain(*[pred for _, _, pred, _ in results.values()]))
+    test_y_pred = list(chain(*[pred for _, _, _, pred in results.values()]))
+
+    results_micro = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, average='micro')
+    results_macro = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, average='macro')
 
     labels_list = [label for label in index2label.values()]
-    cm = Metrics.compute_confusion_matrix(y_true, y_pred, labels=labels_list)
-    plot_confusion_matrix(cm, labels=labels_list, output_filename=get_output_path('confusion_matrix.png'))
+    cm = Metrics.compute_confusion_matrix(valid_y_true, valid_y_pred, labels=labels_list)
+    plot_confusion_matrix(cm, labels=labels_list, output_filename=get_output_path('confusion_matrix.png'),
+                          title='Validation confusion matrix')
 
     print 'MICRO results'
     print results_micro
     print 'MACRO results'
     print results_macro
+
+    print '...Saving predictions to file'
+    save_predictions_to_file(train_y_pred, valid_y_pred, test_y_pred, get_output_path)
 
     print 'Elapsed time: ', time.time()-start
 
