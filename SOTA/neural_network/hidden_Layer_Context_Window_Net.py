@@ -73,7 +73,7 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
         train_x = theano.shared(value=np.array(self.x_train, dtype=INT), name='train_x', borrow=True)
         train_y = theano.shared(value=np.array(self.y_train, dtype=INT), name='train_y', borrow=True)
 
-        test_x = theano.shared(value=np.array(self.x_test, dtype=INT), name='test_x', borrow=True)
+        # valid_x = theano.shared(value=np.array(self.x_valid, dtype=INT), name='valid_x', borrow=True)
 
         y = T.vector(name='y', dtype=INT)
 
@@ -184,7 +184,7 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
         # theano.printing.debugprint(train)
 
         train_predict = theano.function(inputs=[idxs, y],
-                                             outputs=[cost_prediction, errors, y_predictions],
+                                             outputs=[errors, y_predictions],
                                              updates=[],
                                              givens={
                                                  n_tokens: 1
@@ -197,13 +197,13 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
                                                    idxs: train_x[train_idx]
                                                })
 
-        flat_true = self.y_test
+        valid_flat_true = self.y_valid
 
         # plotting purposes
         train_costs_list = []
         train_errors_list = []
-        test_costs_list = []
-        test_errors_list = []
+        valid_costs_list = []
+        valid_errors_list = []
         precision_list = []
         recall_list = []
         f1_score_list = []
@@ -228,23 +228,24 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
                     epoch_l2_w1 = l2_w1
                 epoch_l2_w2 += l2_w2
 
-            test_error = 0
-            test_cost = 0
-            predictions = []
-            for x_sample, y_sample in zip(self.x_test, self.y_test):
-                cost_output, errors_output, pred = train_predict(x_sample, [y_sample])
-                test_cost += cost_output
-                test_error += errors_output
-                predictions.append(np.asscalar(pred))
+            valid_error = 0
+            valid_cost = 0
+            valid_predictions = []
+            for x_sample, y_sample in zip(self.x_valid, self.y_valid):
+                cost_output = 0 #TODO: in the forest prediction, computing the cost yield and error (out of bounds for 1st misclassification).
+                errors_output, pred = train_predict(x_sample, [y_sample])
+                valid_cost += cost_output
+                valid_error += errors_output
+                valid_predictions.append(np.asscalar(pred))
 
             train_costs_list.append(epoch_cost)
             train_errors_list.append(epoch_errors)
-            test_costs_list.append(test_cost)
-            test_errors_list.append(test_error)
+            valid_costs_list.append(valid_cost)
+            valid_errors_list.append(valid_error)
             l2_w1_list.append(epoch_l2_w1)
             l2_w2_list.append(epoch_l2_w2)
 
-            results = Metrics.compute_all_metrics(y_true=flat_true, y_pred=predictions, average='macro')
+            results = Metrics.compute_all_metrics(y_true=valid_flat_true, y_pred=valid_predictions, average='macro')
             f1_score = results['f1_score']
             precision = results['precision']
             recall = results['recall']
@@ -253,8 +254,8 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
             f1_score_list.append(f1_score)
 
             end = time.time()
-            logger.info('Epoch %d Train_cost: %f Train_errors: %d Test_cost: %f Test_errors: %d F1-score: %f Took: %f'
-                        % (epoch_index+1, epoch_cost, epoch_errors, test_cost, test_error, f1_score, end-start))
+            logger.info('Epoch %d Train_cost: %f Train_errors: %d Valid_cost: %f Valid_errors: %d F1-score: %f Took: %f'
+                        % (epoch_index+1, epoch_cost, epoch_errors, valid_cost, valid_error, f1_score, end-start))
 
         if save_params:
             logger.info('Saving parameters to File system')
@@ -262,8 +263,8 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
 
         if plot:
             actual_time = str(time.time())
-            self.plot_training_cost_and_error(train_costs_list, train_errors_list, test_costs_list,
-                                              test_errors_list,
+            self.plot_training_cost_and_error(train_costs_list, train_errors_list, valid_costs_list,
+                                              valid_errors_list,
                                               actual_time)
             self.plot_scores(precision_list, recall_list, f1_score_list, actual_time)
             self.plot_penalties(l2_w1_list, l2_w2_list, actual_time=actual_time)
@@ -382,15 +383,26 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
 
         return True
 
-    def predict(self, **kwargs):
+    def predict(self, on_training_set=False, on_validation_set=False, **kwargs):
 
-        self.x_test = self.x_test.astype(dtype=INT)
-        self.y_test = self.y_test.astype(dtype=INT)
+        if on_training_set:
+            # predict on training set
+            x_test = self.x_train.astype(dtype=INT)
+            y_test = self.y_train.astype(dtype=INT)
+
+        elif on_validation_set:
+            # predict on validation set
+            x_test = self.x_valid.astype(dtype=INT)
+            y_test = self.y_valid.astype(dtype=INT)
+        else:
+            # predict on test set
+            x_test = self.x_test.astype(dtype=INT)
+            y_test = self.y_test
 
         # test_x = theano.shared(value=self.x_valid.astype(dtype=INT), name='test_x', borrow=True)
         # test_y = theano.shared(value=self.y_valid.astype(dtype=INT), name='test_y', borrow=True)
 
-        y = T.vector(name='test_y', dtype=INT)
+        # y = T.vector(name='test_y', dtype=INT)
 
         idxs = T.matrix(name="test_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
         # n_emb = self.pretrained_embeddings.shape[1] #embeddings dimension
@@ -404,18 +416,18 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
         out = self.sgd_forward_pass(w_x, self.params['b1'], self.params['w2'], self.params['b2'], n_tokens)
 
         y_predictions = T.argmax(out, axis=1)
-        cost = T.mean(T.nnet.categorical_crossentropy(out, y))
-        errors = T.sum(T.neq(y_predictions,y))
+        # cost = T.mean(T.nnet.categorical_crossentropy(out, y))
+        # errors = T.sum(T.neq(y_predictions,y))
 
         perform_prediction = theano.function(inputs=[idxs],
                                 outputs=[y_predictions],
                                 updates=[],
                                 givens=[])
 
-        predictions = perform_prediction(self.x_test)
+        predictions = perform_prediction(x_test)
         # predictions = perform_prediction(valid_x.get_value())
 
-        return self.y_test, predictions[-1], self.y_test, predictions[-1]
+        return y_test, predictions[-1], y_test, predictions[-1]
 
     def to_string(self):
         return 'One hidden layer context window neural network with no tags.'
