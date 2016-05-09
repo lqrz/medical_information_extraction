@@ -138,39 +138,6 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
         return w_filter_4, w_filter_3, w_filter_2
 
-    # def convolve_word_embeddings(self, w_x):
-    #
-    #     sentence_matrix_size = (self.n_window, self.n_emb)
-    #
-    #     filter_width = self.n_emb  # TODO: embeddings or 1?
-    #     w_filter_4_shape = (self.n_filters, 4, filter_width)
-    #     w_filter_3_shape = (self.n_filters, 3, filter_width)
-    #     w_filter_2_shape = (self.n_filters, 2, filter_width)
-    #
-    #     conv_4 = conv.conv2d(input=w_x,
-    #                          filters=self.params['w2v_filter_4'],
-    #                          filter_shape=w_filter_4_shape,
-    #                          image_shape=sentence_matrix_size)
-    #     conv_3 = conv.conv2d(input=w_x,
-    #                          filters=self.params['w2v_filter_3'],
-    #                          filter_shape=w_filter_3_shape,
-    #                          image_shape=sentence_matrix_size)
-    #     conv_2 = conv.conv2d(input=w_x,
-    #                          filters=self.params['w2v_filter_2'],
-    #                          filter_shape=w_filter_2_shape,
-    #                          image_shape=sentence_matrix_size)
-    #
-    #     if self.max_pool:
-    #         max_conv_4 = pool_2d(input=conv_4, ds=(2, 1), ignore_border=True, mode='max')
-    #         max_conv_3 = pool_2d(input=conv_3, ds=(3, 1), ignore_border=True, mode='max')
-    #         max_conv_2 = pool_2d(input=conv_2, ds=(4, 1), ignore_border=True, mode='max')
-    #
-    #         conv_concat = T.concatenate([max_conv_4, max_conv_3, max_conv_2])[:, 0, 0]
-    #     else:
-    #         conv_concat = T.concatenate([conv_4, conv_3, conv_2], axis=1).reshape(shape=(-1,))
-    #
-    #     return conv_concat
-
     def convolve_word_embeddings(self, w_x):
 
         sentence_matrix_size = (self.n_window, self.n_emb)
@@ -223,33 +190,29 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
     def convolve_pos_features(self, w_pos_x):
 
-        filter_width = self.n_pos_emb  # TODO: embeddings or 1?
-        pos_filter_4_shape = (self.n_filters, 4, filter_width)
-        pos_filter_3_shape = (self.n_filters, 3, filter_width)
-        pos_filter_2_shape = (self.n_filters, 2, filter_width)
-
         sentence_pos_shape = (self.n_window, self.n_pos_emb)
-        conv_4 = conv.conv2d(input=w_pos_x,
-                             filters=self.params['pos_filter_4'],
-                             filter_shape=pos_filter_4_shape,
-                             image_shape=sentence_pos_shape)
-        conv_3 = conv.conv2d(input=w_pos_x,
-                             filters=self.params['pos_filter_3'],
-                             filter_shape=pos_filter_3_shape,
-                             image_shape=sentence_pos_shape)
-        conv_2 = conv.conv2d(input=w_pos_x,
-                             filters=self.params['pos_filter_2'],
-                             filter_shape=pos_filter_2_shape,
-                             image_shape=sentence_pos_shape)
+        filter_width = self.n_pos_emb  # TODO: embeddings or 1?
+
+        convolutions = []
+
+        for rs in self.region_sizes:
+            pos_filter_4_shape = (self.n_filters, rs, filter_width)
+
+            convolution = conv.conv2d(input=w_pos_x,
+                                 filters=self.params['pos_filter_'+str(rs)],
+                                 filter_shape=pos_filter_4_shape,
+                                 image_shape=sentence_pos_shape)
+
+            if self.max_pool:
+                max_conv = pool_2d(input=convolution, ds=(self.n_window-rs+1, 1), ignore_border=True, mode='max')
+                convolutions.append(max_conv)
+            else:
+                convolutions.append(convolution)
 
         if self.max_pool:
-            max_conv_4 = pool_2d(input=conv_4, ds=(2, 1), ignore_border=True, mode='max')
-            max_conv_3 = pool_2d(input=conv_3, ds=(3, 1), ignore_border=True, mode='max')
-            max_conv_2 = pool_2d(input=conv_2, ds=(4, 1), ignore_border=True, mode='max')
-
-            conv_concat = T.concatenate([max_conv_4, max_conv_3, max_conv_2])[:, 0, 0]
+            conv_concat = T.concatenate(convolutions)[:, 0, 0]
         else:
-            conv_concat = T.concatenate([conv_4, conv_3, conv_2], axis=1).reshape(shape=(-1,))
+            conv_concat = T.concatenate(convolutions, axis=1).reshape(shape=(-1,))
 
         return conv_concat
 
@@ -354,12 +317,6 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
             params_to_get_grad_names = ['w_x', 'w2v_filter_4', 'w2v_filter_3', 'w2v_filter_2', 'pos_filter_4', 'pos_filter_3', 'pos_filter_2', 'w3', 'b3']
 
         self.params = OrderedDict(zip(param_names, params))
-
-        conc = self.convolve_word_embeddings(w_x)
-        conc_ref = self.convolve_word_embeddings_ref(w_x)
-
-        test = theano.function([w2v_idxs], [conc, conc_ref])
-        test(self.x_train[0])
 
         if self.regularization:
             # symbolic Theano variable that represents the L1 regularization term
