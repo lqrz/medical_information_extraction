@@ -93,3 +93,35 @@ def get_lda_path(file_name):
 
 def get_kmeans_path(file_name):
     return pkg_resources.resource_filename('trained_models', 'kmeans/'+file_name)
+
+def get_ensemble_forest_mlp_path(filename):
+    path = pkg_resources.resource_filename('trained_models', 'forest_mlp/%s' % filename)
+    dir = os.path.dirname(path)
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+    return path
+
+def get_random_forest_path(filename):
+    path = pkg_resources.resource_filename('trained_models', 'random_forest/%s' % filename)
+    dir = os.path.dirname(path)
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+    return path
+
+def get_gbdt_path(filename):
+    path = pkg_resources.resource_filename('trained_models', 'gbdt/%s' % filename)
+    dir = os.path.dirname(path)
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+    return path
+
+def get_multi_hidden_cw_path(filename):
+    path = pkg_resources.resource_filename('trained_models', 'multi_cwnn/' + filename)
+    dir = os.path.dirname(path)
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+    return path
