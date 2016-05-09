@@ -1,11 +1,13 @@
 __author__ = 'root'
 from abc import ABCMeta, abstractmethod
-from data.dataset import Dataset
 from collections import defaultdict
 import numpy as np
 from utils import utils
 from itertools import chain
 from collections import OrderedDict
+import copy
+
+from data.dataset import Dataset
 
 class A_neural_network():
 
@@ -14,6 +16,8 @@ class A_neural_network():
     def __init__(self,
                  x_train,
                  y_train,
+                 x_valid,
+                 y_valid,
                  x_test,
                  y_test,
                  n_out,
@@ -73,6 +77,10 @@ class A_neural_network():
         self.n_samples = self.x_train.shape[0]
 
         #validation datasets
+        self.x_valid = np.array(x_valid)
+        self.y_valid = np.array(y_valid)
+
+        #testing datasets
         self.x_test = np.array(x_test)
         self.y_test = np.array(y_test)
 
@@ -88,7 +96,8 @@ class A_neural_network():
         pass
 
     @classmethod
-    def get_data(cls, crf_training_data_filename, testing_data_filename=None, add_words=[], add_tags=[], x_idx=None, n_window=None):
+    def get_data(cls, clef_training=True, clef_validation=False, clef_testing=False,
+                 add_words=[], add_tags=[], add_feats=[], x_idx=None, n_window=None, feat_positions=None):
         """
         this is at sentence level.
         gets the training data and organizes it into sentences per document.
@@ -97,39 +106,148 @@ class A_neural_network():
         :return:
         """
 
-        test_document_sentence_tags, test_document_sentence_words, train_document_sentence_tags, train_document_sentence_words = cls.get_datasets(
-            crf_training_data_filename, testing_data_filename)
+        if not clef_training and not clef_validation and not clef_testing:
+            raise Exception('At least one dataset must be loaded')
+
+        # test_document_sentence_tags, test_document_sentence_words, train_document_sentence_tags, train_document_sentence_words = cls.get_datasets(
+        #     crf_training_data_filename, testing_data_filename)
 
         document_sentence_words = []
         document_sentence_tags = []
-        document_sentence_words.extend(train_document_sentence_words.values())
-        document_sentence_words.extend(test_document_sentence_words.values())
-        document_sentence_tags.extend(train_document_sentence_tags.values())
-        document_sentence_tags.extend(test_document_sentence_tags.values())
 
-        label2index, index2label, word2index, index2word = cls._construct_indexes(add_words, add_tags,
-                                                                                document_sentence_words,
-                                                                                document_sentence_tags)
+        x_train = None
+        y_train = None
+        y_valid = None
+        x_valid = None
+        y_test = None
+        x_test = None
 
-        x_train, y_train = cls.get_partitioned_data(x_idx=x_idx,
-                                 document_sentences_words=train_document_sentence_words,
-                                 document_sentences_tags=train_document_sentence_tags,
-                                 word2index=word2index,
-                                 label2index=label2index,
-                                 use_context_window=True,
-                                 n_window=n_window)
+        x_train_features = defaultdict(list)
+        x_valid_features = defaultdict(list)
+        x_test_features = defaultdict(list)
+        x_train_feats = None
+        x_valid_feats = None
+        x_test_feats = None
 
-        x_test, y_test = cls.get_partitioned_data(x_idx=x_idx,
-                                 document_sentences_words=test_document_sentence_words,
-                                 document_sentences_tags=test_document_sentence_tags,
-                                 word2index=word2index,
-                                 label2index=label2index,
-                                 use_context_window=True,
-                                 n_window=n_window)
+        if clef_training:
+            train_features, _, train_document_sentence_words, train_document_sentence_tags = Dataset.get_clef_training_dataset()
+
+            if feat_positions:
+                x_train_features = cls.get_features_by_position(feat_positions, train_features)
+
+            document_sentence_words.extend(train_document_sentence_words.values())
+            document_sentence_tags.extend(train_document_sentence_tags.values())
+
+        if clef_validation:
+            valid_features, _, valid_document_sentence_words, valid_document_sentence_tags = Dataset.get_clef_validation_dataset()
+
+            if feat_positions:
+                x_valid_features = cls.get_features_by_position(feat_positions, valid_features)
+
+            document_sentence_words.extend(valid_document_sentence_words.values())
+            document_sentence_tags.extend(valid_document_sentence_tags.values())
+
+        if clef_testing:
+            test_features, _, test_document_sentence_words, test_document_sentence_tags = Dataset.get_clef_testing_dataset()
+
+            if feat_positions:
+                x_test_features = cls.get_features_by_position(feat_positions, test_features)
+
+            document_sentence_words.extend(test_document_sentence_words.values())
+            # document_sentence_tags.extend(test_document_sentence_tags.values())   # its all Nones.
+
+        # label2index_del, index2label_del, word2index_del, index2word_del = cls._construct_indexes(add_words, add_tags,
+        #                                                                         document_sentence_words,
+        #                                                                         document_sentence_tags)
+
+        word2index, index2word = cls._construct_index(add_words, document_sentence_words)
+        label2index, index2label = cls._construct_index(add_tags, document_sentence_tags)
+
+        feat2index = None
+        index2feat = None
+        if feat_positions:
+            features_indexes = []
+            for feat_pos in feat_positions:
+                features = copy.copy(x_train_features[feat_pos])
+                features.extend(x_valid_features[feat_pos])
+                features.extend(x_test_features[feat_pos])
+                feat2index, index2feat = cls._construct_index(add_items=add_feats, document_sentence_item=features)
+                features_indexes.append((feat2index, index2feat))
+
+
+        if clef_training:
+            x_train, y_train = cls.get_partitioned_data(x_idx=x_idx,
+                                                        document_sentences_words=train_document_sentence_words,
+                                                        document_sentences_tags=train_document_sentence_tags,
+                                                        word2index=word2index,
+                                                        label2index=label2index,
+                                                        use_context_window=True,
+                                                        n_window=n_window)
+            if x_train_features:
+                x_train_feats = cls.transform_features_with_context_window(x_train_features,
+                                                                           features_indexes,
+                                                                           n_window)
+
+        if clef_validation:
+            x_valid, y_valid = cls.get_partitioned_data(x_idx=x_idx,
+                                                        document_sentences_words=valid_document_sentence_words,
+                                                        document_sentences_tags=valid_document_sentence_tags,
+                                                        word2index=word2index,
+                                                        label2index=label2index,
+                                                        use_context_window=True,
+                                                        n_window=n_window)
+            if x_valid_features:
+                x_valid_feats = cls.transform_features_with_context_window(x_valid_features,
+                                                                           features_indexes,
+                                                                           n_window)
+
+        if clef_testing:
+            x_test, y_test = cls.get_partitioned_data(x_idx=x_idx,
+                                                      document_sentences_words=test_document_sentence_words,
+                                                      document_sentences_tags=test_document_sentence_tags,
+                                                      word2index=word2index,
+                                                      label2index=label2index,
+                                                      use_context_window=True,
+                                                      n_window=n_window)
+            if x_test_features:
+                x_test_feats = cls.transform_features_with_context_window(x_test_features,
+                                                                           features_indexes,
+                                                                           n_window)
 
         # n_docs = len(train_document_sentence_words)
 
-        return x_train, y_train, x_test, y_test, word2index, index2word, label2index, index2label
+        return x_train, y_train, x_train_feats, \
+               x_valid, y_valid, x_valid_feats,\
+               x_test, y_test, x_test_feats,\
+               word2index, index2word, \
+               label2index, index2label, \
+               feat2index, index2feat
+
+    @classmethod
+    def transform_features_with_context_window(cls, dataset_features, features_indexes, n_window):
+
+        x_feats = dict()
+        for (feat_pos, features), (feat2index, index2feat) in zip(dataset_features.iteritems(), features_indexes):
+            feats = []
+            for doc_features in features:
+                feats.extend(cls._get_partitioned_data_with_context_window(doc_features, n_window, feat2index))
+            x_feats[feat_pos] = feats
+
+        return x_feats
+
+    @classmethod
+    def get_features_by_position(cls, feat_positions, dataset_features):
+        x_dataset_features = OrderedDict()
+        for feat_pos in feat_positions:
+            doc_features = []
+            for doc_sentences in dataset_features.values():
+                sent_features = []
+                for sent in doc_sentences:
+                    sent_features.append(map(lambda x: x['features'][feat_pos], sent))
+                doc_features.append(sent_features)
+
+            x_dataset_features[feat_pos] = doc_features
+        return x_dataset_features
 
     @classmethod
     def get_datasets(cls, crf_training_data_filename, testing_data_filename):
@@ -150,40 +268,64 @@ class A_neural_network():
         return test_document_sentence_tags, test_document_sentence_words, train_document_sentence_tags, train_document_sentence_words
 
     @classmethod
-    def _construct_indexes(cls, add_words, add_tags, document_sentence_words, document_sentence_tags):
-        #word indexes
-        index2word = OrderedDict()
-        word2index = OrderedDict()
+    def _construct_index(cls, add_items, document_sentence_item):
 
-        #tag indexes
-        index2label = OrderedDict()
-        label2index = OrderedDict()
+        index2item = OrderedDict()
+        item2index = OrderedDict()
 
-        unique_words = list(
-            set([word for doc_sentences in document_sentence_words for sentence in doc_sentences for word in sentence]))
-        unique_labels = list(
-            set([tag for doc_sentences in document_sentence_tags for sentence in doc_sentences for tag in sentence]))
+        unique_items = list(set([item for doc_sentences in document_sentence_item for sentence in doc_sentences
+                        for item in sentence]))
 
-        for i, word in enumerate(unique_words):
-            index2word[i] = word
-            word2index[word] = i
-        if add_words:
-            for i, word in enumerate(add_words):
-                word2index[word] = len(unique_words) + i
-                index2word[len(unique_words) + i] = word #for consistency purposes
+        for i, item in enumerate(unique_items):
+            item2index[item] = i
+            index2item[i] = item
 
-        for i, label in enumerate(unique_labels):
-            index2label[i] = label
-            label2index[label] = i
-        if add_tags:
-            for i, tag in enumerate(add_tags):
-                label2index[tag] = len(unique_labels) + i
-                index2label[len(unique_labels) + i] = tag   #for consistency purposes
+        if add_items:
+            for i, item in enumerate(add_items):
+                item2index[item] = len(unique_items) + i
+                index2item[len(unique_items)+i] = item
 
-        assert index2word.values() == word2index.keys(), 'Inconsistency in word indexes.'
-        assert index2label.values() == label2index.keys(), 'Inconsistency in tag indexes.'
+        assert item2index.keys() == index2item.values()
 
-        return label2index, index2label, word2index, index2word
+        return item2index, index2item
+
+
+    # @classmethod
+    # def _construct_indexes(cls, add_words, add_tags, document_sentence_words, document_sentence_tags):
+    #     #word indexes
+    #     index2word = OrderedDict()
+    #     word2index = OrderedDict()
+    #
+    #     #tag indexes
+    #     index2label = OrderedDict()
+    #     label2index = OrderedDict()
+    #
+    #     unique_words = list(
+    #         set([word for doc_sentences in document_sentence_words for sentence in doc_sentences for word in sentence]))
+    #     unique_labels = list(
+    #         set([tag for doc_sentences in document_sentence_tags for sentence in doc_sentences for tag in sentence
+    #              if tag]))  # the test data has "None" as tags (cause they are not included). Do not add it.
+    #
+    #     for i, word in enumerate(unique_words):
+    #         index2word[i] = word
+    #         word2index[word] = i
+    #     if add_words:
+    #         for i, word in enumerate(add_words):
+    #             word2index[word] = len(unique_words) + i
+    #             index2word[len(unique_words) + i] = word #for consistency purposes
+    #
+    #     for i, label in enumerate(unique_labels):
+    #         index2label[i] = label
+    #         label2index[label] = i
+    #     if add_tags:
+    #         for i, tag in enumerate(add_tags):
+    #             label2index[tag] = len(unique_labels) + i
+    #             index2label[len(unique_labels) + i] = tag   #for consistency purposes
+    #
+    #     assert index2word.values() == word2index.keys(), 'Inconsistency in word indexes.'
+    #     assert index2label.values() == label2index.keys(), 'Inconsistency in tag indexes.'
+    #
+    #     return label2index, index2label, word2index, index2word
 
     @classmethod
     def get_partitioned_data(cls, x_idx, document_sentences_words, document_sentences_tags,
@@ -204,37 +346,29 @@ class A_neural_network():
             if (not x_idx) or (doc_nr in x_idx):
                 # training set
                 if use_context_window:
-                    x_doc, y_doc = cls._get_partitioned_data_with_context_window(doc_sentences, document_sentences_tags[doc_nr],
-                                                                          n_window, word2index, label2index)
+                    x_doc = cls._get_partitioned_data_with_context_window(doc_sentences, n_window, word2index)
+                    y_doc = [tag for tag in chain(*[map(lambda x: label2index[x] if x else None,sent)
+                                               for sent in document_sentences_tags[doc_nr]])]
                 else:
-                    x_doc, y_doc = cls._get_partitioned_data_without_context_window(doc_sentences, document_sentences_tags[doc_nr],
-                                                                             word2index, label2index)
+                    x_doc = cls._get_partitioned_data_without_context_window(doc_sentences, word2index)
+                    y_doc = cls._get_partitioned_data_without_context_window(document_sentences_tags[doc_nr], label2index)
+
                 x.extend(x_doc)
                 y.extend(y_doc)
 
         return x, y
 
     @classmethod
-    def _get_partitioned_data_with_context_window(cls, doc_sentences, doc_sentences_tags,
-                                                  n_window, word2index, label2index):
+    def _get_partitioned_data_with_context_window(cls, doc_sentences_item, n_window, item2index):
 
-        x = [map(lambda x: word2index[x], sent_window) for sentence in doc_sentences
-                             for sent_window in utils.NeuralNetwork.context_window(sentence, n_window)]
-
-        y = [tag for tag in chain(*[map(lambda x: label2index[x],sent)
-                                               for sent in doc_sentences_tags])]
-
-        return x, y
+        return [map(lambda x: item2index[x], sent_window) for sentence in doc_sentences_item
+             for sent_window in utils.NeuralNetwork.context_window(sentence, n_window)]
 
     @classmethod
-    def _get_partitioned_data_without_context_window(cls, doc_sentences, doc_sentences_tags,
-                                                     word2index, label2index):
-        x = []
-        y = []
-        x.extend([map(lambda x: word2index[x], sentence) for sentence in doc_sentences])
-        y.extend([map(lambda x: label2index[x], sentence) for sentence in doc_sentences_tags])
+    def _get_partitioned_data_without_context_window(cls, doc_sentences_item, dictionary_mapping):
 
-        return x, y
+        return [map(lambda x: dictionary_mapping[x], sentence) for sentence in doc_sentences_item]
+        # y.extend([map(lambda x: label2index[x], sentence) for sentence in doc_sentences_tags])
 
     @classmethod
     def get_data_by_document(cls, crf_training_data_filename):
@@ -367,8 +501,8 @@ class A_neural_network():
             'epoch': np.arange(train_costs_list.__len__(), dtype='int'),
             'Train_cost': train_costs_list,
             'Train_error': train_errors_list,
-            'Test_cost': test_costs_list,
-            'Test_error': test_errors_list
+            'Valid_cost': test_costs_list,
+            'Valid_error': test_errors_list
         }
         output_filename = self.get_output_path('training_cost_plot_' + actual_time)
         utils.NeuralNetwork.plot(data, x_axis='epoch', x_label='Epochs', y_label='Value',
