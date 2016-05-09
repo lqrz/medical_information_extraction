@@ -216,17 +216,6 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
         return conv_concat
 
-    def get_4D_pos_filters(self):
-        pos_filter_4 = self.params['pos_filter_4']
-        pos_filter_3 = self.params['pos_filter_3']
-        pos_filter_2 = self.params['pos_filter_2']
-
-        pos_filter_4_4D = pos_filter_4.reshape(shape=(pos_filter_4.shape[0], 1, pos_filter_4.shape[1], pos_filter_4.shape[2]))
-        pos_filter_3_4D = pos_filter_3.reshape(shape=(pos_filter_3.shape[0], 1, pos_filter_3.shape[1], pos_filter_3.shape[2]))
-        pos_filter_2_4D = pos_filter_2.reshape(shape=(pos_filter_2.shape[0], 1, pos_filter_2.shape[1], pos_filter_2.shape[2]))
-
-        return pos_filter_4_4D, pos_filter_3_4D, pos_filter_2_4D
-
     def get_4D_word_embeddings_filters(self):
         w2v_filter_4 = self.params['w2v_filter_4']
         w2v_filter_3 = self.params['w2v_filter_3']
@@ -430,6 +419,8 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
                 epoch_l2_pos_filters += l2_pos_filters
                 epoch_l2_w3 += l2_w3
 
+                # self.predict(on_validation_set=True, compute_cost_error=True)
+
             valid_error = 0
             valid_cost = 0
             valid_predictions = []
@@ -622,46 +613,52 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         Calls theano.tensor.nnet.conv2d()
         :return:
         """
+        convolutions = []
 
-        w2v_filter_4_4D, w2v_filter_3_4D, w2v_filter_2_4D = self.get_4D_word_embeddings_filters()
+        for rs in self.region_sizes:
+            w2v_filter = self.params['w2v_filter_'+str(rs)]
 
-        w2v_conv_4 = T.nnet.conv2d(input=w_x_4D,
-                                   filters=w2v_filter_4_4D)
-        w2v_conv_3 = T.nnet.conv2d(input=w_x_4D,
-                                   filters=w2v_filter_3_4D)
-        w2v_conv_2 = T.nnet.conv2d(input=w_x_4D,
-                                   filters=w2v_filter_2_4D)
+            w2v_filter_4D = w2v_filter.reshape(
+                shape=(w2v_filter.shape[0], 1, w2v_filter.shape[1], w2v_filter.shape[2]))
+
+            w2v_convolution = T.nnet.conv2d(input=w_x_4D,
+                                       filters=w2v_filter_4D)
+
+            if self.max_pool:
+                w2v_max_convolution = pool_2d(input=w2v_convolution, ds=(self.n_window-rs+1, 1), ignore_border=True, mode='max')
+                convolutions.append(w2v_max_convolution)
+            else:
+                convolutions.append(w2v_convolution)
 
         if self.max_pool:
-            w2v_max_conv_4 = pool_2d(input=w2v_conv_4, ds=(2, 1), ignore_border=True, mode='max')
-            w2v_max_conv_3 = pool_2d(input=w2v_conv_3, ds=(3, 1), ignore_border=True, mode='max')
-            w2v_max_conv_2 = pool_2d(input=w2v_conv_2, ds=(4, 1), ignore_border=True, mode='max')
-
-            conv_conc = T.concatenate([w2v_max_conv_4, w2v_max_conv_3, w2v_max_conv_2], axis=1)[:, :, 0, 0]
+            conv_conc = T.concatenate(convolutions, axis=1)[:, :, 0, 0]
         else:
-            conv_conc = T.concatenate([w2v_conv_4, w2v_conv_3, w2v_conv_2], axis=2)[:,:,:,0].reshape(shape=(w_x_4D.shape[0], -1))
+            conv_conc = T.concatenate(convolutions, axis=2)[:,:,:,0].reshape(shape=(w_x_4D.shape[0], -1))
 
         return conv_conc
 
     def perform_nnet_pos_conv2d(self, w_pos_x_4D):
-        pos_filter_4_4D, pos_filter_3_4D, pos_filter_2_4D = self.get_4D_pos_filters()
+        convolutions = []
 
-        pos_conv_4 = T.nnet.conv2d(input=w_pos_x_4D,
-                                   filters=pos_filter_4_4D)
-        pos_conv_3 = T.nnet.conv2d(input=w_pos_x_4D,
-                                   filters=pos_filter_3_4D)
-        pos_conv_2 = T.nnet.conv2d(input=w_pos_x_4D,
-                                   filters=pos_filter_2_4D)
+        for rs in self.region_sizes:
+            pos_filter = self.params['pos_filter_'+str(rs)]
+
+            pos_filter_4D = pos_filter.reshape(
+                shape=(pos_filter.shape[0], 1, pos_filter.shape[1], pos_filter.shape[2]))
+
+            pos_convolution = T.nnet.conv2d(input=w_pos_x_4D,
+                                            filters=pos_filter_4D)
+
+            if self.max_pool:
+                pos_max_convolution = pool_2d(input=pos_convolution, ds=(self.n_window-rs, 1), ignore_border=True, mode='max')
+                convolutions.append(pos_max_convolution)
+            else:
+                convolutions.append(pos_convolution)
 
         if self.max_pool:
-
-            pos_max_conv_4 = pool_2d(input=pos_conv_4, ds=(2, 1), ignore_border=True, mode='max')
-            pos_max_conv_3 = pool_2d(input=pos_conv_3, ds=(3, 1), ignore_border=True, mode='max')
-            pos_max_conv_2 = pool_2d(input=pos_conv_2, ds=(4, 1), ignore_border=True, mode='max')
-
-            conv_conc = T.concatenate([pos_max_conv_4, pos_max_conv_3, pos_max_conv_2], axis=1)[:, :, 0, 0]
+            conv_conc = T.concatenate(convolutions, axis=1)[:, :, 0, 0]
         else:
-            conv_conc = T.concatenate([pos_conv_4, pos_conv_3, pos_conv_2], axis=2)[:,:,:,0].reshape(shape=(w_pos_x_4D.shape[0], -1))
+            conv_conc = T.concatenate(convolutions, axis=2)[:,:,:,0].reshape(shape=(w_pos_x_4D.shape[0], -1))
 
         return conv_conc
 
@@ -702,6 +699,7 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         w_pos_x_4D = w_pos_x.reshape(shape=(w_pos_x.shape[0], 1, w_pos_x.shape[1], w_pos_x.shape[2]))
 
         w2v_conc = self.perform_nnet_word_embeddings_conv2d(w_x_4D)
+
         pos_conc = self.perform_nnet_pos_conv2d(w_pos_x_4D)
 
         out = self.perform_forward_pass_dense_step(w2v_conc, pos_conc)
