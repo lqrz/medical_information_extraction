@@ -67,6 +67,8 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         self.n_filters = n_filters  # number of filters per region size
         self.n_pos_emb = np.max(self.train_pos_feats)+1 #encoding for the pos tags
 
+        self.region_sizes = [4,3,2]
+
     def train(self, **kwargs):
         if kwargs['batch_size']:
             # train with minibatch
@@ -77,7 +79,7 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
             nnet_description = ' '.join(['Training with SGD',
                                          'context_win:', str(kwargs['window_size']),
                                          'statically' if kwargs['static'] else 'dynamically',
-                                         'nr_filters:', str(kwargs['n_filters']),
+                                         'filters_per_region:', str(kwargs['n_filters']),
                                          'with' if kwargs['max_pool'] else 'without', 'max pooling'])
             logger.info(nnet_description)
             self.train_with_sgd(**kwargs)
@@ -136,36 +138,64 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
         return w_filter_4, w_filter_3, w_filter_2
 
+    # def convolve_word_embeddings(self, w_x):
+    #
+    #     sentence_matrix_size = (self.n_window, self.n_emb)
+    #
+    #     filter_width = self.n_emb  # TODO: embeddings or 1?
+    #     w_filter_4_shape = (self.n_filters, 4, filter_width)
+    #     w_filter_3_shape = (self.n_filters, 3, filter_width)
+    #     w_filter_2_shape = (self.n_filters, 2, filter_width)
+    #
+    #     conv_4 = conv.conv2d(input=w_x,
+    #                          filters=self.params['w2v_filter_4'],
+    #                          filter_shape=w_filter_4_shape,
+    #                          image_shape=sentence_matrix_size)
+    #     conv_3 = conv.conv2d(input=w_x,
+    #                          filters=self.params['w2v_filter_3'],
+    #                          filter_shape=w_filter_3_shape,
+    #                          image_shape=sentence_matrix_size)
+    #     conv_2 = conv.conv2d(input=w_x,
+    #                          filters=self.params['w2v_filter_2'],
+    #                          filter_shape=w_filter_2_shape,
+    #                          image_shape=sentence_matrix_size)
+    #
+    #     if self.max_pool:
+    #         max_conv_4 = pool_2d(input=conv_4, ds=(2, 1), ignore_border=True, mode='max')
+    #         max_conv_3 = pool_2d(input=conv_3, ds=(3, 1), ignore_border=True, mode='max')
+    #         max_conv_2 = pool_2d(input=conv_2, ds=(4, 1), ignore_border=True, mode='max')
+    #
+    #         conv_concat = T.concatenate([max_conv_4, max_conv_3, max_conv_2])[:, 0, 0]
+    #     else:
+    #         conv_concat = T.concatenate([conv_4, conv_3, conv_2], axis=1).reshape(shape=(-1,))
+    #
+    #     return conv_concat
+
     def convolve_word_embeddings(self, w_x):
 
         sentence_matrix_size = (self.n_window, self.n_emb)
-
         filter_width = self.n_emb  # TODO: embeddings or 1?
-        w_filter_4_shape = (self.n_filters, 4, filter_width)
-        w_filter_3_shape = (self.n_filters, 3, filter_width)
-        w_filter_2_shape = (self.n_filters, 2, filter_width)
 
-        conv_4 = conv.conv2d(input=w_x,
-                             filters=self.params['w2v_filter_4'],
-                             filter_shape=w_filter_4_shape,
-                             image_shape=sentence_matrix_size)
-        conv_3 = conv.conv2d(input=w_x,
-                             filters=self.params['w2v_filter_3'],
-                             filter_shape=w_filter_3_shape,
-                             image_shape=sentence_matrix_size)
-        conv_2 = conv.conv2d(input=w_x,
-                             filters=self.params['w2v_filter_2'],
-                             filter_shape=w_filter_2_shape,
-                             image_shape=sentence_matrix_size)
+        convolutions = []
+
+        for rs in self.region_sizes:
+            w_filter_shape = (self.n_filters, rs, filter_width)
+
+            convolution = conv.conv2d(input=w_x,
+                                 filters=self.params['w2v_filter_'+str(rs)],
+                                 filter_shape=w_filter_shape,
+                                 image_shape=sentence_matrix_size)
+
+            if self.max_pool:
+                max_conv = pool_2d(input=convolution, ds=(self.n_window-rs+1, 1), ignore_border=True, mode='max')
+                convolutions.append(max_conv)
+            else:
+                convolutions.append(convolution)
 
         if self.max_pool:
-            max_conv_4 = pool_2d(input=conv_4, ds=(2, 1), ignore_border=True, mode='max')
-            max_conv_3 = pool_2d(input=conv_3, ds=(3, 1), ignore_border=True, mode='max')
-            max_conv_2 = pool_2d(input=conv_2, ds=(4, 1), ignore_border=True, mode='max')
-
-            conv_concat = T.concatenate([max_conv_4, max_conv_3, max_conv_2])[:, 0, 0]
+            conv_concat = T.concatenate(convolutions)[:, 0, 0]
         else:
-            conv_concat = T.concatenate([conv_4, conv_3, conv_2], axis=1).reshape(shape=(-1,))
+            conv_concat = T.concatenate(convolutions, axis=1).reshape(shape=(-1,))
 
         return conv_concat
 
@@ -247,7 +277,7 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
     def train_with_sgd(self, learning_rate=0.01, max_epochs=100,
                        alpha_L1_reg=0.001, alpha_L2_reg=0.01,
-                       save_params=False, use_scan=False, plot=False,
+                       save_params=False, plot=False,
                        static=False, max_pool=True,
                        **kwargs):
 
@@ -269,11 +299,18 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
         # indexes the identity matrix
         pos_idxs = T.vector(name="pos_train_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
+
+        # word embeddings to be used directly.
+        w1 = theano.shared(value=np.array(self.pretrained_embeddings).astype(dtype=theano.config.floatX),
+                           name='w1', borrow=True)
+
+        # word embeddings for constructing higher order features
         w1_w2v = theano.shared(value=np.array(self.pretrained_embeddings).astype(dtype=theano.config.floatX),
                            name='w1_w2v', borrow=True)
-        w2_w2v = theano.shared(value=utils.NeuralNetwork.initialize_weights(n_in=self.n_window*self.n_emb, n_out=self.n_out, function='tanh').
-                           astype(dtype=theano.config.floatX),
-                           name='w2_w2v', borrow=True)
+
+        # w2_w2v = theano.shared(value=utils.NeuralNetwork.initialize_weights(n_in=self.n_window*self.n_emb, n_out=self.n_out, function='tanh').
+        #                    astype(dtype=theano.config.floatX),
+        #                    name='w2_w2v', borrow=True)
 
         b1 = theano.shared(value=np.zeros((self.n_window*self.n_emb)).astype(dtype=theano.config.floatX), name='b1', borrow=True)
         b2 = theano.shared(value=np.zeros(self.n_out).astype(dtype=theano.config.floatX), name='b2', borrow=True)
@@ -281,16 +318,16 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         w_pos_in = theano.shared(value=np.identity(self.n_pos_emb).astype(dtype=theano.config.floatX), name='w_pos_in', borrow=True)
         # w1_pos = theano.shared(value=, name="w1_pos", borrow=True)
         # w2_pos = theano.shared(value=, name="w2_pos", borrow=True)
+
         #TODO: im harcoding the nr_filters_per_region and nr of feature_types im using
-        region_size = [4,3,2]
         if self.max_pool:
             w3 = theano.shared(value=utils.NeuralNetwork.initialize_weights(
-                n_in=self.n_filters*region_size.__len__()*2, n_out=self.n_out, function='softmax').astype(dtype=theano.config.floatX),
+                n_in=self.n_filters*self.region_sizes.__len__()*2, n_out=self.n_out, function='softmax').astype(dtype=theano.config.floatX),
                                name="w3",
                                borrow=True)
         else:
             w3 = theano.shared(value=utils.NeuralNetwork.initialize_weights(
-                n_in=np.sum(region_size)*self.n_filters*2, n_out=self.n_out, function='softmax').astype(dtype=theano.config.floatX),
+                n_in=np.sum(self.region_sizes)*self.n_filters*2, n_out=self.n_out, function='softmax').astype(dtype=theano.config.floatX),
                                name="w3",
                                borrow=True)
 
@@ -318,36 +355,11 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
         self.params = OrderedDict(zip(param_names, params))
 
-        # #--------------------
-        # sentence_matrix_size = (self.n_window, self.n_emb)
-        #
-        # filter_width = self.n_emb  # TODO: embeddings or 1?
-        # w_filter_4_shape = (self.n_filters, 4, filter_width)
-        # w_filter_3_shape = (self.n_filters, 3, filter_width)
-        # w_filter_2_shape = (self.n_filters, 2, filter_width)
-        #
-        # conv_4 = conv.conv2d(input=w_x,
-        #                      filters=self.params['w2v_filter_4'],
-        #                      filter_shape=w_filter_4_shape,
-        #                      image_shape=sentence_matrix_size)
-        # conv_3 = conv.conv2d(input=w_x,
-        #                      filters=self.params['w2v_filter_3'],
-        #                      filter_shape=w_filter_3_shape,
-        #                      image_shape=sentence_matrix_size)
-        # conv_2 = conv.conv2d(input=w_x,
-        #                      filters=self.params['w2v_filter_2'],
-        #                      filter_shape=w_filter_2_shape,
-        #                      image_shape=sentence_matrix_size)
-        #
-        # max_conv_4 = pool_2d(input=conv_4, ds=(2, 1), ignore_border=True, mode='max')
-        # max_conv_3 = pool_2d(input=conv_3, ds=(3, 1), ignore_border=True, mode='max')
-        # max_conv_2 = pool_2d(input=conv_2, ds=(4, 1), ignore_border=True, mode='max')
-        #
-        # w2v_conv = T.concatenate([max_conv_4, max_conv_3, max_conv_2])[:, 0, 0]
-        # # w2v_conv_res = w2v_conv.reshape(shape=(-1,))
-        # test = theano.function([w2v_idxs, pos_idxs], [conv_4, conv_3, conv_2, w2v_conv], on_unused_input='ignore')
-        # test(self.x_train[0], self.train_pos_feats[0])
-        # #---------------
+        conc = self.convolve_word_embeddings(w_x)
+        conc_ref = self.convolve_word_embeddings_ref(w_x)
+
+        test = theano.function([w2v_idxs], [conc, conc_ref])
+        test(self.x_train[0])
 
         if self.regularization:
             # symbolic Theano variable that represents the L1 regularization term
@@ -356,33 +368,15 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
             L2_w2v_emb, L2_pos_filters, L2_w2v_filters, L2_w3 = self.compute_regularization_cost(w2v_idxs)
             L2 = L2_w2v_emb + L2_pos_filters + L2_w2v_filters + L2_w3
 
-        if use_scan:
-            #TODO: DO I NEED THE SCAN AT ALL: NO! Im leaving it for reference only.
-            # Unchanging variables are passed to scan as non_sequences.
-            # Initialization occurs in outputs_info
-            out, _ = theano.scan(fn=self.sgd_forward_pass,
-                                    sequences=[w_x],
-                                    outputs_info=None,
-                                    non_sequences=[b1,w2_w2v,b2])
+        out = self.sgd_forward_pass(w_x, w_pos_x)
 
-            if self.regularization:
-                # TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
-                cost = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y)) + alpha_L2_reg*L2
-            else:
-                cost = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y))
-
-            y_predictions = T.argmax(out[:,-1,:], axis=1)
-
+        if self.regularization:
+            # cost = T.mean(T.nnet.categorical_crossentropy(out, y)) + alpha_L1_reg*L1 + alpha_L2_reg*L2
+            cost = T.mean(T.nnet.categorical_crossentropy(out, y)) + self.alpha_L2_reg*L2
         else:
-            out = self.sgd_forward_pass(w_x, w_pos_x)
+            cost = T.mean(T.nnet.categorical_crossentropy(out, y))
 
-            if self.regularization:
-                # cost = T.mean(T.nnet.categorical_crossentropy(out, y)) + alpha_L1_reg*L1 + alpha_L2_reg*L2
-                cost = T.mean(T.nnet.categorical_crossentropy(out, y)) + self.alpha_L2_reg*L2
-            else:
-                cost = T.mean(T.nnet.categorical_crossentropy(out, y))
-
-            y_predictions = T.argmax(out, axis=1)
+        y_predictions = T.argmax(out, axis=1)
 
         cost_prediction = T.mean(T.nnet.categorical_crossentropy(out, y)) + alpha_L2_reg*L2
         # cost_prediction = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y))
@@ -478,8 +472,6 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
                 epoch_l2_w2v_filters += l2_w2v_filters
                 epoch_l2_pos_filters += l2_pos_filters
                 epoch_l2_w3 += l2_w3
-
-                self.predict(on_validation_set=True, compute_cost_error=True)
 
             valid_error = 0
             valid_cost = 0
@@ -784,4 +776,4 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         return results
 
     def to_string(self):
-        return 'One hidden layer context window neural network with no tags.'
+        return 'Lexical-Semantical convolutional context window neural network with no tags.'
