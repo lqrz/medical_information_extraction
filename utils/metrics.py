@@ -1,5 +1,7 @@
 __author__ = 'root'
 from sklearn.metrics import metrics
+from nltk import FreqDist
+import numpy as np
 
 class Metrics:
 
@@ -33,3 +35,12 @@ class Metrics:
         results['f1_score'] = Metrics.compute_f1_score(y_true, y_pred, **kwargs)
 
         return results
+
+    @staticmethod
+    def compute_confusion_matrix(y_true, y_pred, labels):
+        fd = FreqDist(y_true)
+        totals = map(lambda x: fd[x], labels)
+
+        cm = metrics.confusion_matrix(y_true, y_pred, labels)
+        cm_normalized = np.nan_to_num(np.divide(cm, np.array(totals).astype(dtype='float')[:, np.newaxis]))
+        return cm_normalized
