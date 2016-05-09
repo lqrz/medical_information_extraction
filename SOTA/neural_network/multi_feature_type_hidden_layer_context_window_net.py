@@ -216,17 +216,6 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
         return conv_concat
 
-    def get_4D_word_embeddings_filters(self):
-        w2v_filter_4 = self.params['w2v_filter_4']
-        w2v_filter_3 = self.params['w2v_filter_3']
-        w2v_filter_2 = self.params['w2v_filter_2']
-
-        w2v_filter_4_4D = w2v_filter_4.reshape(shape=(w2v_filter_4.shape[0], 1, w2v_filter_4.shape[1], w2v_filter_4.shape[2]))
-        w2v_filter_3_4D = w2v_filter_3.reshape(shape=(w2v_filter_3.shape[0], 1, w2v_filter_3.shape[1], w2v_filter_3.shape[2]))
-        w2v_filter_2_4D = w2v_filter_2.reshape(shape=(w2v_filter_2.shape[0], 1, w2v_filter_2.shape[1], w2v_filter_2.shape[2]))
-
-        return w2v_filter_4_4D, w2v_filter_3_4D, w2v_filter_2_4D
-
     def train_with_sgd(self, learning_rate=0.01, max_epochs=100,
                        alpha_L1_reg=0.001, alpha_L2_reg=0.01,
                        save_params=False, plot=False,
