@@ -814,7 +814,7 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
         #TODO: choose
         # out = self.perform_forward_pass_dense_step(w2v_conc, pos_conc)
-        out = self.perform_forward_pass_dense_step_with_non_convolution(w2v_conv, pos_conv, w_x_directly_res)
+        out = self.perform_forward_pass_dense_step_with_non_convolution(w2v_conv, pos_conv, w2v_directly_conv)
 
         test = theano.function([w2v_idxs, pos_idxs], out)
         test(x_test, x_pos_test)
