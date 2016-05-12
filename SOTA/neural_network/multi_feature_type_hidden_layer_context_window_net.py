@@ -76,6 +76,9 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         self.w2v_filter_width = self.n_emb
         self.pos_filter_width = self.n_pos_emb
 
+        self.concatenate = T.concatenate
+        self.concatenate = utils.NeuralNetwork.theano_gpu_concatenate
+
     def train(self, **kwargs):
         if kwargs['batch_size']:
             # train with minibatch
@@ -103,12 +106,12 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         :return:
         """
 
-        a = T.concatenate([w2v_conv, pos_conv])
+        a = self.concatenate([w2v_conv, pos_conv])
 
         if w2v_conv.ndim == 1:
-            a = T.concatenate([w2v_conv, pos_conv])
+            a = self.concatenate([w2v_conv, pos_conv])
         elif w2v_conv.ndim == 2:
-            a = T.concatenate([w2v_conv, pos_conv], axis=1)
+            a = self.concatenate([w2v_conv, pos_conv], axis=1)
 
         h = self.hidden_activation_f(a)
 
@@ -123,12 +126,12 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         :return:
         """
 
-        a = T.concatenate([w2v_conv, pos_conv])
+        a = self.concatenate([w2v_conv, pos_conv])
 
         if w2v_conv.ndim == 1:
-            a = T.concatenate([w_x_directly, w2v_conv, pos_conv])
+            a = self.concatenate([w_x_directly, w2v_conv, pos_conv])
         elif w2v_conv.ndim == 2:
-            a = T.concatenate([w_x_directly, w2v_conv, pos_conv], axis=1)
+            a = self.concatenate([w_x_directly, w2v_conv, pos_conv], axis=1)
 
         h = self.hidden_activation_f(a)
 
@@ -191,9 +194,9 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
                 convolutions.append(convolution)
 
         if max_pool:
-            conv_concat = T.concatenate(convolutions)[:, 0, 0]
+            conv_concat = self.concatenate(convolutions)[:, 0, 0]
         else:
-            conv_concat = T.concatenate(convolutions, axis=1).reshape(shape=(-1,))
+            conv_concat = self.concatenate(convolutions, axis=1).reshape(shape=(-1,))
 
         return conv_concat
 
@@ -218,9 +221,9 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
                 convolutions.append(convolution)
 
         if self.max_pool:
-            conv_concat = T.concatenate(convolutions)[:, 0, 0]
+            conv_concat = self.concatenate(convolutions)[:, 0, 0]
         else:
-            conv_concat = T.concatenate(convolutions, axis=1).reshape(shape=(-1,))
+            conv_concat = self.concatenate(convolutions, axis=1).reshape(shape=(-1,))
 
         return conv_concat
 
@@ -335,6 +338,9 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         params_to_get_l2 = ['w1_w2v', 'w3', 'b3']
         params_to_get_l2.extend(w2v_filters_names)
         params_to_get_l2.extend(pos_filters_names)
+
+        if convolve_directly:
+            params_to_get_l2.extend(w2v_directly_filters_names)
 
         #TODO: learn w_pos_x?
         params_to_get_grad = [w3, b3, w_pos_x]
@@ -513,7 +519,7 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
                 epoch_l2_pos_filters += l2_pos_filters
                 epoch_l2_w3 += l2_w3
 
-                self.predict(on_validation_set=True, compute_cost_error=True)
+                # self.predict(on_validation_set=True, compute_cost_error=True)
 
             valid_error = 0
             valid_cost = 0
@@ -577,8 +583,9 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         L2_pos_emb = T.sum(self.params['w1_pos'][pos_idxs] ** 2)
         L2_w1_emb = T.sum(self.params['w1'][w2v_idxs] ** 2)
 
-        w2v_filter_names = [pn for pn in self.params_to_get_l2 if pn.startswith('w2v_')]
-        pos_filter_names = [pn for pn in self.params_to_get_l2 if pn.startswith('pos_')]
+        w2v_filter_names = [pn for pn in self.params_to_get_l2
+                            if pn.startswith('w2v_filter') or pn.startswith('w2v_directly_filter')]
+        pos_filter_names = [pn for pn in self.params_to_get_l2 if pn.startswith('pos_filter')]
 
         w2v_filter_penalties = []
         for filter_name in w2v_filter_names:
@@ -730,9 +737,9 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
                 convolutions.append(w2v_convolution)
 
         if max_pool:
-            conv_conc = T.concatenate(convolutions, axis=1)[:, :, 0, 0]
+            conv_conc = self.concatenate(convolutions, axis=1)[:, :, 0, 0]
         else:
-            conv_conc = T.concatenate(convolutions, axis=2).reshape(shape=(w_x_4D.shape[0], -1))
+            conv_conc = self.concatenate(convolutions, axis=2).reshape(shape=(w_x_4D.shape[0], -1))
 
         return conv_conc
 
@@ -755,9 +762,9 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
                 convolutions.append(pos_convolution)
 
         if self.max_pool:
-            conv_conc = T.concatenate(convolutions, axis=1)[:, :, 0, 0]
+            conv_conc = self.concatenate(convolutions, axis=1)[:, :, 0, 0]
         else:
-            conv_conc = T.concatenate(convolutions, axis=2)[:,:,:,0].reshape(shape=(w_pos_x_4D.shape[0], -1))
+            conv_conc = self.concatenate(convolutions, axis=2)[:,:,:,0].reshape(shape=(w_pos_x_4D.shape[0], -1))
 
         return conv_conc
 
@@ -815,9 +822,6 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         #TODO: choose
         # out = self.perform_forward_pass_dense_step(w2v_conc, pos_conc)
         out = self.perform_forward_pass_dense_step_with_non_convolution(w2v_conv, pos_conv, w2v_directly_conv)
-
-        test = theano.function([w2v_idxs, pos_idxs], out)
-        test(x_test, x_pos_test)
 
         y_predictions = T.argmax(out, axis=1)
 
