@@ -54,8 +54,11 @@ def parse_arguments():
                         help='Nr of cross-validation iterations.')
     parser.add_argument('--leaveoneout', action='store_true', default=False)
     parser.add_argument('--gradmeans', action='store_true', default=False)
-    parser.add_argument('--w2vvectorscache', action='store', type=str, required=True)   #TODO: remove req. make mutually_exc
-    parser.add_argument('--w2vmodel', action='store', type=str, default=None)
+
+    group_w2v = parser.add_mutually_exclusive_group(required=True)
+    group_w2v.add_argument('--w2vvectorscache', action='store', type=str)
+    group_w2v.add_argument('--w2vmodel', action='store', type=str, default=None)
+
     parser.add_argument('--bidirectional', action='store_true', default=False)
     parser.add_argument('--sharedparams', action='store_true', default=False)
     parser.add_argument('--plot', action='store_true', default=False)
