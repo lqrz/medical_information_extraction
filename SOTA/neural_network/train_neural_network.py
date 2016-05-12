@@ -54,16 +54,20 @@ def parse_arguments():
                         help='Nr of cross-validation iterations.')
     parser.add_argument('--leaveoneout', action='store_true', default=False)
     parser.add_argument('--gradmeans', action='store_true', default=False)
-    parser.add_argument('--w2vvectorscache', action='store', type=str, required=True)
+    parser.add_argument('--w2vvectorscache', action='store', type=str, required=True)   #TODO: remove req. make mutually_exc
     parser.add_argument('--w2vmodel', action='store', type=str, default=None)
     parser.add_argument('--bidirectional', action='store_true', default=False)
     parser.add_argument('--sharedparams', action='store_true', default=False)
     parser.add_argument('--plot', action='store_true', default=False)
     parser.add_argument('--tags', action='store', type=str, default=None)
-    parser.add_argument('--cnnfilters', action='store', type=int, default=None)
-    parser.add_argument('--static', action='store_true', default=False)
-    parser.add_argument('--maxpool', action='store_true', default=False)
-    parser.add_argument('--regionsizes', action='store', type=int, nargs='*')
+
+    group_cnn = parser.add_argument_group(title='cnn', description='Convolutional neural net specifics.')
+    group_cnn.add_argument('--cnnfilters', action='store', type=int, default=None)
+    group_cnn.add_argument('--static', action='store_true', default=False)
+    group_cnn.add_argument('--maxpool', action='store_true', default=False)
+    group_cnn.add_argument('--regionsizes', action='store', type=int, nargs='*')
+    group_cnn.add_argument('--multifeats', action='store', type=str, nargs='*',
+                           choices=Multi_Feature_Type_Hidden_Layer_Context_Window_Net.FEATURE_MAPPING.keys())
 
     #parse arguments
     arguments = parser.parse_args()
@@ -89,6 +93,7 @@ def parse_arguments():
     args['static'] = arguments.static
     args['max_pool'] = arguments.maxpool
     args['region_sizes'] = arguments.regionsizes
+    args['multi_features'] = arguments.multifeats
 
     return args
 
@@ -383,7 +388,8 @@ def use_testing_dataset(nn_class,
         'valid_pos_feats': x_valid_feats[2],    #refers to POS tag features.
         'test_pos_feats': x_test_feats[2],    #refers to POS tag features.
         'n_filters': args['n_filters'],
-        'region_sizes': args['region_sizes']
+        'region_sizes': args['region_sizes'],
+        'features_to_use': args['multi_features']
     }
 
     nn_trainer = nn_class(**params)
