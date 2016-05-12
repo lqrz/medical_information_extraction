@@ -63,6 +63,7 @@ def parse_arguments():
     parser.add_argument('--cnnfilters', action='store', type=int, default=None)
     parser.add_argument('--static', action='store_true', default=False)
     parser.add_argument('--maxpool', action='store_true', default=False)
+    parser.add_argument('--regionsizes', action='store', type=int, nargs='*')
 
     #parse arguments
     arguments = parser.parse_args()
@@ -87,6 +88,7 @@ def parse_arguments():
     args['n_filters'] = arguments.cnnfilters
     args['static'] = arguments.static
     args['max_pool'] = arguments.maxpool
+    args['region_sizes'] = arguments.regionsizes
 
     return args
 
@@ -380,7 +382,8 @@ def use_testing_dataset(nn_class,
         'train_pos_feats': x_train_feats[2],    #refers to POS tag features.
         'valid_pos_feats': x_valid_feats[2],    #refers to POS tag features.
         'test_pos_feats': x_test_feats[2],    #refers to POS tag features.
-        'n_filters': args['n_filters']
+        'n_filters': args['n_filters'],
+        'region_sizes': args['region_sizes']
     }
 
     nn_trainer = nn_class(**params)
