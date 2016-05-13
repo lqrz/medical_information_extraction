@@ -31,11 +31,25 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
     Context window with SGD and adagrad
     """
 
+    # (feature_name, convolve, max_pool, nr_filters, filter_width, nr_region_sizes)
+    # if "None", it gets determined by the instance attribute
+    FEATURE_MAPPING = {
+        'w2v_c_nm': ('w2v', True, False, 1, 1, 1),
+        'w2v_nc_nm': ('w2v', False, False, 0, 0, 0),
+        'w2v_c_m': ('w2v', True, True, None, None, None),
+        'pos_c_m': ('pos', True, True, None, None, None),
+        'ner_c_m': ('ner', True, True, None, None, None)
+    }
+
     def __init__(self,
                  hidden_activation_f,
                  out_activation_f,
                  n_filters,
+                 features_to_use,
                  regularization=False,
+                 train_ner_feats=None,
+                 valid_ner_feats=None,
+                 test_ner_feats=None,
                  train_pos_feats=None,
                  valid_pos_feats=None,
                  test_pos_feats=None,
@@ -59,25 +73,62 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         self.params = OrderedDict()
         self.params_to_get_l2 = []
 
+        #POS features
         self.train_pos_feats = np.array(train_pos_feats)
         self.valid_pos_feats = np.array(valid_pos_feats)
         self.test_pos_feats = np.array(test_pos_feats)
+
+        #NER features
+        self.train_ner_feats = np.array(train_ner_feats)
+        self.valid_ner_feats = np.array(valid_ner_feats)
+        self.test_ner_feats = np.array(test_ner_feats)
 
         self.alpha_L2_reg = None
         self.max_pool = None
 
         self.n_filters = n_filters  # number of filters per region size
         #TODO: choose one.
-        self.n_pos_emb = np.max(self.train_pos_feats)+1 #encoding for the pos tags
-        self.n_pos_emb = 50 #encoding for the pos tags
+        self.n_pos_emb = np.max(self.train_pos_feats)+1 #encoding for the POS tags
+        self.n_pos_emb = 50 #encoding for the POS tags
+
+        self.n_ner_emb = 50 #encoding for the NER tags
 
         self.region_sizes = region_sizes
 
         self.w2v_filter_width = self.n_emb
         self.pos_filter_width = self.n_pos_emb
+        self.ner_filter_width = self.n_ner_emb
 
         self.concatenate = T.concatenate
         self.concatenate = utils.NeuralNetwork.theano_gpu_concatenate
+
+        self.features_to_use = self.parse_features_to_use(features_to_use)
+
+        self.features_dimensions = self.get_features_dimensions()
+
+    def get_features_dimensions(self):
+        d = dict()
+        d['w2v'] = self.n_emb
+        d['pos'] = self.n_pos_emb
+        d['ner'] = self.n_ner_emb
+
+        return d
+
+    def parse_features_to_use(self, features_to_use):
+        return [self.__class__.FEATURE_MAPPING[feat] for feat in features_to_use]
+
+    def using_feature(self, feature, convolve, max_pool):
+        result = None
+
+        if convolve is None and max_pool is None:
+            result = [f for (f,_,_,_,_,_) in self.features_to_use if f==feature].__len__() > 0
+        else:
+            result = [f for (f, c, m, _, _, _) in self.features_to_use
+                      if f==feature and c==convolve and m==max_pool].__len__() > 0
+
+        assert result is not None
+
+        return result
 
     def train(self, **kwargs):
         if kwargs['batch_size']:
@@ -97,7 +148,7 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
         return True
 
-    def perform_forward_pass_dense_step(self, w2v_conv, pos_conv):
+    def perform_forward_pass_dense_step(self, features_hidden_state, ndim):
         """
         performs the last step in the nnet forward pass (the dense layer and softmax).
 
@@ -106,46 +157,90 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         :return:
         """
 
-        a = self.concatenate([w2v_conv, pos_conv])
+        a = self.concatenate(features_hidden_state)
 
-        if w2v_conv.ndim == 1:
-            a = self.concatenate([w2v_conv, pos_conv])
-        elif w2v_conv.ndim == 2:
-            a = self.concatenate([w2v_conv, pos_conv], axis=1)
-
-        h = self.hidden_activation_f(a)
-
-        return self.out_activation_f(T.dot(h, self.params['w3']) + self.params['b3'])
-
-    def perform_forward_pass_dense_step_with_non_convolution(self, w2v_conv, pos_conv, w_x_directly):
-        """
-        performs the last step in the nnet forward pass (the dense layer and softmax).
-
-        :param w2v_conv:
-        :param pos_conv:
-        :return:
-        """
-
-        a = self.concatenate([w2v_conv, pos_conv])
-
-        if w2v_conv.ndim == 1:
-            a = self.concatenate([w_x_directly, w2v_conv, pos_conv])
-        elif w2v_conv.ndim == 2:
-            a = self.concatenate([w_x_directly, w2v_conv, pos_conv], axis=1)
+        if ndim == 1:
+            a = self.concatenate(features_hidden_state)
+        elif ndim == 2:
+            a = self.concatenate(features_hidden_state, axis=1)
 
         h = self.hidden_activation_f(a)
 
         return self.out_activation_f(T.dot(h, self.params['w3']) + self.params['b3'])
 
-    def sgd_forward_pass(self, w_x, w_pos_x):
+    def sgd_forward_pass(self, tensor_dim):
 
-        w2v_conv = self.convolve_word_embeddings(w_x, self.w2v_filter_width, n_filters=self.n_filters,
-                                                 region_sizes=self.region_sizes,
-                                                 max_pool=self.max_pool)
+        hidden_state = self.compute_hidden_state(tensor_dim)
 
-        pos_conv = self.convolve_pos_features(w_pos_x, self.pos_filter_width)
+        return self.perform_forward_pass_dense_step(hidden_state, ndim=tensor_dim/2)
 
-        return self.perform_forward_pass_dense_step(w2v_conv, pos_conv)
+    def compute_hidden_state(self, tensor_dim):
+        hidden_state = []
+
+        if self.using_w2v_no_convolution_no_maxpool_feature():
+            if tensor_dim == 2:
+                w2v_directly = self.w_x_directly.reshape(shape=(-1,))
+            elif tensor_dim == 4:
+                w2v_directly = self.w_x_directly.reshape(shape=(self.w_x_directly.shape[0], -1))
+
+            hidden_state.append(w2v_directly)
+
+        if self.using_w2v_convolution_no_maxpool_feature():
+            if tensor_dim == 2:
+                w2v_directly = self.convolve_word_embeddings(self.w_x_directly,
+                                                             filter_width=1,
+                                                             n_filters=1,
+                                                             region_sizes=[self.n_window],
+                                                             max_pool=False,
+                                                             filter_prefix='w2v_directly_filter_')
+            elif tensor_dim == 4:
+                w_x_directly_4D = self.w_x_directly.reshape(
+                    shape=(self.w_x_directly.shape[0], 1, self.w_x_directly.shape[1], self.w_x_directly.shape[2]))
+                w2v_directly = self.perform_nnet_word_embeddings_conv2d(w_x_directly_4D,
+                                                                        region_sizes=[self.n_window],
+                                                                        max_pool=False,
+                                                                        filter_prefix='w2v_directly_filter_')
+
+            hidden_state.append(w2v_directly)
+
+        if self.using_w2v_convolution_maxpool_feature():
+            if tensor_dim == 2:
+                w2v_conv = self.convolve_word_embeddings(self.w_x,
+                                                         filter_width=self.w2v_filter_width,
+                                                         n_filters=self.n_filters,
+                                                         region_sizes=self.region_sizes,
+                                                         max_pool=self.max_pool)
+            elif tensor_dim == 4:
+                w_x_4D = self.w_x.reshape(shape=(self.w_x.shape[0], 1, self.w_x.shape[1], self.w_x.shape[2]))
+                w2v_conv = self.perform_nnet_word_embeddings_conv2d(w_x_4D,
+                                                                    region_sizes=self.region_sizes,
+                                                                    max_pool=self.max_pool)
+
+            hidden_state.append(w2v_conv)
+
+        if self.using_pos_convolution_maxpool_feature():
+            if tensor_dim == 2:
+                pos_conv = self.convolve_pos_features(self.w_pos_x,
+                                                      filter_width=self.pos_filter_width)
+            elif tensor_dim == 4:
+                w_pos_x_4D = self.w_pos_x.reshape(
+                    shape=(self.w_pos_x.shape[0], 1, self.w_pos_x.shape[1], self.w_pos_x.shape[2]))
+                pos_conv = self.perform_nnet_pos_conv2d(w_pos_x_4D)
+
+            hidden_state.append(pos_conv)
+
+        if self.using_ner_convolution_maxpool_feature():
+            if tensor_dim == 2:
+                ner_conv = self.convolve_ner_features(self.w_ner_x,
+                                                      filter_width=self.ner_filter_width)
+            elif tensor_dim == 4:
+                w_ner_x_4D = self.w_ner_x.reshape(
+                    shape=(self.w_ner_x.shape[0], 1, self.w_ner_x.shape[1], self.w_ner_x.shape[2]))
+                ner_conv = self.perform_nnet_ner_conv2d(w_ner_x_4D)
+
+            hidden_state.append(ner_conv)
+
+        return hidden_state
 
     def sgd_forward_pass_with_non_convolution(self, w_x, w_pos_x, w_x_directly):
 
@@ -227,172 +322,308 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
         return conv_concat
 
+    def convolve_ner_features(self, w_ner_x, filter_width):
+
+        sentence_ner_shape = (self.n_window, self.n_ner_emb)
+
+        convolutions = []
+
+        for rs in self.region_sizes:
+            ner_filter_4_shape = (self.n_filters, rs, filter_width)
+
+            convolution = conv.conv2d(input=w_ner_x,
+                                 filters=self.params['ner_filter_'+str(rs)],
+                                 filter_shape=ner_filter_4_shape,
+                                 image_shape=sentence_ner_shape)
+
+            if self.max_pool:
+                max_conv = pool_2d(input=convolution, ds=(self.n_window-rs+1, 1), ignore_border=True, mode='max')
+                convolutions.append(max_conv)
+            else:
+                convolutions.append(convolution)
+
+        if self.max_pool:
+            conv_concat = self.concatenate(convolutions)[:, 0, 0]
+        else:
+            conv_concat = self.concatenate(convolutions, axis=1).reshape(shape=(-1,))
+
+        return conv_concat
+
+    def determine_nr_filters(self, feature):
+        nr_filters = self.__class__.FEATURE_MAPPING[feature][3] # i dont like this
+        if not nr_filters:
+            nr_filters = self.n_filters
+
+        assert nr_filters is not None, 'Could not determine nr_filters for feature: %s' % feature
+
+        return nr_filters
+
+    def determine_filter_width(self, feature):
+        filter_width = self.__class__.FEATURE_MAPPING[feature][4] # i dont like this
+        if not filter_width:
+            if feature == 'w2v':
+                filter_width = self.n_emb
+            elif feature == 'pos':
+                filter_width = self.n_pos_emb
+
+        assert filter_width is not None, 'Could not determine filter_width for feature: %s' % feature
+
+        return filter_width
+
+    def determine_nr_region_sizes(self, feature):
+        nr_regions = self.__class__.FEATURE_MAPPING[feature][5] # i dont like this
+        if not nr_regions:
+            nr_regions = self.region_sizes.__len__()
+
+        assert nr_regions is not None, 'Could not determine nr_region_sizes for feature: %s' % feature
+
+        return nr_regions
+
+    def determine_hidden_layer_size(self):
+        size = 0
+
+        for (feature, convolve, max_pool, _, _, _) in self.features_to_use:
+            if max_pool:
+                feat_dimension = 1
+            else:
+                feat_dimension = self.features_dimensions[feature]
+
+            if convolve:
+                feat_extended = '_'.join([feature, 'c' if convolve else 'nc', 'm' if max_pool else 'nm'])
+                window = 1
+                n_filters = self.determine_nr_filters(feat_extended)
+                n_regions = self.determine_nr_region_sizes(feat_extended)
+            else:
+                window = self.n_window
+                n_regions = 1
+                n_filters = 1
+
+            size += feat_dimension * window * n_regions * n_filters
+
+        return size
+
+    def using_w2v_feature(self):
+        return self.using_feature(feature='w2v', convolve=None, max_pool=None)
+
+    def using_w2v_no_convolution_no_maxpool_feature(self):
+        return self.using_feature(feature='w2v', convolve=False, max_pool=False)
+
+    def using_w2v_convolution_no_maxpool_feature(self):
+        return self.using_feature(feature='w2v', convolve=True, max_pool=False)
+
+    def using_w2v_convolution_maxpool_feature(self):
+        return self.using_feature(feature='w2v', convolve=True, max_pool=True)
+
+    def using_pos_feature(self):
+        return self.using_feature(feature='pos', convolve=None, max_pool=None)
+
+    def using_ner_feature(self):
+        return self.using_feature(feature='ner', convolve=None, max_pool=None)
+
+    def using_pos_convolution_maxpool_feature(self):
+        return self.using_feature(feature='pos', convolve=True, max_pool=True)
+
+    def using_ner_convolution_maxpool_feature(self):
+        return self.using_feature(feature='ner', convolve=True, max_pool=True)
+
+
     def train_with_sgd(self, learning_rate=0.01, max_epochs=100,
                        alpha_L1_reg=0.001, alpha_L2_reg=0.01,
                        save_params=False, plot=False,
                        static=False, max_pool=True,
                        **kwargs):
 
-        #TODO: review this.
-        directly = True
-        convolve_directly = True
 
         self.alpha_L2_reg = alpha_L2_reg
         self.max_pool = max_pool
 
-        train_x = theano.shared(value=np.array(self.x_train, dtype=INT), name='train_x', borrow=True)
-        train_pos_x = theano.shared(value=np.array(self.train_pos_feats, dtype=INT), name='train_pos_x', borrow=True)
+        # indexes the w2v embeddings
+        w2v_idxs = T.vector(name="w2v_train_idxs",
+                            dtype=INT)  # columns: context window size/lines: tokens in the sentence
+
+        # indexes the POS matrix
+        pos_idxs = T.vector(name="pos_train_idxs",
+                            dtype=INT)  # columns: context window size/lines: tokens in the sentence
+
+        # indexes the NER matrix
+        ner_idxs = T.vector(name="ner_train_idxs",
+                            dtype=INT)  # columns: context window size/lines: tokens in the sentence
+
         train_y = theano.shared(value=np.array(self.y_train, dtype=INT), name='train_y', borrow=True)
+
+        if self.using_w2v_feature():
+            train_x = theano.shared(value=np.array(self.x_train, dtype=INT), name='train_x', borrow=True)
+
+        if self.using_pos_feature():
+            # shared variable with training POS features
+            train_pos_x = theano.shared(value=np.array(self.train_pos_feats, dtype=INT), name='train_pos_x', borrow=True)
+
+        if self.using_ner_feature():
+            # shared variable with training POS features
+            train_ner_x = theano.shared(value=np.array(self.train_ner_feats, dtype=INT), name='train_ner_x', borrow=True)
 
         # valid_x = theano.shared(value=np.array(self.x_valid, dtype=INT), name='valid_x', borrow=True)
 
         y = T.vector(name='y', dtype=INT)
 
-        # n_tokens = T.scalar(name='n_tokens', dtype=INT)    #tokens in sentence
-
-        # indexes the w2v embeddings
-        w2v_idxs = T.vector(name="w2v_train_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
-
-        # indexes the identity matrix
-        pos_idxs = T.vector(name="pos_train_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
-
-        # word embeddings to be used directly.
-        w1 = theano.shared(value=np.array(self.pretrained_embeddings).astype(dtype=theano.config.floatX),
-                           name='w1', borrow=True)
-
-        # word embeddings for constructing higher order features
-        w1_w2v = theano.shared(value=np.array(self.pretrained_embeddings).astype(dtype=theano.config.floatX),
-                           name='w1_w2v', borrow=True)
-
-        # w2_w2v = theano.shared(value=utils.NeuralNetwork.initialize_weights(n_in=self.n_window*self.n_emb, n_out=self.n_out, function='tanh').
-        #                    astype(dtype=theano.config.floatX),
-        #                    name='w2_w2v', borrow=True)
-
-        b1 = theano.shared(value=np.zeros((self.n_window*self.n_emb)).astype(dtype=theano.config.floatX), name='b1', borrow=True)
-        b2 = theano.shared(value=np.zeros(self.n_out).astype(dtype=theano.config.floatX), name='b2', borrow=True)
-
-        #TODO: one-hot or random?
-        # w1_pos = theano.shared(value=np.identity(self.n_pos_emb).astype(dtype=theano.config.floatX), name='w1_pos', borrow=True)
-        w1_pos = theano.shared(value=utils.NeuralNetwork.initialize_weights(
-            n_in=self.n_pos_emb, n_out=self.n_pos_emb, function='tanh').astype(dtype=theano.config.floatX), name='w1_pos', borrow=True)
-
-        #TODO: im harcoding the nr_feature_types im using
-        if self.max_pool:
-            if directly and not convolve_directly:
-                w3 = theano.shared(value=utils.NeuralNetwork.initialize_weights(
-                    n_in=(self.n_window*self.n_emb)+self.region_sizes.__len__()*self.n_filters*2, n_out=self.n_out, function='softmax').astype(dtype=theano.config.floatX),
-                                   name="w3",
-                                   borrow=True)
-            elif directly and convolve_directly:
-                w3 = theano.shared(value=utils.NeuralNetwork.initialize_weights(
-                    n_in=self.n_emb+self.region_sizes.__len__()*self.n_filters*2, n_out=self.n_out, function='softmax').astype(dtype=theano.config.floatX),
-                                   name="w3",
-                                   borrow=True)
-            else:
-                w3 = theano.shared(value=utils.NeuralNetwork.initialize_weights(
-                    n_in=self.region_sizes.__len__()*self.n_filters*2, n_out=self.n_out, function='softmax').astype(dtype=theano.config.floatX),
-                                   name="w3",
-                                   borrow=True)
-        else:
-            w3 = theano.shared(value=utils.NeuralNetwork.initialize_weights(
-                n_in=np.sum(self.region_sizes)*self.n_filters*2, n_out=self.n_out, function='softmax').astype(dtype=theano.config.floatX),
-                               name="w3",
-                               borrow=True)
-
+        # create dense layer and bias
+        hidden_layer_size = self.determine_hidden_layer_size()
+        w3 = theano.shared(value=utils.NeuralNetwork.initialize_weights(
+            n_in=hidden_layer_size, n_out=self.n_out, function='softmax').astype(dtype=theano.config.floatX),
+                           name="w3",
+                           borrow=True)
         b3 = theano.shared(value=np.zeros(self.n_out).astype(dtype=theano.config.floatX),
                            name='b3',
                            borrow=True)
 
-        w2v_filters = self.create_filters(filter_width=self.w2v_filter_width, region_sizes=self.region_sizes,
-                                          n_filters=self.n_filters)
-        w2v_filters_names = map(lambda x: 'w2v_%s' % x.name, w2v_filters)
+        params = [w3, b3]
+        param_names = ['w3', 'b3']
+        params_to_get_l2 = ['w3', 'b3']
+        params_to_get_grad = [w3, b3]
+        params_to_get_grad_names = ['w3', 'b3']
 
-        pos_filters = self.create_filters(filter_width=self.pos_filter_width, region_sizes=self.region_sizes,
-                                          n_filters=self.n_filters)
-        pos_filters_names = map(lambda x: 'pos_%s' % x.name, pos_filters)
+        self.params = OrderedDict(zip(param_names, params))
 
-        if convolve_directly:
+        if self.using_w2v_no_convolution_no_maxpool_feature():
+            # word embeddings to be used directly.
+            w1 = theano.shared(value=np.array(self.pretrained_embeddings).astype(dtype=theano.config.floatX),
+                               name='w1', borrow=True)
+
+            # index embeddings
+            w_x_directly = w1[w2v_idxs]
+
+            # add structures to self.params
+            self.params['w1'] = w1
+
+            if not static:
+                # learn word_embeddings
+                params_to_get_grad.append(w_x_directly)
+                params_to_get_grad_names.append('w_x_directly')
+
+            self.w_x_directly = w_x_directly
+
+        if self.using_w2v_convolution_no_maxpool_feature():
+            # word embeddings to be used directly.
+            w1 = theano.shared(value=np.array(self.pretrained_embeddings).astype(dtype=theano.config.floatX),
+                               name='w1', borrow=True)
+
+            # create w2v filters
             w2v_directly_filters = self.create_filters(filter_width=1, region_sizes=[self.n_window],
-                                              n_filters=1)
+                                                       n_filters=1)
             w2v_directly_filters_names = map(lambda x: 'w2v_directly_%s' % x.name, w2v_directly_filters)
 
-        w_x_directly = w1[w2v_idxs]
-        w_x_directly_res = w_x_directly.reshape(shape=(-1,))
+            # index embeddings
+            w_x_directly = w1[w2v_idxs]
 
-        w_x = w1_w2v[w2v_idxs]
-
-        w_pos_x = w1_pos[pos_idxs]
-
-        params = [w1, w1_w2v, w1_pos, w3, b3]
-        param_names = ['w1', 'w1_w2v', 'w1_pos', 'w3', 'b3']
-
-        params.extend(w2v_filters)
-        param_names.extend(w2v_filters_names)
-        params.extend(pos_filters)
-        param_names.extend(pos_filters_names)
-
-        if convolve_directly:
-            params.extend(w2v_directly_filters)
-            param_names.extend(w2v_directly_filters_names)
-
-        params_to_get_l2 = ['w1_w2v', 'w3', 'b3']
-        params_to_get_l2.extend(w2v_filters_names)
-        params_to_get_l2.extend(pos_filters_names)
-
-        if convolve_directly:
+            # add structures to self.params
+            self.params['w1'] = w1
+            self.params.update(dict(zip(w2v_directly_filters_names, w2v_directly_filters)))
             params_to_get_l2.extend(w2v_directly_filters_names)
-
-        #TODO: learn w_pos_x?
-        params_to_get_grad = [w3, b3, w_pos_x]
-        params_to_get_grad_names = ['w3', 'b3', 'w_pos_x']
-        params_to_get_grad.extend(w2v_filters)
-        params_to_get_grad_names.extend(w2v_filters_names)
-        params_to_get_grad.extend(pos_filters)
-        params_to_get_grad_names.extend(pos_filters_names)
-
-        if convolve_directly:
             params_to_get_grad.extend(w2v_directly_filters)
             params_to_get_grad_names.extend(w2v_directly_filters_names)
 
-        if not static:
-            # learn word_embeddings
-            params_to_get_grad.append(w_x)
-            params_to_get_grad_names.append('w_x')
-            params_to_get_grad.append(w_x_directly)
-            params_to_get_grad_names.append('w_x_directly')
+            if not static:
+                # learn word_embeddings
+                params_to_get_grad.append(w_x_directly)
+                params_to_get_grad_names.append('w_x_directly')
 
-        self.params = OrderedDict(zip(param_names, params))
+            self.w_x_directly = w_x_directly
+
+        if self.using_w2v_convolution_maxpool_feature():
+            # word embeddings for constructing higher order features
+            w1_w2v = theano.shared(value=np.array(self.pretrained_embeddings).astype(dtype=theano.config.floatX),
+                               name='w1_w2v', borrow=True)
+
+            # create w2v filters
+            w2v_filters = self.create_filters(filter_width=self.w2v_filter_width, region_sizes=self.region_sizes,
+                                              n_filters=self.n_filters)
+            w2v_filters_names = map(lambda x: 'w2v_%s' % x.name, w2v_filters)
+
+            # index embeddings
+            w_x = w1_w2v[w2v_idxs]
+
+            # add structures to self.params
+            self.params['w1_w2v'] = w1_w2v
+            self.params.update(dict(zip(w2v_filters_names, w2v_filters)))
+            params_to_get_l2.append('w1_w2v')
+            params_to_get_l2.extend(w2v_filters_names)
+            params_to_get_grad.extend(w2v_filters)
+            params_to_get_grad_names.extend(w2v_filters_names)
+
+            if not static:
+                # learn word_embeddings
+                params_to_get_grad.append(w_x)
+                params_to_get_grad_names.append('w_x')
+
+            self.w_x = w_x
+
+        if self.using_pos_convolution_maxpool_feature():
+            # create POS embeddings
+            #TODO: one-hot or random?
+            # w1_pos = theano.shared(value=np.identity(self.n_pos_emb).astype(dtype=theano.config.floatX), name='w1_pos', borrow=True)
+            w1_pos = theano.shared(value=utils.NeuralNetwork.initialize_weights(
+                n_in=np.max(self.train_pos_feats)+1, n_out=self.n_pos_emb, function='tanh').astype(dtype=theano.config.floatX), name='w1_pos', borrow=True)
+
+            # create POS filters
+            pos_filters = self.create_filters(filter_width=self.pos_filter_width, region_sizes=self.region_sizes,
+                                              n_filters=self.n_filters)
+            pos_filters_names = map(lambda x: 'pos_%s' % x.name, pos_filters)
+
+            # index embeddings
+            w_pos_x = w1_pos[pos_idxs]
+
+            # add structures to self.params
+            self.params['w1_pos'] = w1_pos
+            self.params.update(dict(zip(pos_filters_names,pos_filters)))
+            params_to_get_l2.extend(pos_filters_names)
+            params_to_get_grad.append(w_pos_x)
+            params_to_get_grad_names.append('w_pos_x')
+            params_to_get_grad.extend(pos_filters)
+            params_to_get_grad_names.extend(pos_filters_names)
+
+            self.w_pos_x = w_pos_x
+
+        if self.using_ner_convolution_maxpool_feature():
+            w1_ner = theano.shared(value=utils.NeuralNetwork.initialize_weights(
+                n_in=np.max(self.train_ner_feats)+1, n_out=self.n_ner_emb, function='tanh').astype(dtype=theano.config.floatX),
+                                   name='w1_ner', borrow=True)
+            # create NER filters
+            ner_filters = self.create_filters(filter_width=self.ner_filter_width, region_sizes=self.region_sizes,
+                                              n_filters=self.n_filters)
+            ner_filters_names = map(lambda x: 'ner_%s' % x.name, ner_filters)
+
+            # index embeddings
+            w_ner_x = w1_ner[ner_idxs]
+
+            # add structures to self.params
+            self.params['w1_ner'] = w1_ner
+            self.params.update(dict(zip(ner_filters_names, ner_filters)))
+            params_to_get_l2.extend(ner_filters_names)
+            params_to_get_grad.append(w_ner_x)
+            params_to_get_grad_names.append('w_ner_x')
+            params_to_get_grad.extend(ner_filters)
+            params_to_get_grad_names.extend(ner_filters_names)
+
+            self.w_ner_x = w_ner_x
+
         self.params_to_get_l2 = params_to_get_l2
 
         if self.regularization:
             # symbolic Theano variable that represents the L1 regularization term
             # L1 = T.sum(abs(w1)) + T.sum(abs(w2))
 
-            L2_w2v_emb, L2_pos_emb, L2_w1_emb, L2_pos_filters, L2_w2v_filters, L2_w3 = self.compute_regularization_cost(w2v_idxs, pos_idxs)
-            L2 = L2_w2v_emb + L2_pos_emb + L2_w1_emb + L2_pos_filters + L2_w2v_filters + L2_w3
+            L2_w2v_emb, L2_pos_emb, L2_w1_emb, L2_pos_filters, L2_w2v_filters, \
+            L2_w3, L2_w2v_dir_filters, L2_ner_emb, L2_ner_filters = \
+                self.compute_regularization_cost(w2v_idxs, pos_idxs, ner_idxs)
+
+            L2 = L2_w2v_emb + L2_pos_emb + L2_w1_emb + L2_pos_filters + L2_w2v_filters + \
+                 L2_w3 + L2_w2v_dir_filters + L2_ner_emb + L2_ner_filters
 
         #TODO: choose
         # out = self.sgd_forward_pass(w_x, w_pos_x)
         # out = self.sgd_forward_pass_with_non_convolution(w_x, w_pos_x, w_x_directly_res)
 
-        if convolve_directly:
-            w2v_directly = self.convolve_word_embeddings(w_x_directly,
-                                                              filter_width=1,
-                                                              n_filters=1,
-                                                              region_sizes=[self.n_window],
-                                                              max_pool=False,
-                                                              filter_prefix='w2v_directly_filter_')
-        else:
-            w2v_directly = w_x_directly_res
-
-        w2v_conv = self.convolve_word_embeddings(w_x,
-                                                 filter_width=self.w2v_filter_width,
-                                                 n_filters=self.n_filters,
-                                                 region_sizes=self.region_sizes,
-                                                 max_pool=self.max_pool)
-        pos_conv = self.convolve_pos_features(w_pos_x, self.pos_filter_width)
-
-        out = self.perform_forward_pass_dense_step_with_non_convolution(w2v_conv, pos_conv, w2v_directly)
+        out = self.sgd_forward_pass(tensor_dim=2)
 
         if self.regularization:
             # cost = T.mean(T.nnet.categorical_crossentropy(out, y)) + alpha_L1_reg*L1 + alpha_L2_reg*L2
@@ -420,6 +651,8 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
                 eps = np.zeros_like(self.params['w1_w2v'].get_value(), dtype=theano.config.floatX)
             elif name == 'w_pos_x':
                 eps = np.zeros_like(self.params['w1_pos'].get_value(), dtype=theano.config.floatX)
+            elif name == 'w_ner_x':
+                eps = np.zeros_like(self.params['w1_ner'].get_value(), dtype=theano.config.floatX)
             elif name == 'w_x_directly':
                 eps = np.zeros_like(self.params['w1'].get_value(), dtype=theano.config.floatX)
             else:
@@ -446,6 +679,15 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
                 updates.append((self.params['w1_pos'],update))
                 #update whole structure with whole structure
                 updates.append((accum_grad,accum))
+            elif name == 'w_ner_x':
+                #this will return the whole accum_grad structure incremented in the specified idxs
+                accum = T.inc_subtensor(accum_grad[ner_idxs],T.sqr(grad))
+                #this will return the whole w1 structure decremented according to the idxs vector.
+                update = T.inc_subtensor(param, - learning_rate * grad/(T.sqrt(accum[ner_idxs])+10**-5))
+                #update whole structure with whole structure
+                updates.append((self.params['w1_ner'],update))
+                #update whole structure with whole structure
+                updates.append((accum_grad,accum))
             elif name == 'w_x_directly':
                 #this will return the whole accum_grad structure incremented in the specified idxs
                 accum = T.inc_subtensor(accum_grad[w2v_idxs],T.sqr(grad))
@@ -462,25 +704,40 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
         train_idx = T.scalar(name="train_idx", dtype=INT)
 
+        givens = dict()
+        if self.using_w2v_feature():
+            givens.update({
+                w2v_idxs: train_x[train_idx]
+            })
+
+        if self.using_pos_feature():
+            givens.update({
+                pos_idxs: train_pos_x[train_idx]
+            })
+
+        if self.using_ner_feature():
+            givens.update({
+                ner_idxs: train_ner_x[train_idx]
+            })
+
         train = theano.function(inputs=[train_idx, y],
                                 outputs=[cost,errors],
                                 updates=updates,
-                                givens={
-                                    w2v_idxs: train_x[train_idx],
-                                    pos_idxs: train_pos_x[train_idx]
-                                })
+                                givens=givens)
+
         # theano.printing.debugprint(train)
 
-        train_predict = theano.function(inputs=[w2v_idxs, pos_idxs, y],
-                                             outputs=[errors, y_predictions],
-                                             updates=[])
+        train_predict = theano.function(inputs=[w2v_idxs, pos_idxs, ner_idxs, y],
+                                        outputs=[errors, y_predictions],
+                                        updates=[],
+                                        on_unused_input='warn')
 
         if self.regularization:
             train_l2_penalty = theano.function(inputs=[train_idx],
-                                               outputs=[L2_w2v_emb, L2_w2v_filters, L2_pos_filters, L2_w3],
-                                               givens={
-                                                   w2v_idxs: train_x[train_idx]
-                                               })
+                                               outputs=[L2_w2v_emb, L2_pos_emb, L2_w1_emb, L2_pos_filters,
+                                                        L2_w2v_filters, L2_w3, L2_w2v_dir_filters, L2_ner_emb,
+                                                        L2_ner_filters],
+                                               givens=givens)
 
         valid_flat_true = self.y_valid
 
@@ -511,7 +768,8 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
                 epoch_cost += cost_output
                 epoch_errors += errors_output
                 if self.regularization:
-                    l2_w2v_emb, l2_w2v_filters, l2_pos_filters, l2_w3 = train_l2_penalty(i)
+                    l2_w2v_emb, l2_pos_emb, l2_w1_emb, l2_pos_filters, l2_w2v_filters, \
+                    l2_w3, l2_w2v_dir_filters, l2_ner_emb, l2_ner_filters = train_l2_penalty(i)
 
                 if i==0:
                     epoch_l2_w2v_emb = l2_w2v_emb
@@ -532,9 +790,9 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
             # valid_cost_1 = valid_results['cost']
             # valid_predictions_1 = valid_results['predictions']
             start1 = time.time()
-            for x_sample, pos_sample, y_sample in zip(self.x_valid, self.valid_pos_feats, self.y_valid):
+            for x_sample, pos_sample, ner_sample, y_sample in zip(self.x_valid, self.valid_pos_feats, self.valid_ner_feats, self.y_valid):
                 cost_output = 0 #TODO: in the forest prediction, computing the cost yield and error (out of bounds for 1st misclassification).
-                errors_output, pred = train_predict(x_sample, pos_sample, [y_sample])
+                errors_output, pred = train_predict(x_sample, pos_sample, ner_sample, [y_sample])
                 valid_cost += cost_output
                 valid_error += errors_output
                 valid_predictions.append(np.asscalar(pred))
@@ -576,30 +834,60 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
         return True
 
-    def compute_regularization_cost(self, w2v_idxs, pos_idxs):
+    def compute_regularization_cost(self, w2v_idxs, pos_idxs, ner_idxs):
         # symbolic Theano variable that represents the squared L2 term
 
-        L2_w2v_emb = T.sum(self.params['w1_w2v'][w2v_idxs] ** 2)
-        L2_pos_emb = T.sum(self.params['w1_pos'][pos_idxs] ** 2)
-        L2_w1_emb = T.sum(self.params['w1'][w2v_idxs] ** 2)
+        w2v_conv_filter_penalties = []
+        w2v_emb = []
+        if self.using_w2v_convolution_maxpool_feature():
+            w2v_emb.append(T.sum(self.params['w1_w2v'][w2v_idxs] ** 2))
+            w2v_filter_names = [pn for pn in self.params_to_get_l2 if pn.startswith('w2v_filter')]
 
-        w2v_filter_names = [pn for pn in self.params_to_get_l2
-                            if pn.startswith('w2v_filter') or pn.startswith('w2v_directly_filter')]
-        pos_filter_names = [pn for pn in self.params_to_get_l2 if pn.startswith('pos_filter')]
-
-        w2v_filter_penalties = []
-        for filter_name in w2v_filter_names:
-            w2v_filter_penalties.append(T.sum(self.params[filter_name] ** 2))
-        L2_w2v_filters = T.sum(w2v_filter_penalties)
+            for filter_name in w2v_filter_names:
+                w2v_conv_filter_penalties.append(T.sum(self.params[filter_name] ** 2))
+        L2_w2v_filters = T.sum(w2v_conv_filter_penalties, dtype=theano.config.floatX)
+        L2_w2v_emb = T.sum(w2v_emb, dtype=theano.config.floatX)
 
         pos_filter_penalties = []
-        for filter_name in pos_filter_names:
-            pos_filter_penalties.append(T.sum(self.params[filter_name] ** 2))
-        L2_pos_filters = T.sum(pos_filter_penalties)
+        pos_emb = []
+        if self.using_pos_convolution_maxpool_feature():
+            pos_emb.append(T.sum(self.params['w1_pos'][pos_idxs] ** 2))
+            pos_filter_names = [pn for pn in self.params_to_get_l2 if pn.startswith('pos_filter')]
+
+            for filter_name in pos_filter_names:
+                pos_filter_penalties.append(T.sum(self.params[filter_name] ** 2))
+        L2_pos_filters = T.sum(pos_filter_penalties, dtype=theano.config.floatX)
+        L2_pos_emb = T.sum(pos_emb, dtype=theano.config.floatX)
+
+        ner_filter_penalties = []
+        ner_emb = []
+        if self.using_ner_convolution_maxpool_feature():
+            ner_emb.append(T.sum(self.params['w1_ner'][ner_idxs] ** 2))
+            ner_filter_names = [pn for pn in self.params_to_get_l2 if pn.startswith('ner_filter')]
+
+            for filter_name in ner_filter_names:
+                ner_filter_penalties.append(T.sum(self.params[filter_name] ** 2))
+        L2_ner_filters = T.sum(ner_filter_penalties, dtype=theano.config.floatX)
+        L2_ner_emb = T.sum(ner_emb, dtype=theano.config.floatX)
+
+        w1_emb = []
+        if self.using_w2v_no_convolution_no_maxpool_feature():
+            w1_emb.append(T.sum(self.params['w1'][w2v_idxs] ** 2))
+
+        w2v_filter_penalties = []
+        if self.using_w2v_convolution_no_maxpool_feature():
+            w1_emb.append(T.sum(self.params['w1'][w2v_idxs] ** 2))
+            w2v_dir_filter_names = [pn for pn in self.params_to_get_l2 if pn.startswith('w2v_directly_filter')]
+
+            for filter_name in w2v_dir_filter_names:
+                w2v_filter_penalties.append(T.sum(self.params[filter_name] ** 2))
+        L2_w2v_dir_filters = T.sum(w2v_filter_penalties, dtype=theano.config.floatX)
+        L2_w1_emb = T.sum(w1_emb, dtype=theano.config.floatX)
 
         L2_w3 = T.sum(self.params['w3'] ** 2)
 
-        return L2_w2v_emb, L2_pos_emb, L2_w1_emb, L2_pos_filters, L2_w2v_filters, L2_w3
+        return L2_w2v_emb, L2_pos_emb, L2_w1_emb, L2_pos_filters, L2_w2v_filters, \
+               L2_w3, L2_w2v_dir_filters, L2_ner_emb, L2_ner_filters
 
     def minibatch_forward_pass(self, weight_x, bias_1, weight_2, bias_2):
         h = self.hidden_activation_f(weight_x+bias_1)
@@ -768,6 +1056,31 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
         return conv_conc
 
+    def perform_nnet_ner_conv2d(self, w_ner_x_4D):
+        convolutions = []
+
+        for rs in self.region_sizes:
+            ner_filter = self.params['ner_filter_'+str(rs)]
+
+            ner_filter_4D = ner_filter.reshape(
+                shape=(ner_filter.shape[0], 1, ner_filter.shape[1], ner_filter.shape[2]))
+
+            pos_convolution = T.nnet.conv2d(input=w_ner_x_4D,
+                                            filters=ner_filter_4D)
+
+            if self.max_pool:
+                pos_max_convolution = pool_2d(input=pos_convolution, ds=(self.n_window-rs+1, 1), ignore_border=True, mode='max')
+                convolutions.append(pos_max_convolution)
+            else:
+                convolutions.append(pos_convolution)
+
+        if self.max_pool:
+            conv_conc = self.concatenate(convolutions, axis=1)[:, :, 0, 0]
+        else:
+            conv_conc = self.concatenate(convolutions, axis=2)[:,:,:,0].reshape(shape=(w_ner_x_4D.shape[0], -1))
+
+        return conv_conc
+
     def predict(self, on_training_set=False, on_validation_set=False, compute_cost_error=False, **kwargs):
 
         results = defaultdict(None)
@@ -776,17 +1089,20 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
             # predict on training set
             x_test = self.x_train.astype(dtype=INT)
             x_pos_test = self.train_pos_feats.astype(dtype=INT)
+            x_ner_test = self.train_ner_feats.astype(dtype=INT)
             y_test = self.y_train.astype(dtype=INT)
 
         elif on_validation_set:
             # predict on validation set
             x_test = self.x_valid.astype(dtype=INT)
             x_pos_test = self.valid_pos_feats.astype(dtype=INT)
+            x_ner_test = self.valid_ner_feats.astype(dtype=INT)
             y_test = self.y_valid.astype(dtype=INT)
         else:
             # predict on test set
             x_test = self.x_test.astype(dtype=INT)
             x_pos_test = self.test_pos_feats.astype(dtype=INT)
+            x_ner_test = self.test_ner_feats.astype(dtype=INT)
             y_test = self.y_test
 
         # test_x = theano.shared(value=self.x_valid.astype(dtype=INT), name='test_x', borrow=True)
@@ -796,53 +1112,53 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
         w2v_idxs = T.matrix(name="test_w2v_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
         pos_idxs = T.matrix(name="test_pos_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
+        ner_idxs = T.matrix(name="test_ner_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
 
-        w_x = self.params['w1_w2v'][w2v_idxs]
+        if self.using_w2v_convolution_maxpool_feature():
+            self.w_x = self.params['w1_w2v'][w2v_idxs]
 
-        w_x_directly = self.params['w1'][w2v_idxs]
-        w_x_directly_res = w_x_directly.reshape(shape=(w2v_idxs.shape[0], -1))
+        if self.using_w2v_convolution_no_maxpool_feature():
+            self.w_x_directly = self.params['w1'][w2v_idxs]
 
-        w_pos_x = self.params['w1_pos'][pos_idxs]
+        if self.using_w2v_no_convolution_no_maxpool_feature():
+            self.w_x_directly = self.params['w1'][w2v_idxs]
 
-        w_x_4D = w_x.reshape(shape=(w_x.shape[0], 1, w_x.shape[1], w_x.shape[2]))
-        w_pos_x_4D = w_pos_x.reshape(shape=(w_pos_x.shape[0], 1, w_pos_x.shape[1], w_pos_x.shape[2]))
-        w_x_directly_4D = w_x_directly.reshape(shape=(w_x_directly.shape[0], 1, w_x_directly.shape[1], w_x_directly.shape[2]))
+        if self.using_pos_convolution_maxpool_feature():
+            self.w_pos_x = self.params['w1_pos'][pos_idxs]
 
-        w2v_directly_conv = self.perform_nnet_word_embeddings_conv2d(w_x_directly_4D,
-                                                                     region_sizes=[self.n_window],
-                                                                     max_pool=False,
-                                                                     filter_prefix='w2v_directly_filter_')
-
-        w2v_conv = self.perform_nnet_word_embeddings_conv2d(w_x_4D,
-                                                            region_sizes=self.region_sizes,
-                                                            max_pool=self.max_pool)
-
-        pos_conv = self.perform_nnet_pos_conv2d(w_pos_x_4D)
+        if self.using_ner_convolution_maxpool_feature():
+            self.w_ner_x = self.params['w1_ner'][ner_idxs]
 
         #TODO: choose
         # out = self.perform_forward_pass_dense_step(w2v_conc, pos_conc)
-        out = self.perform_forward_pass_dense_step_with_non_convolution(w2v_conv, pos_conv, w2v_directly_conv)
+        out = self.sgd_forward_pass(tensor_dim=4)
 
         y_predictions = T.argmax(out, axis=1)
 
         if compute_cost_error:
             errors = T.sum(T.neq(y, y_predictions))
 
-            L2_w2v_emb, L2_pos_emb, L2_w1_emb, L2_pos_filters, L2_w2v_filters, L2_w3 = self.compute_regularization_cost(w2v_idxs, pos_idxs)
-            L2 = L2_w2v_emb + L2_pos_emb + L2_pos_filters + L2_w2v_filters + L2_w3
+            L2_w2v_emb, L2_pos_emb, L2_w1_emb, L2_pos_filters, L2_w2v_filters, L2_w3, \
+            L2_w2v_dir_filters, L2_ner_emb, L2_ner_filters = \
+                self.compute_regularization_cost(w2v_idxs, pos_idxs, ner_idxs)
+            L2 = L2_w2v_emb + L2_pos_emb + L2_pos_filters + L2_w2v_filters + L2_w3 + \
+                 L2_w2v_dir_filters + L2_ner_emb + L2_ner_filters
 
             cost = T.mean(T.nnet.categorical_crossentropy(out, y)) + self.alpha_L2_reg * L2
 
-            perform_prediction = theano.function(inputs=[w2v_idxs, pos_idxs, y],
-                                                 outputs=[cost, errors, y_predictions])
-            out_cost, out_errors, out_predictions = perform_prediction(x_test, x_pos_test, y_test)
+            perform_prediction = theano.function(inputs=[w2v_idxs, pos_idxs, ner_idxs, y],
+                                                 outputs=[cost, errors, y_predictions],
+                                                 on_unused_input='warn')
+
+            out_cost, out_errors, out_predictions = perform_prediction(x_test, x_pos_test, x_ner_test, y_test)
             results['errors'] = out_errors
             results['cost'] = out_cost
         else:
-            perform_prediction = theano.function(inputs=[w2v_idxs, pos_idxs],
-                                                 outputs=y_predictions)
+            perform_prediction = theano.function(inputs=[w2v_idxs, pos_idxs, ner_idxs],
+                                                 outputs=y_predictions,
+                                                 on_unused_input='warn')
 
-            out_predictions = perform_prediction(x_test, x_pos_test)
+            out_predictions = perform_prediction(x_test, x_pos_test, x_ner_test)
 
         results['flat_predictions'] = out_predictions
         results['flat_trues'] = y_test
