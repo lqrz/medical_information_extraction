@@ -21,7 +21,6 @@ from single_Layer_Context_Window_Net import Single_Layer_Context_Window_Net
 from recurrent_Context_Window_net import Recurrent_Context_Window_net
 from hidden_Layer_Context_Window_Net import Hidden_Layer_Context_Window_Net
 from vector_Tag_Contex_Window_Net import Vector_Tag_Contex_Window_Net
-from multi_feature_type_hidden_layer_context_window_net import Multi_Feature_Type_Hidden_Layer_Context_Window_Net
 from trained_models import get_vector_tag_path
 from trained_models import get_last_tag_path
 from trained_models import get_rnn_path
@@ -32,6 +31,9 @@ from trained_models import get_multi_hidden_cw_path
 from data import get_param
 from utils.plot_confusion_matrix import plot_confusion_matrix
 from data.dataset import Dataset
+
+from multi_feature_type_hidden_layer_context_window_net import Multi_Feature_Type_Hidden_Layer_Context_Window_Net
+# from multi_feature_type_old import Multi_Feature_Type_Hidden_Layer_Context_Window_Net
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -109,6 +111,10 @@ def check_arguments_consistency(args):
 
     if args['nn_name'] == 'vector_tag' and not args['tagdim']:
         logger.error('Provide the tag dimensionality for Vector tag nnet')
+        exit()
+
+    if args['nn_name'] == 'multi_hidden_cw' and  not args['multi_features']:
+        logger.error('Provide features for the nnet')
         exit()
 
 def perform_leave_one_out(nn_class,
@@ -352,9 +358,9 @@ def use_testing_dataset(nn_class,
     x_test, y_test, x_test_feats,\
     word2index, index2word, \
     label2index, index2label, \
-    feat2index, index2feat = \
+    features_indexes = \
         nn_class.get_data(clef_training=True, clef_validation=True, clef_testing=True, add_words=add_words,
-                          add_tags=add_tags, add_feats=add_feats, x_idx=None, n_window=n_window, feat_positions=[2])
+                          add_tags=add_tags, add_feats=add_feats, x_idx=None, n_window=n_window, feat_positions=[1, 2])
 
     unique_words = word2index.keys()
 
@@ -389,6 +395,9 @@ def use_testing_dataset(nn_class,
         'pad_word': pad_word,
         'tag_dim': tag_dim,
         'get_output_path': get_output_path,
+        'train_ner_feats': x_train_feats[1],    #refers to NER tag features.
+        'valid_ner_feats': x_valid_feats[1],    #refers to NER tag features.
+        'test_ner_feats': x_test_feats[1],      #refers to NER tag features.
         'train_pos_feats': x_train_feats[2],    #refers to POS tag features.
         'valid_pos_feats': x_valid_feats[2],    #refers to POS tag features.
         'test_pos_feats': x_test_feats[2],    #refers to POS tag features.
