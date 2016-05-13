@@ -113,9 +113,14 @@ def check_arguments_consistency(args):
         logger.error('Provide the tag dimensionality for Vector tag nnet')
         exit()
 
-    if args['nn_name'] == 'multi_hidden_cw' and  not args['multi_features']:
+    if args['nn_name'] == 'multi_hidden_cw' and not args['multi_features']:
         logger.error('Provide features for the nnet')
         exit()
+
+    if args['nn_name'] == 'multi_hidden_cw':
+        if np.max(args['region_sizes']) > args['window_size']:
+            logger.error('Region size higher than window size.')
+            exit()
 
 def perform_leave_one_out(nn_class,
                           hidden_f,
