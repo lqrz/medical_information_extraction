@@ -480,7 +480,8 @@ if __name__ == '__main__':
 
     print '...Plotting confusion matrix'
     output_filename = get_ensemble_forest_mlp_path('confusion_matrix.png')
-    labels_list = list(set(valid_y_true).union(set(valid_y_pred)))
+    # labels_list = list(set(valid_y_true).union(set(valid_y_pred)))
+    labels_list = get_classification_report_labels()
     cm = Metrics.compute_confusion_matrix(valid_y_true, valid_y_pred, labels=labels_list)
     plot_confusion_matrix(confusion_matrix=cm, labels=labels_list, output_filename=output_filename)
 
