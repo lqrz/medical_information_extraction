@@ -68,7 +68,9 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
         return self.out_activation_f(T.dot(h, weight_2)+bias_2)
 
     def train_with_sgd(self, learning_rate=0.01, max_epochs=100,
-              alpha_L1_reg=0.001, alpha_L2_reg=0.01, save_params=False, use_scan=False, plot=False, **kwargs):
+                       alpha_L1_reg=0.001, alpha_L2_reg=0.01,
+                       save_params=False, use_scan=False, plot=False,
+                       validation_cost=True, **kwargs):
 
         train_x = theano.shared(value=np.array(self.x_train, dtype=INT), name='train_x', borrow=True)
         train_y = theano.shared(value=np.array(self.y_train, dtype=INT), name='train_y', borrow=True)
@@ -183,7 +185,14 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
                                 })
         # theano.printing.debugprint(train)
 
-        train_predict = theano.function(inputs=[idxs, y],
+        train_predict_with_cost = theano.function(inputs=[idxs, y],
+                                             outputs=[cost, errors, y_predictions],
+                                             updates=[],
+                                             givens={
+                                                 n_tokens: 1
+                                             })
+
+        train_predict_without_cost = theano.function(inputs=[idxs, y],
                                              outputs=[errors, y_predictions],
                                              updates=[],
                                              givens={
@@ -232,8 +241,11 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
             valid_cost = 0
             valid_predictions = []
             for x_sample, y_sample in zip(self.x_valid, self.y_valid):
-                cost_output = 0 #TODO: in the forest prediction, computing the cost yield and error (out of bounds for 1st misclassification).
-                errors_output, pred = train_predict(x_sample, [y_sample])
+                if validation_cost:
+                    cost_output, errors_output, pred = train_predict_with_cost(x_sample, [y_sample])
+                else:
+                    cost_output = 0 #TODO: in the forest prediction, computing the cost yield and error (out of bounds for 1st misclassification).
+                    errors_output, pred = train_predict_without_cost(x_sample, [y_sample])
                 valid_cost += cost_output
                 valid_error += errors_output
                 valid_predictions.append(np.asscalar(pred))
