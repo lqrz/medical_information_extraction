@@ -5,9 +5,9 @@ from custom_geom_tile import custom_geom_tile
 
 def plot_confusion_matrix(confusion_matrix, labels, output_filename, title=None):
     df = pd.DataFrame(confusion_matrix, index=labels, columns=labels)
-    df['x_tag'] = df.index
-    df_melted = pd.melt(df, id_vars=['x_tag'])
-    plot = ggplot(aes(x='x_tag', y='variable'), df_melted) + \
+    df['true'] = df.index
+    df_melted = pd.melt(df, id_vars=['true'], var_name='prediction')
+    plot = ggplot(aes(x='prediction', y='true'), df_melted) + \
         custom_geom_tile(aes(fill='value')) + \
         labs(x='Predicted labels', y='True labels') + \
         scale_color_gradient()
