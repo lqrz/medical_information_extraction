@@ -252,7 +252,8 @@ def use_testing_dataset(nn_class,
 
     logger.info('Loading CRF training data')
 
-    x_train, y_train_all, x_valid, y_valid_all, x_test, y_test_all, word2index_all, index2word_all, label2index_all, index2label_all = \
+    x_train, y_train_all, _, x_valid, y_valid_all, _, x_test, y_test_all, _, word2index_all, \
+    index2word_all, label2index_all, index2label_all, _ = \
         nn_class.get_data(clef_training=True, clef_validation=True, clef_testing=True, add_words=add_words,
                           add_tags=add_tags, x_idx=None, n_window=forest_window)
 
@@ -287,7 +288,7 @@ def use_testing_dataset(nn_class,
     if forest_window != net_window:
         # the forest and the nnet might use different window sizes.
 
-        x_train, _, x_valid, _, x_test, _, _, _, _, _ = \
+        x_train, _, _, x_valid, _, _, x_test, _, _, _, _, _, _, _ = \
             nn_class.get_data(clef_training=True, clef_validation=True, clef_testing=True, add_words=add_words,
                               add_tags=add_tags, x_idx=None, n_window=net_window)
         # x_train, _, x_test, _, _, _, _, _ = \
@@ -297,6 +298,8 @@ def use_testing_dataset(nn_class,
     #--- here starts the 2nd step ---#
 
     # get the subsamples to train and test on this 2nd step (all that were marked as '<OTHER>').
+    # for the training set, im using the true_values to know which positions to train on now.
+    # for the validation and testing set, im not using the true_values, but the predictions of the 1st step.
     indexes_to_train = np.where(np.array(y_train_1st_step) == label2index_1st_step[default_tag])[0]
     indexes_to_valid = np.where(valid_predictions_1st_step == label2index_1st_step[default_tag])[0]
     indexes_to_test = np.where(test_predictions_1st_step == label2index_1st_step[default_tag])[0]
@@ -308,6 +311,11 @@ def use_testing_dataset(nn_class,
     x_test_2nd_step = np.array(x_test)[indexes_to_test]
     y_test_2nd_step = np.array(y_test_labels)[indexes_to_test]
 
+    # i have to reconstruct the indexes, so that the tags im gonna use in this 2nd step are continuous.
+    # because the validation and test indexes are based on the predictions from the 1st step, im gonna propagate the
+    # errors i made in the first step, and so, there are gonna be true_labels that are included
+    # in the tag_set to be predicted in the first tep; Im gonna map all those tags to a dummy_tag, which i will later
+    # remove from the index (this is kind of nasty).
     dummy_tag = '#delete#'  #TODO: this is nasty.
     y_train_2nd_step, y_valid_2nd_step, y_test_2nd_step, label2index_2nd_step, index2label_2nd_step = \
         filter_tags_to_predict(y_train_2nd_step, y_valid_2nd_step, y_test_2nd_step, tags_2nd_step, default_tag=dummy_tag)
@@ -338,7 +346,8 @@ def use_testing_dataset(nn_class,
         'unk_tag': unk_tag,
         'pad_word': pad_word,
         'tag_dim': tag_dim,
-        'get_output_path': get_output_path
+        'get_output_path': get_output_path,
+        'validation_cost': False
     }
 
     nn_trainer = nn_class(**params)
