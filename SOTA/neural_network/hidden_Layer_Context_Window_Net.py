@@ -434,7 +434,7 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
         # errors = T.sum(T.neq(y_predictions,y))
 
         perform_prediction = theano.function(inputs=[idxs],
-                                outputs=[y_predictions],
+                                outputs=y_predictions,
                                 updates=[],
                                 givens=[])
 
