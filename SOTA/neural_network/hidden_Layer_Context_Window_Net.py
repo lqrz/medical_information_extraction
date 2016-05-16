@@ -8,7 +8,7 @@ import cPickle
 from collections import OrderedDict
 from utils import utils
 import time
-from itertools import chain
+from collections import defaultdict
 
 from A_neural_network import A_neural_network
 from trained_models import get_cwnn_path
@@ -397,6 +397,8 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
 
     def predict(self, on_training_set=False, on_validation_set=False, **kwargs):
 
+        results = defaultdict(None)
+
         if on_training_set:
             # predict on training set
             x_test = self.x_train.astype(dtype=INT)
@@ -439,7 +441,10 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
         predictions = perform_prediction(x_test)
         # predictions = perform_prediction(valid_x.get_value())
 
-        return y_test, predictions[-1], y_test, predictions[-1]
+        results['flat_predictions'] = predictions
+        results['flat_trues'] = y_test
+
+        return results
 
     def to_string(self):
         return 'One hidden layer context window neural network with no tags.'

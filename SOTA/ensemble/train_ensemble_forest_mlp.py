@@ -359,14 +359,17 @@ def use_testing_dataset(nn_class,
 
     logger.info('Predicting on Training set')
     nn_trainer.x_train = np.array(x_train)[indexes_to_train_to_replace]
-    _, train_flat_predictions_2nd_step, _, _ = nn_trainer.predict(on_training_set=True, **kwargs)
-    # flat_true_2nd_step, train_flat_predictions_2nd_step, trues_2nd_step, preds_2nd_step = nn_trainer.predict(**kwargs)
-
+    training_set_predictions = nn_trainer.predict(on_training_set=True, **kwargs)
+    train_flat_predictions_2nd_step = training_set_predictions['flat_predictions']
+    
     logger.info('Predicting on Validation set')
-    valid_flat_true_2nd_step, valid_flat_predictions_2nd_step, _, _ = nn_trainer.predict(on_validation_set=True, **kwargs)
+    validation_set_predictions = nn_trainer.predict(on_validation_set=True, **kwargs)
+    valid_flat_true_2nd_step = validation_set_predictions['flat_trues']
+    valid_flat_predictions_2nd_step = validation_set_predictions['flat_predictions']
 
     logger.info('Predicting on Testing set')
-    _, test_flat_predictions_2nd_step, _, _ = nn_trainer.predict(on_validation_set=False, **kwargs)
+    testing_set_predictions = nn_trainer.predict(on_validation_set=False, **kwargs)
+    test_flat_predictions_2nd_step = testing_set_predictions['flat_predictions']
 
     assert valid_flat_true_2nd_step.__len__() == valid_flat_predictions_2nd_step.__len__()
     assert indexes_to_train_to_replace.__len__() == train_flat_predictions_2nd_step.__len__()
