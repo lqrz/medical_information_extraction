@@ -90,7 +90,7 @@ class Empirical_distribution():
         return self.validation_distribution
 
 if __name__ == '__main__':
-    ed = Empirical_distribution()
+    ed = Empirical_distribution.Instance()
     training_dist = ed._get_training_empirical_distribution()
     validation_dist = ed._get_validation_empirical_distribution()
     sample = [ed.sample_from_training_empirical_distribution() for _ in range(10)]
