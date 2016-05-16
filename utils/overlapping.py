@@ -5,6 +5,7 @@ from collections import Counter
 from collections import defaultdict
 
 from data.dataset import Dataset
+from data import get_classification_report_labels
 
 if __name__ == '__main__':
     training_data, _, document_sentence_words, document_sentence_tags = Dataset.get_clef_validation_dataset()
@@ -22,11 +23,9 @@ if __name__ == '__main__':
 
     tag_overlapping_word_tag = defaultdict(dict)
     tag_overlapping_tag = defaultdict(dict)
-    tag_overlap = defaultdict(dict)
+    tag_overlap = defaultdict(lambda : defaultdict(int))
 
     for tag, words in tags_words.iteritems():
-        if tag == 'MyShift_Status':
-            print 'hola'
         word_types = set(words)
         n_word_types = word_types.__len__()
         overlap = 0
@@ -36,13 +35,15 @@ if __name__ == '__main__':
                 overlap += 1
                 overlapping_tags = [(overlap_tag,count/float(sum(word_tags[word].values()))) for overlap_tag,count in word_tags[word].most_common()]
                 tag_overlapping_word_tag[tag][word] = overlapping_tags
-                tag_counter.update(dict(word_tags[word]))
+                tag_counter.update(set(word_tags[word])-set([tag]))
         tag_overlapping_tag[tag] = [(overlap_tag,count/float(sum(tag_counter.values()))) for overlap_tag,count in tag_counter.most_common()]
 
         tag_overlap[tag]['n_word_types'] = n_word_types
         tag_overlap[tag]['overlap'] = (overlap, float(overlap)/ n_word_types)
         tag_overlap[tag]['unique'] = (n_word_types-overlap, float(n_word_types-overlap) / n_word_types)
 
-
-    #TODO: print it somehow.
+    tag_order_to_print = get_classification_report_labels()
+    for tag_to_print in tag_order_to_print:
+        print tag_to_print, tag_overlap[tag_to_print]['n_word_types'], tag_overlap[tag_to_print]['overlap'], \
+            tag_overlap[tag_to_print]['unique'], tag_overlapping_tag[tag_to_print]
     print '...End'
