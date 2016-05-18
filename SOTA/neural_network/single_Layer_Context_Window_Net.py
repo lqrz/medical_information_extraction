@@ -206,14 +206,15 @@ class Single_Layer_Context_Window_Net(A_neural_network):
             train_cost = 0
             train_errors = 0
             train_cross_entropy = 0
+            l2_emb = 0
             for i in np.random.permutation(self.n_samples):
                 # error = train(self.x_train, self.y_train)
                 cost_output, errors_output = train(i, [train_y.get_value()[i]])
                 train_cost += cost_output
                 train_errors += errors_output
 
-                if self.regularization and i == 0:
-                    l2_w1 = train_l2_penalty(i)
+                # if self.regularization and i == 0:
+                l2_emb += train_l2_penalty(i)
 
                 train_cross_entropy += get_cross_entropy(train_x.get_value()[i], [train_y.get_value()[i]])
 
@@ -240,7 +241,7 @@ class Single_Layer_Context_Window_Net(A_neural_network):
             precision_list.append(precision)
             recall_list.append(recall)
             f1_score_list.append(f1_score)
-            l2_w1_list.append(l2_w1)
+            l2_w1_list.append(l2_emb)
             train_cross_entropy_list.append(train_cross_entropy)
             valid_cross_entropy_list.append(valid_cross_entropy)
 
