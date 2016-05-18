@@ -96,6 +96,50 @@ class A_neural_network():
         pass
 
     @classmethod
+    def get_word_sentence_number_features(cls, clef_training=True, clef_validation=False, clef_testing=False):
+
+        if not clef_training and not clef_validation and not clef_testing:
+            raise Exception('At least one dataset must be loaded')
+
+        train_features = None
+        valid_features = None
+        test_features = None
+
+        if clef_training:
+            _, _, train_document_sentence_words, _ = Dataset.get_clef_training_dataset()
+            train_features = cls.get_sentences_numbers(train_document_sentence_words)
+
+        if clef_validation:
+            _, _, valid_document_sentence_words, _ = Dataset.get_clef_validation_dataset()
+            valid_features = cls.get_sentences_numbers(valid_document_sentence_words)
+
+        if clef_testing:
+            _, _, test_document_sentence_words, _ = Dataset.get_clef_testing_dataset()
+            test_features = cls.get_sentences_numbers(test_document_sentence_words)
+
+        # doc_sent_items = [[train_features+valid_features+test_features]]
+        # feat2index, index2feat = cls._construct_index(add_items=add_feats,
+        #                                               document_sentence_item=doc_sent_items)
+
+        return train_features, valid_features, test_features
+
+    @classmethod
+    def get_sentences_numbers(cls, document_sentence_words):
+        """
+        returns the sentence number for each word.
+        meant to be used as a feature in the multifeature cnnet.
+        :param document_sentence_words:
+        :return:
+        """
+        train_features = []
+
+        for doc_sent in document_sentence_words.values():
+            for i, sent in enumerate(doc_sent):
+                train_features.extend([i] * sent.__len__())
+
+        return train_features
+
+    @classmethod
     def get_data(cls, clef_training=True, clef_validation=False, clef_testing=False,
                  add_words=[], add_tags=[], add_feats=[], x_idx=None, n_window=None, feat_positions=None):
         """
@@ -163,8 +207,7 @@ class A_neural_network():
         word2index, index2word = cls._construct_index(add_words, document_sentence_words)
         label2index, index2label = cls._construct_index(add_tags, document_sentence_tags)
 
-        feat2index = None
-        index2feat = None
+        features_indexes = None
         if feat_positions:
             features_indexes = []
             for feat_pos in feat_positions:
@@ -221,7 +264,7 @@ class A_neural_network():
                x_test, y_test, x_test_feats,\
                word2index, index2word, \
                label2index, index2label, \
-               feat2index, index2feat
+               features_indexes
 
     @classmethod
     def transform_features_with_context_window(cls, dataset_features, features_indexes, n_window):
@@ -529,31 +572,58 @@ class A_neural_network():
 
         return True
 
-    def plot_penalties(self, l2_w1_list, l2_w2_list, l2_ww_fw_list=None, l2_ww_bw_list=None, actual_time=None):
+    def plot_penalties(self, l2_w1_list, l2_w2_list=None, l2_ww_fw_list=None, l2_ww_bw_list=None, actual_time=None):
 
-        assert l2_w1_list.__len__() == l2_w2_list.__len__()
+        data = None
 
-        if l2_ww_fw_list or l2_ww_bw_list:
+        if l2_w2_list:
+            assert l2_w1_list.__len__() == l2_w2_list.__len__()
+            data = {
+                'epoch': np.arange(l2_w1_list.__len__(), dtype='int'),
+                'L2_W2_sum': l2_w2_list,
+                'L2_W1': l2_w1_list,
+            }
+
+        elif l2_ww_fw_list or l2_ww_bw_list:
             assert l2_w1_list.__len__() == l2_ww_fw_list.__len__()
             assert l2_w1_list.__len__() == l2_ww_bw_list.__len__()
 
             data = {
                 'epoch': np.arange(l2_w1_list.__len__(), dtype='int'),
-                'L2_W1[0]': l2_w1_list,
                 'L2_W2_sum': l2_w2_list,
                 'L2_WW_Fw_sum': l2_ww_fw_list,
-                'L2_WW_Bw_sum': l2_ww_bw_list
+                'L2_WW_Bw_sum': l2_ww_bw_list,
+                'L2_W1': l2_w1_list,
             }
+
         else:
             data = {
                 'epoch': np.arange(l2_w1_list.__len__(), dtype='int'),
-                'L2_W1[0]': l2_w1_list,
-                'L2_W2_sum': l2_w2_list
+                'L2_W1': l2_w1_list,
             }
 
-        output_filename = self.get_output_path('training_L2_penalty_plot' + actual_time)
-        utils.NeuralNetwork.plot(data, x_axis='epoch', x_label='Epochs', y_label='Penalty',
-                                 title='Training penalties evolution',
+        if data:
+            output_filename = self.get_output_path('training_L2_penalty_plot' + actual_time)
+            utils.NeuralNetwork.plot(data, x_axis='epoch', x_label='Epochs', y_label='Penalty',
+                                     title='Training weight penalties evolution',
+                                     output_filename=output_filename)
+
+        return True
+
+    def plot_cross_entropies(self, train_cross_entropy, valid_cross_entropy, actual_time):
+
+        assert train_cross_entropy.__len__() == valid_cross_entropy.__len__()
+
+        data = {
+            'epoch': np.arange(train_cross_entropy.__len__(), dtype='int'),
+            'train': train_cross_entropy,
+            'valid': valid_cross_entropy
+        }
+
+        output_filename = self.get_output_path('cross_entropy_plot' + actual_time)
+
+        utils.NeuralNetwork.plot(data, x_axis='epoch', x_label='Epochs', y_label='Cross-entropy',
+                                 title='Cross-entropy evolution',
                                  output_filename=output_filename)
 
         return True
