@@ -70,7 +70,9 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
     def train_with_sgd(self, learning_rate=0.01, max_epochs=100,
                        alpha_L1_reg=0.001, alpha_L2_reg=0.01,
                        save_params=False, use_scan=False, plot=False,
-                       validation_cost=True, **kwargs):
+                       validation_cost=True,
+                       static=False,
+                       **kwargs):
 
         train_x = theano.shared(value=np.array(self.x_train, dtype=INT), name='train_x', borrow=True)
         train_y = theano.shared(value=np.array(self.y_train, dtype=INT), name='train_y', borrow=True)
@@ -96,8 +98,12 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
 
         params = [w1,b1,w2,b2]
         param_names = ['w1','b1','w2','b2']
-        params_to_get_grad = [w_x,b1,w2,b2]
-        params_to_get_grad_names = ['w_x','b1','w2','b2']
+        params_to_get_grad = [b1,w2,b2]
+        params_to_get_grad_names = ['b1','w2','b2']
+
+        if not static:
+            params_to_get_grad.append(w_x)
+            params_to_get_grad_names.append('w_x')
 
         self.params = OrderedDict(zip(param_names, params))
 
