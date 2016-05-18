@@ -237,22 +237,22 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
 
         for epoch_index in range(max_epochs):
             start = time.time()
-            epoch_cost = 0
-            epoch_errors = 0
-            epoch_l2_w1 = 0
-            epoch_l2_w2 = 0
+            train_cost = 0
+            train_errors = 0
+            train_l2_emb = 0
+            train_l2_w2 = 0
             train_cross_entropy = 0
             for i in np.random.permutation(self.n_samples):
                 # error = train(self.x_train, self.y_train)
                 cost_output, errors_output = train(i, [train_y.get_value()[i]])
-                epoch_cost += cost_output
-                epoch_errors += errors_output
+                train_cost += cost_output
+                train_errors += errors_output
                 if self.regularization:
                     l2_w1, l2_w2 = train_l2_penalty(i)
+                    train_l2_w2 += l2_w2
 
-                if i==0:
-                    epoch_l2_w1 = l2_w1
-                epoch_l2_w2 += l2_w2
+                # if i==0:
+                train_l2_emb += l2_w1
 
                 train_cross_entropy += get_cross_entropy(train_x.get_value()[i], [train_y.get_value()[i]])
 
@@ -272,12 +272,12 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
                 valid_error += errors_output
                 valid_predictions.append(np.asscalar(pred))
 
-            train_costs_list.append(epoch_cost)
-            train_errors_list.append(epoch_errors)
+            train_costs_list.append(train_cost)
+            train_errors_list.append(train_errors)
             valid_costs_list.append(valid_cost)
             valid_errors_list.append(valid_error)
-            l2_w1_list.append(epoch_l2_w1)
-            l2_w2_list.append(epoch_l2_w2)
+            l2_w1_list.append(train_l2_emb)
+            l2_w2_list.append(train_l2_w2)
 
             results = Metrics.compute_all_metrics(y_true=valid_flat_true, y_pred=valid_predictions, average='macro')
             f1_score = results['f1_score']
@@ -291,7 +291,7 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
 
             end = time.time()
             logger.info('Epoch %d Train_cost: %f Train_errors: %d Valid_cost: %f Valid_errors: %d F1-score: %f Took: %f'
-                        % (epoch_index+1, epoch_cost, epoch_errors, valid_cost, valid_error, f1_score, end-start))
+                        % (epoch_index+1, train_cost, train_errors, valid_cost, valid_error, f1_score, end-start))
 
         if save_params:
             logger.info('Saving parameters to File system')
