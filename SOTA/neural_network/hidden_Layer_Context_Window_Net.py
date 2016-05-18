@@ -63,9 +63,9 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
 
         return True
 
-    def sgd_forward_pass(self, weight_x, bias_1, weight_2, bias_2, n_tokens):
-        h = self.hidden_activation_f(weight_x.reshape((n_tokens, self.n_emb*self.n_window))+bias_1)
-        return self.out_activation_f(T.dot(h, weight_2)+bias_2)
+    def sgd_forward_pass(self, weight_x, n_tokens):
+        h = self.hidden_activation_f(weight_x.reshape((n_tokens, self.n_emb*self.n_window)) + self.params['b1'])
+        return self.out_activation_f(T.dot(h, self.params['w2']) + self.params['b2'])
 
     def train_with_sgd(self, learning_rate=0.01, max_epochs=100,
                        alpha_L1_reg=0.001, alpha_L2_reg=0.01,
@@ -123,7 +123,7 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
             out, _ = theano.scan(fn=self.sgd_forward_pass,
                                     sequences=[w_x],
                                     outputs_info=None,
-                                    non_sequences=[b1,w2,b2])
+                                    non_sequences=[])
 
             mean_cross_entropy = T.mean(T.nnet.categorical_crossentropy(out[:, -1, :], y))
             if self.regularization:
@@ -135,7 +135,7 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
             y_predictions = T.argmax(out[:,-1,:], axis=1)
 
         else:
-            out = self.sgd_forward_pass(w_x, self.params['b1'], self.params['w2'], self.params['b2'], n_tokens)
+            out = self.sgd_forward_pass(w_x, n_tokens)
 
             mean_cross_entropy = T.mean(T.nnet.categorical_crossentropy(out, y))
             if self.regularization:
@@ -452,7 +452,7 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
         w_x = self.params['w1'][idxs]
 
         # the sgd_forward_pass is valid for either minibatch or sgd prediction.
-        out = self.sgd_forward_pass(w_x, self.params['b1'], self.params['w2'], self.params['b2'], n_tokens)
+        out = self.sgd_forward_pass(w_x, n_tokens)
 
         y_predictions = T.argmax(out, axis=1)
         # cost = T.mean(T.nnet.categorical_crossentropy(out, y))
