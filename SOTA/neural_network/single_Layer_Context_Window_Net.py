@@ -56,11 +56,14 @@ class Single_Layer_Context_Window_Net(A_neural_network):
 
         return True
 
-    def sgd_forward_pass(self, weight_x, bias_1, n_tokens):
-        return self.out_activation_f(weight_x.reshape((n_tokens, self.n_emb*self.n_window))+bias_1)
+    def sgd_forward_pass(self, weight_x, n_tokens):
+        return self.out_activation_f(weight_x.reshape((n_tokens, self.n_emb*self.n_window)) + self.params['b1'])
 
-    def train_with_sgd(self, learning_rate=0.01, max_epochs=100,
-              alpha_L1_reg=0.001, alpha_L2_reg=0.01, save_params=False, use_scan=False, **kwargs):
+    def train_with_sgd(self,
+                       learning_rate=0.01, max_epochs=100,
+                       alpha_L1_reg=0.001, alpha_L2_reg=0.01,
+                       save_params=False, use_scan=False, plot=True,
+                       **kwargs):
 
         train_x = theano.shared(value=np.array(self.x_train, dtype=INT), name='train_x', borrow=True)
         train_y = theano.shared(value=np.array(self.y_train, dtype=INT), name='train_y', borrow=True)
@@ -69,7 +72,6 @@ class Single_Layer_Context_Window_Net(A_neural_network):
 
         idxs = T.vector(name="idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
 
-        self.n_emb = self.pretrained_embeddings.shape[1] #embeddings dimension
         n_tokens = T.scalar(name='n_tokens', dtype=INT)    #tokens in sentence
 
         w1 = theano.shared(value=np.array(self.pretrained_embeddings).astype(dtype=theano.config.floatX),
@@ -90,7 +92,7 @@ class Single_Layer_Context_Window_Net(A_neural_network):
             L1 = T.sum(abs(w1))
 
             # symbolic Theano variable that represents the squared L2 term
-            L2 = T.sum(w1[idxs] ** 2)
+            L2_w1 = T.sum(w1[idxs] ** 2)
 
         if use_scan:
             #TODO: DO I NEED THE SCAN AT ALL: NO! Im leaving it for reference only.
@@ -99,24 +101,27 @@ class Single_Layer_Context_Window_Net(A_neural_network):
             out, _ = theano.scan(fn=self.sgd_forward_pass,
                                     sequences=[w_x],
                                     outputs_info=None,
-                                    non_sequences=[b1])
+                                    non_sequences=[])
+
+            mean_cross_entropy = T.mean(T.nnet.categorical_crossentropy(out[:, -1, :], y))
 
             if self.regularization:
                 # TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
-                cost = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y)) + alpha_L1_reg*L1 + alpha_L2_reg*L2
+                cost = mean_cross_entropy + alpha_L2_reg * L2_w1
             else:
-                cost = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y))
+                cost = mean_cross_entropy
 
             y_predictions = T.argmax(out[:,-1,:], axis=1)
 
         else:
-            out = self.sgd_forward_pass(w_x, self.params['b1'], n_tokens)
+            out = self.sgd_forward_pass(w_x, n_tokens)
+
+            mean_cross_entropy = T.mean(T.nnet.categorical_crossentropy(out, y))
 
             if self.regularization:
-                # cost = T.mean(T.nnet.categorical_crossentropy(out, y)) + alpha_L1_reg*L1 + alpha_L2_reg*L2
-                cost = T.mean(T.nnet.categorical_crossentropy(out, y)) + alpha_L2_reg*L2
+                cost = mean_cross_entropy + alpha_L2_reg * L2_w1
             else:
-                cost = T.mean(T.nnet.categorical_crossentropy(out, y))
+                cost = mean_cross_entropy
 
             y_predictions = T.argmax(out, axis=1)
 
@@ -170,39 +175,91 @@ class Single_Layer_Context_Window_Net(A_neural_network):
                                             n_tokens: 1
                                         })
 
-        flat_true = self.y_test
+        if self.regularization:
+            train_l2_penalty = theano.function(inputs=[train_idx],
+                                               outputs=L2_w1,
+                                               givens={
+                                                   idxs: train_x[train_idx]
+                                               })
+
+        get_cross_entropy = theano.function(inputs=[idxs, y],
+                                            outputs=mean_cross_entropy,
+                                            givens={
+                                                n_tokens: 1
+                                            })
+
+        flat_true = self.y_valid
+
+        train_costs_list = []
+        train_errors_list = []
+        valid_costs_list = []
+        valid_errors_list = []
+        precision_list = []
+        recall_list = []
+        f1_score_list = []
+        l2_w1_list = []
+        train_cross_entropy_list = []
+        valid_cross_entropy_list = []
 
         for epoch_index in range(max_epochs):
             start = time.time()
-            epoch_cost = 0
-            epoch_errors = 0
+            train_cost = 0
+            train_errors = 0
+            train_cross_entropy = 0
             for i in np.random.permutation(self.n_samples):
                 # error = train(self.x_train, self.y_train)
-                cost_output, errors_output = train(i,[train_y.get_value()[i]])
-                epoch_cost += cost_output
-                epoch_errors += errors_output
+                cost_output, errors_output = train(i, [train_y.get_value()[i]])
+                train_cost += cost_output
+                train_errors += errors_output
 
-            test_error = 0
-            test_cost = 0
+                if self.regularization and i == 0:
+                    l2_w1 = train_l2_penalty(i)
+
+                train_cross_entropy += get_cross_entropy(train_x.get_value()[i], [train_y.get_value()[i]])
+
+            valid_cost = 0
+            valid_errors = 0
             predictions = []
-            for x_sample, y_sample in zip(self.x_test, self.y_test):
+            valid_cross_entropy = 0
+            for x_sample, y_sample in zip(self.x_valid, self.y_valid):
                 cost_output, errors_output, pred = train_predict(x_sample, [y_sample])
-                test_cost += cost_output
-                test_error += errors_output
+                valid_cost += cost_output
+                valid_errors += errors_output
                 predictions.append(np.asscalar(pred))
+                valid_cross_entropy += get_cross_entropy(x_sample, [y_sample])
 
             results = Metrics.compute_all_metrics(y_true=flat_true, y_pred=predictions, average='macro')
             f1_score = results['f1_score']
             precision = results['precision']
             recall = results['recall']
 
+            train_costs_list.append(train_cost)
+            train_errors_list.append(train_errors)
+            valid_costs_list.append(valid_cost)
+            valid_errors_list.append(valid_errors)
+            precision_list.append(precision)
+            recall_list.append(recall)
+            f1_score_list.append(f1_score)
+            l2_w1_list.append(l2_w1)
+            train_cross_entropy_list.append(train_cross_entropy)
+            valid_cross_entropy_list.append(valid_cross_entropy)
+
             end = time.time()
             logger.info('Epoch %d Train_cost: %f Train_errors: %d Test_cost: %f Test_errors: %d F1-score: %f Took: %f'
-                        % (epoch_index+1, epoch_cost, epoch_errors, test_cost, test_error, f1_score, end-start))
+                        % (epoch_index+1, train_cost, train_errors, valid_cost, valid_errors, f1_score, end-start))
 
         if save_params:
             logger.info('Saving parameters to File system')
             self.save_params()
+
+        if plot:
+            actual_time = str(time.time())
+            self.plot_training_cost_and_error(train_costs_list, train_errors_list, valid_costs_list,
+                                              valid_errors_list,
+                                              actual_time)
+            self.plot_scores(precision_list, recall_list, f1_score_list, actual_time)
+            self.plot_penalties(l2_w1_list, actual_time=actual_time)
+            self.plot_cross_entropies(train_cross_entropy_list, valid_cross_entropy_list, actual_time)
 
         return True
 
@@ -216,25 +273,22 @@ class Single_Layer_Context_Window_Net(A_neural_network):
         train_y = theano.shared(value=np.array(self.y_train, dtype='int32'), name='train_y', borrow=True)
 
         y = T.vector(name='y', dtype='int32')
-        # x = T.matrix(name='x', dtype=theano.config.floatX)
         minibatch_idx = T.scalar('minibatch_idx', dtype='int32')  # minibatch index
 
         idxs = T.matrix(name="idxs", dtype='int32') # columns: context window size/lines: tokens in the sentence
         self.n_emb = self.pretrained_embeddings.shape[1] #embeddings dimension
         n_tokens = idxs.shape[0]    #tokens in sentence
-        n_window = self.x_train.shape[1]    #context window size    #TODO: replace n_win with self.n_win
-        # n_features = train_x.get_value().shape[1]    #tokens in sentence
 
         w1 = theano.shared(value=np.array(self.pretrained_embeddings).astype(dtype=theano.config.floatX),
                            name='w1', borrow=True)
-        b1 = theano.shared(value=np.zeros((n_window*self.n_emb)).astype(dtype=theano.config.floatX), name='b1', borrow=True)
+        b1 = theano.shared(value=np.zeros((self.n_window*self.n_emb)).astype(dtype=theano.config.floatX), name='b1', borrow=True)
 
         params = [w1,b1]
         param_names = ['w1','b1']
 
         self.params = OrderedDict(zip(param_names, params))
 
-        w_x = w1[idxs].reshape((n_tokens, self.n_emb*n_window))
+        w_x = w1[idxs].reshape((n_tokens, self.n_emb * self.n_window))
 
         #TODO: with regularization??
         if self.regularization:
@@ -313,12 +367,19 @@ class Single_Layer_Context_Window_Net(A_neural_network):
 
         return True
 
-    def predict(self, **kwargs):
+    def predict(self, on_training_set=True, on_validation_set=True, on_testing_set=True, **kwargs):
 
-        self.x_test = self.x_test.astype(dtype=INT)
-        self.y_test = self.y_test.astype(dtype=INT)
+        results = dict()
 
-        y = T.vector(name='test_y', dtype=INT)
+        if on_training_set:
+            x_test = self.x_train.astype(dtype=INT)
+            y_test = self.y_train.astype(dtype=INT)
+        elif on_validation_set:
+            x_test = self.x_valid.astype(dtype=INT)
+            y_test = self.y_valid.astype(dtype=INT)
+        elif on_testing_set:
+            x_test = self.x_test.astype(dtype=INT)
+            y_test = self.y_test.astype(dtype=INT)
 
         idxs = T.matrix(name="test_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
 
@@ -327,21 +388,22 @@ class Single_Layer_Context_Window_Net(A_neural_network):
         w_x = self.params['w1'][idxs]
 
         # the sgd_forward_pass is valid for either minibatch or sgd prediction.
-        out = self.sgd_forward_pass(w_x, self.params['b1'], n_tokens)
+        out = self.sgd_forward_pass(w_x, n_tokens)
 
         y_predictions = T.argmax(out, axis=1)
-        cost = T.mean(T.nnet.categorical_crossentropy(out, y))
-        errors = T.sum(T.neq(y_predictions,y))
 
         perform_prediction = theano.function(inputs=[idxs],
-                                outputs=[y_predictions],
+                                outputs=y_predictions,
                                 updates=[],
                                 givens=[])
 
-        predictions = perform_prediction(self.x_test)
+        predictions = perform_prediction(x_test)
         # predictions = perform_prediction(valid_x.get_value())
 
-        return self.y_test, predictions[-1], self.y_test, predictions[-1]
+        results['flat_trues'] = y_test
+        results['flat_predictions'] = predictions
+
+        return results
 
     def to_string(self):
         return 'Single layer context window neural network with no tags.'
