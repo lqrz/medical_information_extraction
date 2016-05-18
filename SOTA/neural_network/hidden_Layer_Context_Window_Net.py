@@ -119,22 +119,24 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
                                     outputs_info=None,
                                     non_sequences=[b1,w2,b2])
 
+            mean_cross_entropy = T.mean(T.nnet.categorical_crossentropy(out[:, -1, :], y))
             if self.regularization:
                 # TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
-                cost = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y)) + alpha_L2_reg*L2
+                cost = mean_cross_entropy + alpha_L2_reg * L2
             else:
-                cost = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y))
+                cost = mean_cross_entropy
 
             y_predictions = T.argmax(out[:,-1,:], axis=1)
 
         else:
             out = self.sgd_forward_pass(w_x, self.params['b1'], self.params['w2'], self.params['b2'], n_tokens)
 
+            mean_cross_entropy = T.mean(T.nnet.categorical_crossentropy(out, y))
             if self.regularization:
                 # cost = T.mean(T.nnet.categorical_crossentropy(out, y)) + alpha_L1_reg*L1 + alpha_L2_reg*L2
-                cost = T.mean(T.nnet.categorical_crossentropy(out, y)) + alpha_L2_reg*L2
+                cost = mean_cross_entropy + alpha_L2_reg * L2
             else:
-                cost = T.mean(T.nnet.categorical_crossentropy(out, y))
+                cost = mean_cross_entropy
 
             y_predictions = T.argmax(out, axis=1)
 
@@ -206,6 +208,12 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
                                                    idxs: train_x[train_idx]
                                                })
 
+        get_cross_entropy = theano.function(inputs=[idxs, y],
+                                            outputs=mean_cross_entropy,
+                                            givens={
+                                                n_tokens: 1
+                                            })
+
         valid_flat_true = self.y_valid
 
         # plotting purposes
@@ -218,6 +226,8 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
         f1_score_list = []
         l2_w1_list = []
         l2_w2_list = []
+        train_cross_entropy_list = []
+        valid_cross_entropy_list = []
 
         for epoch_index in range(max_epochs):
             start = time.time()
@@ -225,9 +235,10 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
             epoch_errors = 0
             epoch_l2_w1 = 0
             epoch_l2_w2 = 0
+            train_cross_entropy = 0
             for i in np.random.permutation(self.n_samples):
                 # error = train(self.x_train, self.y_train)
-                cost_output, errors_output = train(i,[train_y.get_value()[i]])
+                cost_output, errors_output = train(i, [train_y.get_value()[i]])
                 epoch_cost += cost_output
                 epoch_errors += errors_output
                 if self.regularization:
@@ -237,15 +248,20 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
                     epoch_l2_w1 = l2_w1
                 epoch_l2_w2 += l2_w2
 
+                train_cross_entropy += get_cross_entropy(train_x.get_value()[i], [train_y.get_value()[i]])
+
             valid_error = 0
             valid_cost = 0
             valid_predictions = []
+            valid_cross_entropy = 0
             for x_sample, y_sample in zip(self.x_valid, self.y_valid):
                 if validation_cost:
                     cost_output, errors_output, pred = train_predict_with_cost(x_sample, [y_sample])
                 else:
-                    cost_output = 0 #TODO: in the forest prediction, computing the cost yield and error (out of bounds for 1st misclassification).
+                    # in the forest prediction, computing the cost yield and error (out of bounds for 1st misclassification).
+                    cost_output = 0
                     errors_output, pred = train_predict_without_cost(x_sample, [y_sample])
+                valid_cross_entropy += get_cross_entropy(x_sample, [y_sample])
                 valid_cost += cost_output
                 valid_error += errors_output
                 valid_predictions.append(np.asscalar(pred))
@@ -264,6 +280,8 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
             precision_list.append(precision)
             recall_list.append(recall)
             f1_score_list.append(f1_score)
+            train_cross_entropy_list.append(train_cross_entropy)
+            valid_cross_entropy_list.append(valid_cross_entropy)
 
             end = time.time()
             logger.info('Epoch %d Train_cost: %f Train_errors: %d Valid_cost: %f Valid_errors: %d F1-score: %f Took: %f'
@@ -280,6 +298,7 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
                                               actual_time)
             self.plot_scores(precision_list, recall_list, f1_score_list, actual_time)
             self.plot_penalties(l2_w1_list, l2_w2_list, actual_time=actual_time)
+            self.plot_cross_entropies(train_cross_entropy_list, valid_cross_entropy_list, actual_time)
 
         return True
 
