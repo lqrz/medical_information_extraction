@@ -64,14 +64,18 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
         return True
 
     def sgd_forward_pass(self, weight_x, n_tokens):
-        h = self.hidden_activation_f(weight_x.reshape((n_tokens, self.n_emb*self.n_window)) + self.params['b1'])
+        h = self.compute_hidden_state(n_tokens, weight_x)
         return self.out_activation_f(T.dot(h, self.params['w2']) + self.params['b2'])
+
+    def compute_hidden_state(self, n_tokens, weight_x):
+        return self.hidden_activation_f(weight_x.reshape((n_tokens, self.n_emb * self.n_window)) + self.params['b1'])
 
     def train_with_sgd(self, learning_rate=0.01, max_epochs=100,
                        alpha_L1_reg=0.001, alpha_L2_reg=0.01,
                        save_params=False, use_scan=False, plot=False,
                        validation_cost=True,
                        static=False,
+                       use_autoencoded_weight=False,
                        **kwargs):
 
         train_x = theano.shared(value=np.array(self.x_train, dtype=INT), name='train_x', borrow=True)
@@ -88,9 +92,15 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
 
         w1 = theano.shared(value=np.array(self.pretrained_embeddings).astype(dtype=theano.config.floatX),
                            name='w1', borrow=True)
-        w2 = theano.shared(value=utils.NeuralNetwork.initialize_weights(n_in=self.n_window*self.n_emb, n_out=self.n_out, function='tanh').
-                           astype(dtype=theano.config.floatX),
-                           name='w2', borrow=True)
+
+        if use_autoencoded_weight:
+            print '...Getting autoencoded W2 weight matrix'
+            w2 = theano.shared(value=cPickle.load(open(self.get_output_path('autoencoded_w2.p'), 'rb')).astype(dtype=theano.config.floatX),
+                               name='w2', borrow=True)
+        else:
+            w2 = theano.shared(value=utils.NeuralNetwork.initialize_weights(n_in=self.n_window*self.n_emb, n_out=self.n_out, function='tanh').
+                               astype(dtype=theano.config.floatX),
+                               name='w2', borrow=True)
         b1 = theano.shared(value=np.zeros((self.n_window*self.n_emb)).astype(dtype=theano.config.floatX), name='b1', borrow=True)
         b2 = theano.shared(value=np.zeros(self.n_out).astype(dtype=theano.config.floatX), name='b2', borrow=True)
 
@@ -220,6 +230,13 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
                                                 n_tokens: 1
                                             })
 
+        hidden_activation = self.compute_hidden_state(n_tokens, w_x)
+        get_hidden_state = theano.function(inputs=[idxs],
+                                           outputs=hidden_activation,
+                                           givens={
+                                               n_tokens: 1
+                                           })
+
         valid_flat_true = self.y_valid
 
         # plotting purposes
@@ -234,6 +251,8 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
         l2_w2_list = []
         train_cross_entropy_list = []
         valid_cross_entropy_list = []
+
+        hidden_activations = []
 
         for epoch_index in range(max_epochs):
             start = time.time()
@@ -255,6 +274,8 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
                 train_l2_emb += l2_w1
 
                 train_cross_entropy += get_cross_entropy(train_x.get_value()[i], [train_y.get_value()[i]])
+                if epoch_index == max_epochs-1:
+                    hidden_activations.append(get_hidden_state(train_x.get_value()[i]).reshape(-1,))
 
             valid_error = 0
             valid_cost = 0
@@ -305,6 +326,8 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
             self.plot_scores(precision_list, recall_list, f1_score_list, actual_time)
             self.plot_penalties(l2_w1_list, l2_w2_list, actual_time=actual_time)
             self.plot_cross_entropies(train_cross_entropy_list, valid_cross_entropy_list, actual_time)
+
+        cPickle.dump(np.array(hidden_activations), open(get_cwnn_path('hidden_activations.p'), 'wb'))
 
         return True
 
