@@ -31,6 +31,7 @@ from trained_models import get_multi_hidden_cw_path
 from data import get_param
 from utils.plot_confusion_matrix import plot_confusion_matrix
 from data.dataset import Dataset
+from data import get_classification_report_labels
 
 from multi_feature_type_hidden_layer_context_window_net import Multi_Feature_Type_Hidden_Layer_Context_Window_Net
 # from multi_feature_type_old import Multi_Feature_Type_Hidden_Layer_Context_Window_Net
@@ -76,6 +77,8 @@ def parse_arguments():
     group_cnn.add_argument('--multifeats', action='store', type=str, nargs='*',
                            choices=Multi_Feature_Type_Hidden_Layer_Context_Window_Net.FEATURE_MAPPING.keys())
 
+    parser.add_argument('--autoencoded', action='store_true', default=False)
+
     #parse arguments
     arguments = parser.parse_args()
 
@@ -101,6 +104,7 @@ def parse_arguments():
     args['max_pool'] = arguments.maxpool
     args['region_sizes'] = arguments.regionsizes
     args['multi_features'] = arguments.multifeats
+    args['use_autoencoded_weight'] = arguments.autoencoded
 
     return args
 
@@ -225,6 +229,7 @@ def determine_nnclass_and_parameters(args):
     n_window = args['window_size']
     nn_class = None
     get_output_path = None
+    feature_positions = None
 
     if args['nn_name'] == 'single_cw':
         nn_class = Single_Layer_Context_Window_Net
@@ -258,8 +263,9 @@ def determine_nnclass_and_parameters(args):
         get_output_path = get_multi_hidden_cw_path
         add_words = ['<PAD>']
         add_feats = ['<PAD>']
+        feature_positions = [1, 2]  #TODO: make param
 
-    return nn_class, hidden_f, out_f, add_words, add_tags, add_feats, tag_dim, n_window, get_output_path
+    return nn_class, hidden_f, out_f, add_words, add_tags, add_feats, tag_dim, n_window, get_output_path, feature_positions
 
 def determine_key_indexes(label2index, word2index):
     pad_tag = None
@@ -343,6 +349,7 @@ def use_testing_dataset(nn_class,
                         add_feats,
                         tag_dim,
                         get_output_path,
+                        feat_positions,
                         max_epochs=None,
                         minibatch_size=None,
                         regularization=None,
@@ -365,7 +372,10 @@ def use_testing_dataset(nn_class,
     label2index, index2label, \
     features_indexes = \
         nn_class.get_data(clef_training=True, clef_validation=True, clef_testing=True, add_words=add_words,
-                          add_tags=add_tags, add_feats=add_feats, x_idx=None, n_window=n_window, feat_positions=[1, 2])
+                          add_tags=add_tags, add_feats=add_feats, x_idx=None, n_window=n_window, feat_positions=feat_positions)
+
+    x_train_sent_nr_feats, x_valid_sent_nr_feats, x_test_sent_nr_feats = \
+        nn_class.get_word_sentence_number_features(clef_training=True, clef_validation=True, clef_testing=True)
 
     unique_words = word2index.keys()
 
@@ -400,15 +410,19 @@ def use_testing_dataset(nn_class,
         'pad_word': pad_word,
         'tag_dim': tag_dim,
         'get_output_path': get_output_path,
-        'train_ner_feats': x_train_feats[1],    #refers to NER tag features.
-        'valid_ner_feats': x_valid_feats[1],    #refers to NER tag features.
-        'test_ner_feats': x_test_feats[1],      #refers to NER tag features.
-        'train_pos_feats': x_train_feats[2],    #refers to POS tag features.
-        'valid_pos_feats': x_valid_feats[2],    #refers to POS tag features.
-        'test_pos_feats': x_test_feats[2],    #refers to POS tag features.
+        'train_ner_feats': x_train_feats[1] if x_train_feats else None,    #refers to NER tag features.
+        'valid_ner_feats': x_valid_feats[1] if x_train_feats else None,    #refers to NER tag features.
+        'test_ner_feats': x_test_feats[1] if x_train_feats else None,      #refers to NER tag features.
+        'train_pos_feats': x_train_feats[2] if x_train_feats else None,    #refers to POS tag features.
+        'valid_pos_feats': x_valid_feats[2] if x_train_feats else None,    #refers to POS tag features.
+        'test_pos_feats': x_test_feats[2] if x_train_feats else None,    #refers to POS tag features.
+        'train_sent_nr_feats': x_train_sent_nr_feats,    #refers to sentence nr features.
+        'valid_sent_nr_feats': x_valid_sent_nr_feats,    #refers to sentence nr features.
+        'test_sent_nr_feats': x_test_sent_nr_feats,    #refers to sentence nr features.
         'n_filters': args['n_filters'],
         'region_sizes': args['region_sizes'],
-        'features_to_use': args['multi_features']
+        'features_to_use': args['multi_features'],
+        'static': args['static']
     }
 
     nn_trainer = nn_class(**params)
@@ -446,9 +460,10 @@ def write_to_file(fout_name, document_sentence_words, predictions, file_prefix, 
     for doc_nr, sentences in document_sentence_words.iteritems():
         doc_words = list(chain(*sentences))
         doc_len = doc_words.__len__()
-        for word, tag in zip(doc_words, predictions[word_count:doc_len]):
+        for word, tag in zip(doc_words, predictions[word_count:word_count+doc_len]):
             line = '\t'.join([file_prefix+str(doc_nr)+file_suffix, word, tag])
             fout.write(line+'\n')
+        word_count += doc_len
 
     fout.close()
 
@@ -482,7 +497,8 @@ if __name__ == '__main__':
 
     w2v_vectors, w2v_model, w2v_dims = load_w2v_model_and_vectors_cache(args)
 
-    nn_class, hidden_f, out_f, add_words, add_tags, add_feats, tag_dim, n_window, get_output_path = determine_nnclass_and_parameters(args)
+    nn_class, hidden_f, out_f, add_words, add_tags, add_feats, tag_dim, n_window, get_output_path,\
+        feature_positions = determine_nnclass_and_parameters(args)
 
     logger.info('Using Neural class: %s with window size: %d for epochs: %d' % (args['nn_name'],n_window,args['max_epochs']))
 
@@ -501,6 +517,7 @@ if __name__ == '__main__':
                                                    add_feats,
                                                    tag_dim,
                                                    get_output_path,
+                                                   feature_positions,
                                                    **args)
 
     cPickle.dump(results, open(get_output_path('prediction_results.p'),'wb'))
@@ -514,10 +531,9 @@ if __name__ == '__main__':
     results_micro = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, average='micro')
     results_macro = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, average='macro')
 
-    labels_list = [label for label in index2label.values()]
+    labels_list = get_classification_report_labels()
     cm = Metrics.compute_confusion_matrix(valid_y_true, valid_y_pred, labels=labels_list)
-    plot_confusion_matrix(cm, labels=labels_list, output_filename=get_output_path('confusion_matrix.png'),
-                          title='Validation confusion matrix')
+    plot_confusion_matrix(cm, labels=labels_list, output_filename=get_output_path('confusion_matrix.png'))
 
     print 'MICRO results'
     print results_micro
