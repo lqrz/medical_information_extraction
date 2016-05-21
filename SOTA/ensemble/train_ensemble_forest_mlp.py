@@ -482,7 +482,7 @@ if __name__ == '__main__':
     train_y_pred = list(chain(*[pred for _, _, pred, _ in results.values()]))
     test_y_pred = list(chain(*[pred for _, _, _, pred in results.values()]))
 
-    
+
     print '...Plotting confusion matrix'
     output_filename = get_ensemble_forest_mlp_path('confusion_matrix.png')
     # labels_list = list(set(valid_y_true).union(set(valid_y_pred)))
