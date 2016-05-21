@@ -361,7 +361,7 @@ def use_testing_dataset(nn_class,
     nn_trainer.x_train = np.array(x_train)[indexes_to_train_to_replace]
     training_set_predictions = nn_trainer.predict(on_training_set=True, **kwargs)
     train_flat_predictions_2nd_step = training_set_predictions['flat_predictions']
-    
+
     logger.info('Predicting on Validation set')
     validation_set_predictions = nn_trainer.predict(on_validation_set=True, **kwargs)
     valid_flat_true_2nd_step = validation_set_predictions['flat_trues']
@@ -409,9 +409,10 @@ def write_to_file(fout_name, document_sentence_words, predictions, file_prefix, 
     for doc_nr, sentences in document_sentence_words.iteritems():
         doc_words = list(chain(*sentences))
         doc_len = doc_words.__len__()
-        for word, tag in zip(doc_words, predictions[word_count:doc_len]):
+        for word, tag in zip(doc_words, predictions[word_count:word_count+doc_len]):
             line = '\t'.join([file_prefix+str(doc_nr)+file_suffix, word, tag])
             fout.write(line+'\n')
+        word_count += doc_len
 
     fout.close()
 
@@ -481,6 +482,7 @@ if __name__ == '__main__':
     train_y_pred = list(chain(*[pred for _, _, pred, _ in results.values()]))
     test_y_pred = list(chain(*[pred for _, _, _, pred in results.values()]))
 
+    
     print '...Plotting confusion matrix'
     output_filename = get_ensemble_forest_mlp_path('confusion_matrix.png')
     # labels_list = list(set(valid_y_true).union(set(valid_y_pred)))
