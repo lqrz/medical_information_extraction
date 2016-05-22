@@ -32,6 +32,7 @@ from data import get_param
 from utils.plot_confusion_matrix import plot_confusion_matrix
 from data.dataset import Dataset
 from data import get_classification_report_labels
+from data import get_hierarchical_mapping
 
 from multi_feature_type_hidden_layer_context_window_net import Multi_Feature_Type_Hidden_Layer_Context_Window_Net
 # from multi_feature_type_old import Multi_Feature_Type_Hidden_Layer_Context_Window_Net
@@ -78,6 +79,7 @@ def parse_arguments():
                            choices=Multi_Feature_Type_Hidden_Layer_Context_Window_Net.FEATURE_MAPPING.keys())
 
     parser.add_argument('--autoencoded', action='store_true', default=False)
+    parser.add_argument('--aggregated', action='store_true', default=False)
 
     #parse arguments
     arguments = parser.parse_args()
@@ -105,6 +107,7 @@ def parse_arguments():
     args['region_sizes'] = arguments.regionsizes
     args['multi_features'] = arguments.multifeats
     args['use_autoencoded_weight'] = arguments.autoencoded
+    args['meta_tags'] = arguments.aggregated
 
     return args
 
@@ -337,6 +340,25 @@ def filter_tags_to_predict(x_train, y_train, x_test, y_test, label2index, index2
     #im returning the params, but python is gonna change the outer param anyways.
     return y_train, y_test, new_label2index, new_index2label
 
+def get_aggregated_tags(y_train, y_valid, mapping, index2label):
+
+    y_original_train = map(lambda x: index2label[x], y_train)
+    y_aggregated_train_labels = map(lambda x: mapping[x], y_original_train)
+
+    y_original_valid = map(lambda x: index2label[x], y_valid)
+    y_aggregated_valid_labels = map(lambda x: mapping[x], y_original_valid)
+
+    used_aggegrated_labels = set(y_aggregated_train_labels).union(set(y_aggregated_valid_labels))
+
+    aggregated_label2index = dict(zip(used_aggegrated_labels, range(used_aggegrated_labels.__len__())))
+    aggregated_index2label = dict(zip(range(used_aggegrated_labels.__len__()), used_aggegrated_labels))
+
+    y_aggregated_train_indexes = map(lambda x: aggregated_label2index[x], y_aggregated_train_labels)
+    y_aggregated_valid_indexes = map(lambda x: aggregated_label2index[x], y_aggregated_valid_labels)
+
+    return y_aggregated_train_indexes, y_aggregated_valid_indexes, aggregated_label2index, aggregated_index2label
+
+
 def use_testing_dataset(nn_class,
                         hidden_f,
                         out_f,
@@ -354,6 +376,7 @@ def use_testing_dataset(nn_class,
                         minibatch_size=None,
                         regularization=None,
                         tags=None,
+                        meta_tags=False,
                         **kwargs
                         ):
 
@@ -385,6 +408,12 @@ def use_testing_dataset(nn_class,
         tags = get_param(tags)
         y_train, y_test, label2index, index2label = \
             filter_tags_to_predict(x_train, y_train, x_test, y_test, label2index, index2label, tags)
+
+    if meta_tags:
+        logger.info('Using aggregated tags')
+        tag_mapping = get_hierarchical_mapping()
+        y_train, y_valid, label2index, index2label = \
+            get_aggregated_tags(y_train, y_valid, tag_mapping, index2label)
 
     n_out = len(label2index.keys())
 
