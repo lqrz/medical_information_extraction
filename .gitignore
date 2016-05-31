@@ -8,3 +8,7 @@ data/handoverdata/*
 SOTA/crf++/*
 *.p
 .api_key
+*.png
+*.html
+*.log
+*.txt
