@@ -494,5 +494,56 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
 
         return results
 
+    def predict_distribution(self, on_training_set=False, on_validation_set=False, **kwargs):
+
+        results = defaultdict(None)
+
+        if on_training_set:
+            # predict on training set
+            x_test = self.x_train.astype(dtype=INT)
+            y_test = self.y_train.astype(dtype=INT)
+
+        elif on_validation_set:
+            # predict on validation set
+            x_test = self.x_valid.astype(dtype=INT)
+            y_test = self.y_valid.astype(dtype=INT)
+        else:
+            # predict on test set
+            x_test = self.x_test.astype(dtype=INT)
+            y_test = self.y_test
+
+        # test_x = theano.shared(value=self.x_valid.astype(dtype=INT), name='test_x', borrow=True)
+        # test_y = theano.shared(value=self.y_valid.astype(dtype=INT), name='test_y', borrow=True)
+
+        # y = T.vector(name='test_y', dtype=INT)
+
+        idxs = T.matrix(name="test_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
+        # n_emb = self.pretrained_embeddings.shape[1] #embeddings dimension
+        # n_tokens = self.x_train.shape[0]    #tokens in sentence
+        n_tokens = idxs.shape[0]    #tokens in sentence
+        # n_window = self.x_train.shape[1]    #context window size    #TODO: replace with self.n_win
+
+        w_x = self.params['w1'][idxs]
+
+        # the sgd_forward_pass is valid for either minibatch or sgd prediction.
+        out = self.sgd_forward_pass(w_x, n_tokens)
+
+        # y_predictions = T.argmax(out, axis=1)
+        # cost = T.mean(T.nnet.categorical_crossentropy(out, y))
+        # errors = T.sum(T.neq(y_predictions,y))
+
+        perform_prediction = theano.function(inputs=[idxs],
+                                outputs=out,
+                                updates=[],
+                                givens=[])
+
+        distribution = perform_prediction(x_test)
+        # predictions = perform_prediction(valid_x.get_value())
+
+        results['distribution'] = distribution
+        results['flat_trues'] = y_test
+
+        return results
+
     def to_string(self):
         return 'One hidden layer context window neural network with no tags.'
