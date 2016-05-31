@@ -125,3 +125,19 @@ def get_multi_hidden_cw_path(filename):
         os.makedirs(dir)
 
     return path
+
+def get_language_model_path(filename):
+    path = pkg_resources.resource_filename('trained_models', 'language_model/' + filename)
+    dir = os.path.dirname(path)
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+    return path
+
+def get_factored_model_path(filename):
+    path = pkg_resources.resource_filename('trained_models', 'factored_model/' + filename)
+    dir = os.path.dirname(path)
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+    return path
