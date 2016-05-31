@@ -481,6 +481,10 @@ def use_testing_dataset(nn_class,
 
     results[0] = (valid_flat_true, valid_flat_predictions, train_flat_predictions, test_flat_predictions)
 
+    cPickle.dump(pretrained_embeddings, open(get_output_path('original_vectors.p'), 'wb'))
+    cPickle.dump(nn_trainer.params['w1'].get_value(), open(get_output_path('trained_vectors.p'), 'wb'))
+    cPickle.dump(word2index, open(get_output_path('word2index.p'), 'wb'))
+
     return results, index2label
 
 def write_to_file(fout_name, document_sentence_words, predictions, file_prefix, file_suffix):
@@ -560,9 +564,10 @@ if __name__ == '__main__':
     results_micro = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, average='micro')
     results_macro = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, average='macro')
 
-    labels_list = get_classification_report_labels()
-    cm = Metrics.compute_confusion_matrix(valid_y_true, valid_y_pred, labels=labels_list)
-    plot_confusion_matrix(cm, labels=labels_list, output_filename=get_output_path('confusion_matrix.png'))
+    if args['plot']:
+        labels_list = get_classification_report_labels()
+        cm = Metrics.compute_confusion_matrix(valid_y_true, valid_y_pred, labels=labels_list)
+        plot_confusion_matrix(cm, labels=labels_list, output_filename=get_output_path('confusion_matrix.png'))
 
     print 'MICRO results'
     print results_micro
