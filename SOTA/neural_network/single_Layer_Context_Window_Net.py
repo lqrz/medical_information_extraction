@@ -248,7 +248,7 @@ class Single_Layer_Context_Window_Net(A_neural_network):
             valid_cross_entropy_list.append(valid_cross_entropy)
 
             end = time.time()
-            logger.info('Epoch %d Train_cost: %f Train_errors: %d Test_cost: %f Test_errors: %d F1-score: %f Took: %f'
+            logger.info('Epoch %d Train_cost: %f Train_errors: %d Valid_cost: %f Valid_errors: %d F1-score: %f Took: %f'
                         % (epoch_index+1, train_cost, train_errors, valid_cost, valid_errors, f1_score, end-start))
 
         if save_params:
