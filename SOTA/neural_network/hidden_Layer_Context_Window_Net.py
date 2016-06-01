@@ -443,7 +443,7 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
 
         return True
 
-    def predict(self, on_training_set=False, on_validation_set=False, **kwargs):
+    def predict(self, on_training_set=False, on_validation_set=False, on_testing_set=False, **kwargs):
 
         results = defaultdict(None)
 
@@ -456,7 +456,7 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
             # predict on validation set
             x_test = self.x_valid.astype(dtype=INT)
             y_test = self.y_valid.astype(dtype=INT)
-        else:
+        elif on_testing_set:
             # predict on test set
             x_test = self.x_test.astype(dtype=INT)
             y_test = self.y_test
