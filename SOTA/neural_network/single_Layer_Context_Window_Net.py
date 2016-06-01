@@ -370,7 +370,7 @@ class Single_Layer_Context_Window_Net(A_neural_network):
 
         return True
 
-    def predict(self, on_training_set=True, on_validation_set=True, on_testing_set=True, **kwargs):
+    def predict(self, on_training_set=False, on_validation_set=False, on_testing_set=False, **kwargs):
 
         results = dict()
 
