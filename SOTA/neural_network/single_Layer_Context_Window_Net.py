@@ -293,14 +293,6 @@ class Single_Layer_Context_Window_Net(A_neural_network):
 
         w_x = w1[idxs].reshape((n_tokens, self.n_emb * self.n_window))
 
-        #TODO: with regularization??
-        if self.regularization:
-            # symbolic Theano variable that represents the L1 regularization term
-            L1 = T.sum(abs(w1))
-
-            # symbolic Theano variable that represents the squared L2 term
-            L2 = T.sum(w1 ** 2)
-
         if use_scan:
             #TODO: DO I NEED THE SCAN AT ALL: NO! Im leaving it for reference only.
             # Unchanging variables are passed to scan as non_sequences.
@@ -311,8 +303,11 @@ class Single_Layer_Context_Window_Net(A_neural_network):
                                     non_sequences=[b1])
 
             if self.regularization:
+                # symbolic Theano variable that represents the L1 regularization term
+                L2 = T.sum(w_x ** 2)
+
                 # TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
-                cost = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y)) + alpha_L1_reg*L1 + alpha_L2_reg*L2
+                cost = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y)) + alpha_L2_reg * L2
             else:
                 cost = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y))
 
@@ -322,6 +317,8 @@ class Single_Layer_Context_Window_Net(A_neural_network):
             out = self.minibatch_forward_pass(w_x,b1)
 
             if self.regularization:
+                # symbolic Theano variable that represents the L1 regularization term
+                L2 = T.sum(w_x ** 2)
                 # cost = T.mean(T.nnet.categorical_crossentropy(out, y)) + alpha_L1_reg*L1 + alpha_L2_reg*L2
                 cost = T.mean(T.nnet.categorical_crossentropy(out, y)) + alpha_L2_reg*L2
             else:
