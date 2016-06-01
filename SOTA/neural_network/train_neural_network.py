@@ -116,8 +116,8 @@ def check_arguments_consistency(args):
         logger.error('Provide either a w2vmodel or a w2v vectors cache')
         exit()
 
-    if args['nn_name'] == 'vector_tag' and not args['tagdim']:
-        logger.error('Provide the tag dimensionality for Vector tag nnet')
+    if (args['nn_name'] == 'vector_tag' or args['nn_name'] == 'last_tag') and not args['tagdim']:
+        logger.error('Provide the tag dimensionality for tag embeddings')
         exit()
 
     if args['nn_name'] == 'multi_hidden_cw' and not args['multi_features']:
@@ -252,6 +252,9 @@ def determine_nnclass_and_parameters(args):
     elif args['nn_name'] == 'last_tag':
         nn_class = Last_tag_neural_network_trainer
         get_output_path = get_last_tag_path
+        tag_dim = args['tagdim']
+        add_words = ['<PAD>']
+        add_tags = ['<PAD>']
     elif args['nn_name'] == 'rnn':
         #the RNN init function overwrites the n_window param and sets it to 1.
         nn_class = Recurrent_net
@@ -469,7 +472,7 @@ def use_testing_dataset(nn_class,
     valid_flat_predictions = nnet_results['flat_predictions']
 
     logger.info('Predicting on Testing set')
-    nnet_results = nn_trainer.predict(on_validation_set=False, **kwargs)
+    nnet_results = nn_trainer.predict(on_testing_set=True, **kwargs)
     test_flat_predictions = nnet_results['flat_predictions']
 
     assert valid_flat_true.__len__() == valid_flat_predictions.__len__()

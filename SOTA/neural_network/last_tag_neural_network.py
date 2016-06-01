@@ -19,15 +19,18 @@ logger = logging.getLogger(__name__)
 theano.config.warn_float64='raise'
 # theano.config.floatX='float64'
 
+INT = 'int64'
 
 class Last_tag_neural_network_trainer(A_neural_network):
 
-    def __init__(self, hidden_activation_f, out_activation_f, tag_dim=50, **kwargs):
+    def __init__(self, hidden_activation_f, out_activation_f, tag_dim=50, regularization=False, **kwargs):
 
         super(Last_tag_neural_network_trainer, self).__init__(**kwargs)
 
         self.hidden_activation_f = hidden_activation_f
         self.out_activation_f = out_activation_f
+
+        self.regularization = regularization
 
         self.params = OrderedDict()
 
@@ -37,39 +40,36 @@ class Last_tag_neural_network_trainer(A_neural_network):
         prev_rep = weight_t[prev_pred,:]
         h = self.hidden_activation_f(T.concatenate([weight_x,prev_rep])+bias_1)
         result = self.out_activation_f(T.dot(h, weight_2)+bias_2)
-        pred = T.cast(T.argmax(result), dtype='int32')
+        pred = T.cast(T.argmax(result), dtype=INT)
 
         return [pred,result]
 
     def train(self, learning_rate=0.01, batch_size=512, max_epochs=100,
-              L1_reg=0.001, alpha_L2_reg=0.01, save_params=False):
+              L1_reg=0.001, alpha_L2_reg=0.01, save_params=False, **kwargs):
 
-        train_x = theano.shared(value=np.array(self.x_train, dtype='int32'), name='train_x', borrow=True)
-        train_y = theano.shared(value=np.array(self.y_train, dtype='int32'), name='train_y', borrow=True)
+        train_x = theano.shared(value=np.array(self.x_train, dtype=INT), name='train_x', borrow=True)
+        train_y = theano.shared(value=np.array(self.y_train, dtype=INT), name='train_y', borrow=True)
 
-        y = T.vector(name='y', dtype='int32')
+        y = T.vector(name='y', dtype=INT)
 
-        idxs = T.matrix(name="idxs", dtype='int32') # columns: context window size/lines: tokens in the sentence
-        n_emb = self.pretrained_embeddings.shape[1] #embeddings dimension
+        idxs = T.matrix(name="idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
         n_tokens = idxs.shape[0]    #tokens in sentence
 
         w1 = theano.shared(value=np.array(self.pretrained_embeddings, dtype=theano.config.floatX),
                            name='w1', borrow=True)
 
-        w2 = theano.shared(value=utils.NeuralNetwork.initialize_weights(n_in=self.n_window*n_emb+self.tag_dim,
+        w2 = theano.shared(value=utils.NeuralNetwork.initialize_weights(n_in=self.n_window*self.n_emb+self.tag_dim,
                                                                         n_out=self.n_out, function='softmax').
                            astype(dtype=theano.config.floatX),name='w2', borrow=True)
 
-        b1 = theano.shared(value=np.zeros(self.n_window*n_emb+self.tag_dim, dtype=theano.config.floatX),
+        b1 = theano.shared(value=np.zeros(self.n_window*self.n_emb+self.tag_dim, dtype=theano.config.floatX),
                            name='b1', borrow=True)
 
         b2 = theano.shared(value=np.zeros(self.n_out, dtype=theano.config.floatX),
                            name='b2', borrow=True)
 
-        n_tags = self.n_out+1 # adding the '<PAD>' tag. Should be 37 in total
-
         tag_lim = np.sqrt(6./(self.n_window+self.tag_dim))
-        wt = theano.shared(value=np.random.uniform(-tag_lim,tag_lim,(n_tags,self.tag_dim)).astype(
+        wt = theano.shared(value=np.random.uniform(-tag_lim,tag_lim,(self.n_out,self.tag_dim)).astype(
                             dtype=theano.config.floatX),
                            name='wt', borrow=True)
 
@@ -78,11 +78,11 @@ class Last_tag_neural_network_trainer(A_neural_network):
 
         self.params = OrderedDict(zip(param_names, params))
 
-        w_x = w1[idxs].reshape((n_tokens, n_emb*self.n_window))
+        w_x = w1[idxs].reshape((n_tokens, self.n_emb*self.n_window))
 
-        minibatch_idx = T.scalar(name='minibatch_idxs', dtype='int32')  # minibatch index
+        minibatch_idx = T.scalar(name='minibatch_idxs', dtype=INT)  # minibatch index
 
-        initial_tag = T.scalar(name='initial_tag',dtype='int32')
+        initial_tag = T.scalar(name='initial_tag', dtype=INT)
 
         # if use_scan:
         #     TODO: DO I NEED THE SCAN AT ALL: NO! Im leaving it for reference only.
@@ -92,16 +92,19 @@ class Last_tag_neural_network_trainer(A_neural_network):
                                 sequences=w_x,
                                 outputs_info=[initial_tag,None],
                                 non_sequences=[b1,w2,b2,wt])
-        # TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
-        cost = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y))
-        y_predictions = T.argmax(out[:,-1,:], axis=1)
-        # else:
-        #     out = self.forward_pass(w_x,b1,w2,b2)
-        #     y_predictions = T.argmax(out, axis=1)
-        #     cost = T.mean(T.nnet.categorical_crossentropy(out, y))
 
-        # test_scan = theano.function(inputs=[idxs,y,initial_tag], outputs=[out,cost,y_pred], updates=[])
-        # test_scan(self.x_train,self.y_train,37)
+        if self.regularization:
+            L2_w1 = T.sum(w1[idxs]**2)
+            L2_w2 = T.sum(w2**2)
+            L2_wt = T.sum(wt**2)
+            L2 = L2_w1 + L2_w2 + L2_wt
+
+            cost = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y)) + alpha_L2_reg * L2
+        else:
+            # TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
+            cost = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y))
+
+        y_predictions = T.argmax(out[:,-1,:], axis=1)
 
         errors = T.sum(T.neq(y_predictions,y))
 
@@ -139,7 +142,7 @@ class Last_tag_neural_network_trainer(A_neural_network):
                                 givens={
                                     idxs: train_x[minibatch_idx*batch_size:(minibatch_idx+1)*batch_size],
                                     y: train_y[minibatch_idx*batch_size:(minibatch_idx+1)*batch_size],
-                                    initial_tag: np.int32(36)
+                                    initial_tag: np.int32(36) if INT=='int32' else 36
                                 })
 
         for epoch_index in range(max_epochs):
@@ -163,25 +166,33 @@ class Last_tag_neural_network_trainer(A_neural_network):
 
         return True
 
-    def predict(self):
+    def predict(self, on_training_set=False, on_validation_set=False, on_testing_set=False, **kwargs):
 
-        self.x_valid = self.x_valid.astype(dtype='int32')
-        self.y_valid = self.y_valid.astype(dtype='int32')
+        results = dict()
 
-        y = T.vector(name='valid_y', dtype='int32')
+        if on_training_set:
+            x_test = self.x_train.astype(dtype=INT)
+            y_test = self.y_train.astype(dtype=INT)
+        elif on_validation_set:
+            x_test = self.x_valid.astype(dtype=INT)
+            y_test = self.y_valid.astype(dtype=INT)
+        elif on_testing_set:
+            x_test = self.x_test.astype(dtype=INT)
+            y_test = self.y_test
 
-        idxs = T.matrix(name="valid_idxs", dtype='int32') # columns: context window size/lines: tokens in the sentence
-        n_emb = self.pretrained_embeddings.shape[1] #embeddings dimension
-        # n_tokens = self.x_train.shape[0]    #tokens in sentence
+        y = T.vector(name='valid_y', dtype=INT)
+
+        idxs = T.matrix(name="valid_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
+
         n_tokens = idxs.shape[0]    #tokens in sentence
 
-        w_x = self.params['w1'][idxs].reshape((n_tokens, n_emb*self.n_window))
+        w_x = self.params['w1'][idxs].reshape((n_tokens, self.n_emb*self.n_window))
 
-        initial_tag = T.scalar(name='initial_tag',dtype='int32')
+        initial_tag = T.scalar(name='initial_tag', dtype=INT)
 
         [y_pred,out], _ = theano.scan(fn=self.forward_pass,
                                 sequences=w_x,
-                                outputs_info=[initial_tag,None],
+                                outputs_info=[initial_tag, None],
                                 non_sequences=[self.params['b1'], self.params['w2'], self.params['b2'], self.params['wt']])
 
         # out = self.forward_pass(w_x, 36)
@@ -190,15 +201,18 @@ class Last_tag_neural_network_trainer(A_neural_network):
         # errors = T.sum(T.neq(y_predictions,y))
 
         perform_prediction = theano.function(inputs=[idxs],
-                                outputs=[y_predictions],
+                                outputs=y_predictions,
                                 updates=[],
                                 givens={
-                                    initial_tag: np.int32(36)
+                                    initial_tag: np.int32(36) if INT=='int32' else 36
                                 })
 
-        predictions = perform_prediction(self.x_valid)
+        predictions = perform_prediction(x_test)
 
-        return self.y_valid, predictions[-1]
+        results['flat_trues'] = y_test
+        results['flat_predictions'] = predictions
+
+        return results
 
     def to_string(self):
         return 'MLP NN with last predicted tag.'
