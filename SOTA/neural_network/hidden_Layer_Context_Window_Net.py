@@ -115,6 +115,9 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
             params_to_get_grad.append(w_x)
             params_to_get_grad_names.append('w_x')
 
+            params_to_get_grad.append(w1)
+            params_to_get_grad_names.append('w1')
+
         self.params = OrderedDict(zip(param_names, params))
 
         if self.regularization:
@@ -156,13 +159,20 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
 
             y_predictions = T.argmax(out, axis=1)
 
-        cost_prediction = T.mean(T.nnet.categorical_crossentropy(out, y)) + alpha_L2_reg*L2
+        if self.regularization:
+            cost_prediction = T.mean(T.nnet.categorical_crossentropy(out, y)) + alpha_L2_reg*L2
+        else:
+            cost_prediction = T.mean(T.nnet.categorical_crossentropy(out, y))
+
         # cost_prediction = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y))
         # cost_prediction = alpha_L2_reg*L2
 
         errors = T.sum(T.neq(y_predictions,y))
 
         grads = [T.grad(cost, param) for param in params_to_get_grad]
+
+        test = theano.function([idxs, y], grads, on_unused_input='ignore', givens={n_tokens: 1})
+        test(self.x_train[0], self.y_train[0])
 
         # adagrad
         accumulated_grad = []
