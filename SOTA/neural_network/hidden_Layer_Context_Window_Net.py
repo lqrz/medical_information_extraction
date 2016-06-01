@@ -269,9 +269,7 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
                 if self.regularization:
                     l2_w1, l2_w2 = train_l2_penalty(i)
                     train_l2_w2 += l2_w2
-
-                # if i==0:
-                train_l2_emb += l2_w1
+                    train_l2_emb += l2_w1
 
                 train_cross_entropy += get_cross_entropy(train_x.get_value()[i], [train_y.get_value()[i]])
                 if epoch_index == max_epochs-1:
