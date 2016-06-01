@@ -171,9 +171,6 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
 
         grads = [T.grad(cost, param) for param in params_to_get_grad]
 
-        test = theano.function([idxs, y], grads, on_unused_input='ignore', givens={n_tokens: 1})
-        test(self.x_train[0], self.y_train[0])
-
         # adagrad
         accumulated_grad = []
         for name, param in zip(params_to_get_grad_names,params_to_get_grad):
