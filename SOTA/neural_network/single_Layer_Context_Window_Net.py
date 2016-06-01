@@ -24,8 +24,10 @@ INT = 'int64'
 
 class Single_Layer_Context_Window_Net(A_neural_network):
     """
-    w1: embeddings
+    W1: embeddings
     b1: bias
+
+    L2 on W1
     """
 
     def __init__(self, hidden_activation_f, out_activation_f, regularization=False, **kwargs):
