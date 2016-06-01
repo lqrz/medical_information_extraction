@@ -94,7 +94,9 @@ class Single_Layer_Context_Window_Net(A_neural_network):
             L1 = T.sum(abs(w1))
 
             # symbolic Theano variable that represents the squared L2 term
-            L2_w1 = T.sum(w1[idxs] ** 2)
+            L2_w1 = T.sum(w1 ** 2)
+
+            L2 = T.sum(w_x ** 2)
 
         if use_scan:
             #TODO: DO I NEED THE SCAN AT ALL: NO! Im leaving it for reference only.
@@ -109,7 +111,7 @@ class Single_Layer_Context_Window_Net(A_neural_network):
 
             if self.regularization:
                 # TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
-                cost = mean_cross_entropy + alpha_L2_reg * L2_w1
+                cost = mean_cross_entropy + alpha_L2_reg * L2
             else:
                 cost = mean_cross_entropy
 
@@ -121,7 +123,7 @@ class Single_Layer_Context_Window_Net(A_neural_network):
             mean_cross_entropy = T.mean(T.nnet.categorical_crossentropy(out, y))
 
             if self.regularization:
-                cost = mean_cross_entropy + alpha_L2_reg * L2_w1
+                cost = mean_cross_entropy + alpha_L2_reg * L2
             else:
                 cost = mean_cross_entropy
 
@@ -178,11 +180,9 @@ class Single_Layer_Context_Window_Net(A_neural_network):
                                         })
 
         if self.regularization:
-            train_l2_penalty = theano.function(inputs=[train_idx],
+            train_l2_penalty = theano.function(inputs=[],
                                                outputs=L2_w1,
-                                               givens={
-                                                   idxs: train_x[train_idx]
-                                               })
+                                               givens=[])
 
         get_cross_entropy = theano.function(inputs=[idxs, y],
                                             outputs=mean_cross_entropy,
@@ -216,7 +216,7 @@ class Single_Layer_Context_Window_Net(A_neural_network):
                 train_errors += errors_output
 
                 # if self.regularization and i == 0:
-                l2_emb += train_l2_penalty(i)
+                l2_emb += train_l2_penalty()
 
                 train_cross_entropy += get_cross_entropy(train_x.get_value()[i], [train_y.get_value()[i]])
 
