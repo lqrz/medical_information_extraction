@@ -115,9 +115,6 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
             params_to_get_grad.append(w_x)
             params_to_get_grad_names.append('w_x')
 
-            params_to_get_grad.append(w1)
-            params_to_get_grad_names.append('w1')
-
         self.params = OrderedDict(zip(param_names, params))
 
         if self.regularization:
@@ -125,9 +122,10 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
             # L1 = T.sum(abs(w1)) + T.sum(abs(w2))
 
             # symbolic Theano variable that represents the squared L2 term
-            L2_w1 = T.sum(w1[idxs] ** 2)
+            L2_w1 = T.sum(w1 ** 2)
+            L2_wx = T.sum(w_x ** 2)
             L2_w2 = T.sum(w2 ** 2)
-            L2 = L2_w1 + L2_w2
+            L2 = L2_wx + L2_w2
 
         if use_scan:
             #TODO: DO I NEED THE SCAN AT ALL: NO! Im leaving it for reference only.
@@ -225,11 +223,9 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
                                              })
 
         if self.regularization:
-            train_l2_penalty = theano.function(inputs=[train_idx],
+            train_l2_penalty = theano.function(inputs=[],
                                                outputs=[L2_w1, L2_w2],
-                                               givens={
-                                                   idxs: train_x[train_idx]
-                                               })
+                                               givens=[])
 
         get_cross_entropy = theano.function(inputs=[idxs, y],
                                             outputs=mean_cross_entropy,
@@ -274,7 +270,7 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
                 train_cost += cost_output
                 train_errors += errors_output
                 if self.regularization:
-                    l2_w1, l2_w2 = train_l2_penalty(i)
+                    l2_w1, l2_w2 = train_l2_penalty()
                     train_l2_w2 += l2_w2
                     train_l2_emb += l2_w1
 
