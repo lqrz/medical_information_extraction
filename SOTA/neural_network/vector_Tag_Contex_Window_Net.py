@@ -7,11 +7,13 @@ import theano.tensor as T
 import cPickle
 from collections import OrderedDict
 import time
+from itertools import chain
 
 from A_neural_network import A_neural_network
 from trained_models import get_cwnn_path
 from utils import utils
 from utils.metrics import Metrics
+from data.dataset import Dataset
 
 INT = 'int64'
 
@@ -98,13 +100,13 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
 
         logger.info('Mean gradients: '+str(use_grad_means))
 
-        train_x = theano.shared(value=np.array(self.x_train, dtype=INT), name='train_x', borrow=True)
-        train_y = theano.shared(value=np.array(self.y_train, dtype=INT), name='train_y', borrow=True)
+        # train_x = theano.shared(value=np.array(self.x_train, dtype=INT), name='train_x', borrow=True)
+        # train_y = theano.shared(value=np.array(self.y_train, dtype=INT), name='train_y', borrow=True)
 
         y = T.vector(name='y', dtype=INT)
 
         idxs = T.vector(name="idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
-        self.n_emb = self.pretrained_embeddings.shape[1] #embeddings dimension
+        # self.n_emb = self.pretrained_embeddings.shape[1] #embeddings dimension
         # self.n_tokens = idxs.shape[0]    #tokens in sentence
         # n_features = train_x.get_value().shape[1]    #tokens in sentence
         n_tokens = T.scalar(name='n_tokens', dtype=INT)
@@ -117,9 +119,8 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
         b1 = theano.shared(value=np.zeros((self.n_window*(self.n_emb+self.tag_dim))).astype(dtype=theano.config.floatX), name='b1', borrow=True)
         b2 = theano.shared(value=np.zeros(self.n_out).astype(dtype=theano.config.floatX), name='b2', borrow=True)
 
-        n_tags = self.n_out
         # #include tag structure
-        wt = theano.shared(value=utils.NeuralNetwork.initialize_weights(n_in=n_tags,n_out=self.tag_dim,function='tanh').astype(
+        wt = theano.shared(value=utils.NeuralNetwork.initialize_weights(n_in=self.n_out,n_out=self.tag_dim,function='tanh').astype(
             dtype=theano.config.floatX), name='wt', borrow=True)
         # wt = theano.shared(value=np.zeros((n_tags,self.tag_dim),dtype=theano.config.floatX), name='wt', borrow=True)  #this was for test only
 
@@ -160,18 +161,19 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
         #TODO: with regularization??
         if self.regularization:
             # symbolic Theano variable that represents the L1 regularization term
-            L1 = T.sum(abs(w1)) + T.sum(abs(w2))
+            # L1 = T.sum(abs(w1)) + T.sum(abs(w2))
 
             # symbolic Theano variable that represents the squared L2 term
-            L2_w1 = T.sum(w1[idxs] ** 2)
+            L2_w1 = T.sum(w1 ** 2)
+            L2_w_x = T.sum(w_x ** 2)
             L2_w2 = T.sum(w2 ** 2)
-            L2_wt = T.sum(wt[prev_preds] ** 2)
+            L2_wt = T.sum(wt ** 2)
+            L2_w_t = T.sum(w_t ** 2)
 
-            L2 = L2_w1 + L2_w2 + L2_wt
+            L2 = L2_w_x + L2_w2 + L2_w_t
 
         if self.regularization:
             # TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
-            # cost = T.mean(T.nnet.categorical_crossentropy(out, y)) + alpha_L1_reg*L1 + alpha_L2_reg*L2
             cost = T.mean(T.nnet.categorical_crossentropy(out, y)) + alpha_L2_reg*L2
         else:
             cost = T.mean(T.nnet.categorical_crossentropy(out, y))
@@ -288,7 +290,7 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
                 updates.append((param, param - learning_rate * grad/(T.sqrt(accum)+10**-5)))
                 updates.append((accum_grad, accum))
 
-        train_index = T.scalar(name='train_index', dtype=INT)
+        # train_index = T.scalar(name='train_index', dtype=INT)
 
         # test = theano.function(inputs=[train_index], outputs=[cost,errors,updates], givens={
         #                             idxs: train_x[train_index],
@@ -297,36 +299,32 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
         # })
         # test(0)
 
-        train = theano.function(inputs=[train_index],
+        train = theano.function(inputs=[idxs, y],
                                 outputs=[cost,errors,prev_preds,pred,next_preds],
                                 updates=updates,
                                 givens={
-                                    idxs: train_x[train_index],
-                                    y: train_y[train_index:train_index+1],
                                     n_tokens: 1
                                 })
 
         train_predict = theano.function(inputs=[idxs, y],
-                                        outputs=[cost, errors, y_predictions],
+                                        outputs=[cost, errors, y_predictions, next_preds],
                                         updates=[],
                                         givens={
                                             n_tokens: 1
                                         })
 
         if self.regularization:
-            train_l2_penalty = theano.function(inputs=[train_index],
+            train_l2_penalty = theano.function(inputs=[],
                                                outputs=[L2_w1, L2_w2, L2_wt],
-                                               givens={
-                                                   idxs: train_x[train_index]
-                                               })
+                                               givens=[])
 
-        flat_true = self.y_test
+        flat_true = list(chain(*self.y_valid))
 
         # plotting purposes
         train_costs_list = []
         train_errors_list = []
-        test_costs_list = []
-        test_errors_list = []
+        valid_costs_list = []
+        valid_errors_list = []
         precision_list = []
         recall_list = []
         f1_score_list = []
@@ -342,42 +340,45 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
             epoch_l2_w2 = 0
             epoch_l2_wt = 0
             # predicted_tags = np.array(np.concatenate(([self.pad_tag]*(n_window/2),[self.unk_tag]*((n_window/2)+1))), dtype=INT)
-            for i in range(self.n_samples):
+            for x_train_sentence, y_train_sentence in zip(self.x_train, self.y_train):
+                self.prev_preds.set_value(np.array([self.unk_tag] * self.n_window, dtype=INT))
                 # train_x_sample = train_x.get_value()[i]
                 # idxs_to_replace = np.where(train_x_sample==self.pad_word)
                 # predicted_tags[idxs_to_replace] = self.pad_tag
-                cost_output, errors_output, prev_preds_output, pred_output, next_preds_output = train(i)
-                self.prev_preds.set_value(next_preds_output)
-                # predicted_tags[(n_window/2)] = pred
-                # predicted_tags = np.concatenate((predicted_tags[1:],[self.unk_tag]))
-                epoch_cost += cost_output
-                epoch_errors += errors_output
+                for word_cw, word_tag in zip(x_train_sentence, y_train_sentence):
+                    cost_output, errors_output, prev_preds_output, pred_output, next_preds_output = train(word_cw, [word_tag])
+                    next_preds_output[(self.n_window/2)-1] = word_tag   #do not propagate the prediction, but use the true_tag instead.
+                    self.prev_preds.set_value(next_preds_output)
+                    epoch_cost += cost_output
+                    epoch_errors += errors_output
 
-                if self.regularization:
-                    l2_w1, l2_w2, l2_wt = train_l2_penalty(i)
+                    if self.regularization:
+                        l2_w1, l2_w2, l2_wt = train_l2_penalty()
+                        epoch_l2_w1 += l2_w1
+                        epoch_l2_w2 += l2_w2
+                        epoch_l2_wt += l2_wt
 
-                if i==0:
-                    epoch_l2_w1 = l2_w1
-                epoch_l2_w2 += l2_w2
-                epoch_l2_wt += l2_wt
-
-            test_error = 0
-            test_cost = 0
+            valid_error = 0
+            valid_cost = 0
             predictions = []
-            for x_sample, y_sample in zip(self.x_test, self.y_test):
-                cost_output, errors_output, pred = train_predict(x_sample, [y_sample])
-                test_cost += cost_output
-                test_error += errors_output
-                predictions.append(np.asscalar(pred))
+            for x_valid_sentence, y_valid_sentence in zip(self.x_valid, self.y_valid):
+                self.prev_preds.set_value(np.array([self.unk_tag] * self.n_window, dtype=INT))
+                for word_cw, word_tag in zip(x_valid_sentence, y_valid_sentence):
+                    cost_output, errors_output, pred, next_preds_output = train_predict(word_cw, [word_tag])
+                    valid_cost += cost_output
+                    valid_error += errors_output
+                    predictions.append(np.asscalar(pred))
+                    self.prev_preds.set_value(next_preds_output)
 
             train_costs_list.append(epoch_cost)
             train_errors_list.append(epoch_errors)
-            test_costs_list.append(test_cost)
-            test_errors_list.append(test_error)
+            valid_costs_list.append(valid_cost)
+            valid_errors_list.append(valid_error)
             l2_w1_list.append(epoch_l2_w1)
             l2_w2_list.append(epoch_l2_w2)
             l2_wt_list.append(epoch_l2_wt)
 
+            assert flat_true.__len__() == predictions.__len__()
             results = Metrics.compute_all_metrics(y_true=flat_true, y_pred=predictions, average='macro')
             f1_score = results['f1_score']
             precision = results['precision']
@@ -387,16 +388,16 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
             f1_score_list.append(f1_score)
 
             end = time.time()
-            logger.info('Epoch %d Train_cost: %f Train_errors: %d Test_cost: %f Test_errors: %d F1-score: %f Took: %f'
-                        % (epoch_index + 1, epoch_cost, epoch_errors, test_cost, test_error, f1_score, end - start))
+            logger.info('Epoch %d Train_cost: %f Train_errors: %d Valid_cost: %f Valid_errors: %d F1-score: %f Took: %f'
+                        % (epoch_index + 1, epoch_cost, epoch_errors, valid_cost, valid_error, f1_score, end - start))
 
         if plot:
             actual_time = str(time.time())
-            self.plot_training_cost_and_error(train_costs_list, train_errors_list, test_costs_list,
-                                              test_errors_list,
+            self.plot_training_cost_and_error(train_costs_list, train_errors_list, valid_costs_list,
+                                              valid_errors_list,
                                               actual_time)
             self.plot_scores(precision_list, recall_list, f1_score_list, actual_time)
-            self.plot_penalties(l2_w1_list, l2_w2_list, actual_time=actual_time)
+            self.plot_penalties(l2_w1_list=l2_w1_list, l2_w2_list=l2_w2_list, l2_wt_list=l2_wt_list, actual_time=actual_time)
 
         if save_params:
             logger.info('Saving parameters to File system')
@@ -413,73 +414,179 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
 
         return True
 
-    def predict(self, **kwargs):
+    def predict(self, on_training_set=False, on_validation_set=False, on_testing_set=False, **kwargs):
 
-        self.x_test = self.x_test.astype(dtype=INT)
-        self.y_test = self.y_test.astype(dtype=INT)
+        results = dict()
 
-        test_x = theano.shared(value=self.x_test.astype(dtype=INT), name='test_x', borrow=True)
-        test_y = theano.shared(value=self.y_test.astype(dtype=INT), name='test_y', borrow=True)
+        if on_training_set:
+            x_test = self.x_train
+            y_test = self.y_train
+        elif on_validation_set:
+            x_test = self.x_valid
+            y_test = self.y_valid
+        elif on_testing_set:
+            x_test = self.x_test
+            y_test = self.y_test
 
         # y = T.vector(name='test_y', dtype='int64')
 
         test_idxs = T.vector(name="test_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
-        # n_emb = self.pretrained_embeddings.shape[1] #embeddings dimension
-        # n_tokens = self.x_train.shape[0]    #tokens in sentence
-        # n_tokens = valid_idxs.shape[0]    #tokens in sentence
-        # n_window = self.x_train.shape[1]    #context window size    #TODO: replace with self.n_win
 
-        w_x = self.params['w1'][test_idxs]
-        # w_x2_ix = w_x2[valid_idxs]
-        # w_res = w_x2_ix.shape
-        # w_x_res = w_x.reshape((self.n_tokens, self.n_emb*self.n_window))
-
-        # test = theano.function(inputs=[valid_idxs], outputs=[w_res])
-        # test(test_x.get_value()[0])
-
-        initial_tags = T.vector(name='initial_tags', dtype=INT)
         n_tokens = T.scalar(name='n_tokens', dtype=INT)
-        test_index = T.scalar(name='test_index', dtype=INT)
-        # test_idxs = T.vector(name='test_idxs', dtype=INT)
 
         self.prev_preds = theano.shared(value=np.array([self.unk_tag]*self.n_window, dtype=INT),
-                                   name='previous_predictions', borrow=True)
+                                        name='previous_predictions', borrow=True)
 
         pred, _, _, next_preds, _, _ = self.sgd_forward_pass(test_idxs,n_tokens)
 
-        # y_predictions = T.argmax(out, axis=1)
-        # cost = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y))
-        # errors = T.sum(T.neq(y_predictions,y))
-
-        # perform_prediction = theano.function(inputs=[valid_idxs, initial_tags],
-        #                         outputs=y_predictions[-1],
-        #                         updates=[],
-        #                         givens=[])
-
-        perform_prediction = theano.function(inputs=[test_index],
-                                outputs=[pred,next_preds],
-                                updates=[],
-                                givens={
-                                    test_idxs: test_x[test_index],
-                                    n_tokens: 1
-                                })
+        perform_prediction = theano.function(inputs=[test_idxs],
+                                             outputs=[pred, next_preds],
+                                             givens={
+                                                 n_tokens: 1
+                                             })
 
         predictions = []
-        for i in range(test_x.get_value().shape[0]):
+        for test_sent in x_test:
             # test_x_sample = test_x.get_value()[i]
             # idxs_to_replace = np.where(test_x_sample==self.pad_word)
             # predicted_tags[idxs_to_replace] = self.pad_tag
-            pred, next_preds = perform_prediction(i)
-            # pred, next_preds_output = perform_prediction(i)
-            self.prev_preds.set_value(next_preds)
-            # predicted_tags[(self.n_window/2)] = pred
-            # predicted_tags = np.concatenate((predicted_tags[1:],[self.unk_tag]))
-            predictions.append(np.asscalar(pred))
+            self.prev_preds.set_value(np.array([self.unk_tag]*self.n_window, dtype=INT))
+            for word_cw in test_sent:
+                pred, next_preds = perform_prediction(word_cw)
+                # pred, next_preds_output = perform_prediction(i)
+                self.prev_preds.set_value(next_preds)
+                # predicted_tags[(self.n_window/2)] = pred
+                # predicted_tags = np.concatenate((predicted_tags[1:],[self.unk_tag]))
+                predictions.append(np.asscalar(pred))
 
-        # predictions = perform_prediction(self.x_test)
-        # predictions = perform_prediction(valid_x.get_value())
+        flat_true = list(chain(*y_test))
 
-        return self.y_test, predictions, self.y_test, predictions
+        assert flat_true.__len__() == predictions.__len__()
+
+        results['flat_trues'] = flat_true
+        results['flat_predictions'] = predictions
+
+        return results
 
     def to_string(self):
         return 'Ensemble single layer MLP NN with no tags.'
+
+
+    @classmethod
+    def _get_partitioned_data_with_context_window(cls, doc_sentences, n_window, item2index):
+        x = []
+        for sentence in doc_sentences:
+            x.append([map(lambda x: item2index[x], sent_window)
+                      for sent_window in utils.NeuralNetwork.context_window(sentence, n_window)])
+
+        return x
+
+
+    @classmethod
+    def get_partitioned_data(cls, x_idx, document_sentences_words, document_sentences_tags,
+                             word2index, label2index, use_context_window=False, n_window=None, **kwargs):
+        """
+        this is at sentence level.
+        it partitions the training data according to the x_idx doc_nrs used for training and y_idx doc_nrs used for
+        testing while cross-validating.
+
+        :param x_idx:
+        :param y_idx:
+        :return:
+        """
+        x = []
+        y = []
+
+        for doc_nr, doc_sentences in document_sentences_words.iteritems():
+            if (not x_idx) or (doc_nr in x_idx):
+                # training set
+                if use_context_window:
+                    x_doc = cls._get_partitioned_data_with_context_window(doc_sentences, n_window, word2index)
+                else:
+                    x_doc = cls._get_partitioned_data_without_context_window(doc_sentences, word2index)
+
+                y_doc = [map(lambda x: label2index[x] if x else None, sent) for sent in document_sentences_tags[doc_nr]]
+
+                x.extend(x_doc)
+                y.extend(y_doc)
+
+        return x, y
+
+
+    @classmethod
+    def get_data(cls, clef_training=True, clef_validation=False, clef_testing=False, add_words=[], add_tags=[],
+                 add_feats=[], x_idx=None, n_window=None, **kwargs):
+        """
+        overrides the inherited method.
+        gets the training data and organizes it into sentences per document.
+        RNN overrides this method, cause other neural nets dont partition into sentences.
+
+        :param crf_training_data_filename:
+        :return:
+        """
+
+        x_train_feats = None
+        x_valid_feats = None
+        x_test_feats = None
+        features_indexes = None
+
+        if not clef_training and not clef_validation and not clef_testing:
+            raise Exception('At least one dataset must be loaded')
+
+        document_sentence_words = []
+        document_sentence_tags = []
+
+        if clef_training:
+            _, _, train_document_sentence_words, train_document_sentence_tags = Dataset.get_clef_training_dataset()
+
+            document_sentence_words.extend(train_document_sentence_words.values())
+            document_sentence_tags.extend(train_document_sentence_tags.values())
+
+        if clef_validation:
+            _, _, valid_document_sentence_words, valid_document_sentence_tags = Dataset.get_clef_validation_dataset()
+
+            document_sentence_words.extend(valid_document_sentence_words.values())
+            document_sentence_tags.extend(valid_document_sentence_tags.values())
+
+        if clef_testing:
+            _, _, test_document_sentence_words, test_document_sentence_tags = Dataset.get_clef_testing_dataset()
+
+            document_sentence_words.extend(test_document_sentence_words.values())
+
+        word2index, index2word = cls._construct_index(add_words, document_sentence_words)
+        label2index, index2label = cls._construct_index(add_tags, document_sentence_tags)
+
+        if clef_training:
+            x_train, y_train = cls.get_partitioned_data(x_idx=x_idx,
+                                                        document_sentences_words=train_document_sentence_words,
+                                                        document_sentences_tags=train_document_sentence_tags,
+                                                        word2index=word2index,
+                                                        label2index=label2index,
+                                                        use_context_window=True,
+                                                        n_window=n_window)
+
+        if clef_validation:
+            x_valid, y_valid = cls.get_partitioned_data(x_idx=x_idx,
+                                                        document_sentences_words=valid_document_sentence_words,
+                                                        document_sentences_tags=valid_document_sentence_tags,
+                                                        word2index=word2index,
+                                                        label2index=label2index,
+                                                        use_context_window=True,
+                                                        n_window=n_window)
+
+        if clef_testing:
+            x_test, y_test = cls.get_partitioned_data(x_idx=x_idx,
+                                                      document_sentences_words=test_document_sentence_words,
+                                                      document_sentences_tags=test_document_sentence_tags,
+                                                      word2index=word2index,
+                                                      label2index=label2index,
+                                                      use_context_window=True,
+                                                      n_window=n_window)
+
+
+        return x_train, y_train, x_train_feats, \
+               x_valid, y_valid, x_valid_feats, \
+               x_test, y_test, x_test_feats, \
+               word2index, index2word, \
+               label2index, index2label, \
+               features_indexes
