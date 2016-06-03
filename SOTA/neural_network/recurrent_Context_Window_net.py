@@ -113,7 +113,7 @@ class Recurrent_Context_Window_net(A_neural_network):
                                 non_sequences=[b1,w2,b2,ww])
 
         if self.regularization:
-            L2 = T.sum(w1[idxs] ** 2) + T.sum(w2 ** 2) + T.sum(ww ** 2)
+            L2 = T.sum(w_x ** 2) + T.sum(w2 ** 2) + T.sum(ww ** 2)
             # L2 = T.sum(w1 ** 2) + T.sum(w2 ** 2) + T.sum(ww ** 2)
             #TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
             cost = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y)) + alpha_l2_reg * L2
@@ -240,7 +240,7 @@ class Recurrent_Context_Window_net(A_neural_network):
         # test(self.x_train[0])
 
         if self.regularization:
-            L2 = T.sum(w1[idxs] ** 2) + T.sum(w2 ** 2) + T.sum(ww ** 2)
+            L2 = T.sum(w_x ** 2) + T.sum(w_x_flipped ** 2) + T.sum(w2 ** 2) + T.sum(ww ** 2)
             # L2 = T.sum(w1 ** 2) + T.sum(w2 ** 2) + T.sum(ww ** 2)
             #TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
             cost = T.mean(T.nnet.categorical_crossentropy(out_bidirectional, y)) + alpha_l2_reg * L2
