@@ -249,6 +249,7 @@ def determine_nnclass_and_parameters(args):
         get_output_path = get_vector_tag_path
         tag_dim = args['tagdim']
         add_tags = ['<PAD>', '<UNK>']
+        add_words = ['<PAD>']
     elif args['nn_name'] == 'last_tag':
         nn_class = Last_tag_neural_network_trainer
         get_output_path = get_last_tag_path
