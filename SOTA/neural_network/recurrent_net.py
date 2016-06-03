@@ -401,7 +401,7 @@ class Recurrent_net(A_neural_network):
             L2_ww_forward = T.sum(ww_forward ** 2)
             L2_ww_backwards = T.sum(ww_backwards ** 2)
             L2 = L2_w_x + L2_w_x_flipped + L2_w2 + L2_ww_forward + L2_ww_backwards
-
+            
             cost = T.mean(T.nnet.categorical_crossentropy(out_bidirectional, y)) + alpha_l2_reg * L2
         else:
             cost = T.mean(T.nnet.categorical_crossentropy(out_bidirectional, y))
