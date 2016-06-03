@@ -377,7 +377,7 @@ class Last_tag_neural_network_trainer(A_neural_network):
                                               valid_errors_list,
                                               actual_time)
             self.plot_scores(precision_list, recall_list, f1_score_list, actual_time)
-            self.plot_penalties(l2_w1_list, l2_w2_list, actual_time=actual_time)
+            self.plot_penalties(l2_w1_list=l2_w1_list, l2_w2_list=l2_w2_list, l2_wt_list=l2_wt_list, actual_time=actual_time)
             self.plot_cross_entropies(train_cross_entropy_list, valid_cross_entropy_list, actual_time)
 
         if save_params:
