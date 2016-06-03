@@ -394,7 +394,7 @@ class Recurrent_Context_Window_net(A_neural_network):
         out_bidirectional = self.out_activation_f(T.dot(h_bidirectional, self.params['w2']) + self.params['b2'])
 
         if self.regularization:
-            L2 = T.sum(w1[idxs] ** 2) + T.sum(w2 ** 2) + T.sum(ww_forward ** 2) + T.sum(ww_backwards ** 2)
+            L2 = T.sum(w_x ** 2) + T.sum(w_x_flipped ** 2) + T.sum(w2 ** 2) + T.sum(ww_forward ** 2) + T.sum(ww_backwards ** 2)
             cost = T.mean(T.nnet.categorical_crossentropy(out_bidirectional, y)) + alpha_l2_reg * L2
         else:
             cost = T.mean(T.nnet.categorical_crossentropy(out_bidirectional, y))
