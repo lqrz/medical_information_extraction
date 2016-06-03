@@ -583,23 +583,23 @@ class A_neural_network():
         if l2_w2_list:
             assert l2_w1_list.__len__() == l2_w2_list.__len__()
             data['L2_W2_sum'] = l2_w2_list
-        elif l2_ww_fw_list:
+
+        if l2_ww_fw_list:
             assert l2_w1_list.__len__() == l2_ww_fw_list.__len__()
             data['L2_WW_Fw_sum'] = l2_ww_fw_list
 
-        elif l2_ww_bw_list:
+        if l2_ww_bw_list:
             assert l2_w1_list.__len__() == l2_ww_bw_list.__len__()
             data['L2_WW_Bw_sum'] = l2_ww_bw_list
 
-        elif l2_wt_list:
+        if l2_wt_list:
             assert l2_w1_list.__len__() == l2_wt_list.__len__()
             data['L2_Wt_sum'] = l2_wt_list
 
-        if data:
-            output_filename = self.get_output_path('training_L2_penalty_plot' + actual_time)
-            utils.NeuralNetwork.plot(data, x_axis='epoch', x_label='Epochs', y_label='Penalty',
-                                     title='Training weight penalties evolution',
-                                     output_filename=output_filename)
+        output_filename = self.get_output_path('training_L2_penalty_plot' + actual_time)
+        utils.NeuralNetwork.plot(data, x_axis='epoch', x_label='Epochs', y_label='Penalty',
+                                 title='Training weight penalties evolution',
+                                 output_filename=output_filename)
 
         return True
 
