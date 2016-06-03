@@ -572,7 +572,8 @@ class A_neural_network():
 
         return True
 
-    def plot_penalties(self, l2_w1_list, l2_w2_list=None, l2_ww_fw_list=None, l2_ww_bw_list=None, actual_time=None):
+    def plot_penalties(self, l2_w1_list, l2_w2_list=None, l2_ww_fw_list=None, l2_ww_bw_list=None,
+                       l2_wt_list=None, actual_time=None):
 
         data = None
 
@@ -581,7 +582,7 @@ class A_neural_network():
             data = {
                 'epoch': np.arange(l2_w1_list.__len__(), dtype='int'),
                 'L2_W2_sum': l2_w2_list,
-                'L2_W1': l2_w1_list,
+                'L2_W1_sum': l2_w1_list,
             }
 
         elif l2_ww_fw_list or l2_ww_bw_list:
@@ -593,13 +594,21 @@ class A_neural_network():
                 'L2_W2_sum': l2_w2_list,
                 'L2_WW_Fw_sum': l2_ww_fw_list,
                 'L2_WW_Bw_sum': l2_ww_bw_list,
-                'L2_W1': l2_w1_list,
+                'L2_W1_sum': l2_w1_list,
             }
 
+        elif l2_wt_list:
+            assert l2_w1_list.__len__() == l2_wt_list.__len__()
+            data = {
+                'epoch': np.arange(l2_w1_list.__len__(), dtype='int'),
+                'L2_W2_sum': l2_w2_list,
+                'L2_W1_sum': l2_w1_list,
+                'L2_Wt_sum': l2_wt_list,
+            }
         else:
             data = {
                 'epoch': np.arange(l2_w1_list.__len__(), dtype='int'),
-                'L2_W1': l2_w1_list,
+                'L2_W1_sum': l2_w1_list,
             }
 
         if data:
