@@ -403,6 +403,9 @@ def use_testing_dataset(nn_class,
         nn_class.get_data(clef_training=True, clef_validation=True, clef_testing=True, add_words=add_words,
                           add_tags=add_tags, add_feats=add_feats, x_idx=None, n_window=n_window, feat_positions=feat_positions)
 
+    x_train_sent_nr_feats = None
+    x_valid_sent_nr_feats = None
+    x_test_sent_nr_feats = None
     if any(map(lambda x: str(x).startswith('sent_nr'), multi_feats)):
         x_train_sent_nr_feats, x_valid_sent_nr_feats, x_test_sent_nr_feats = \
             nn_class.get_word_sentence_number_features(clef_training=True, clef_validation=True, clef_testing=True)
