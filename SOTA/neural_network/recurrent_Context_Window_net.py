@@ -302,10 +302,10 @@ class Recurrent_Context_Window_net(A_neural_network):
         if self.regularization:
             L2_w1 = T.sum(w1 ** 2)
             L2_w_x = T.sum(w_x ** 2)
-            L2_w_x_flipped = T.sum(w_x_flipped ** 2)
+            # L2_w_x_flipped = T.sum(w_x_flipped ** 2)
             L2_w2 = T.sum(w2 ** 2)
             L2_ww = T.sum(ww ** 2)
-            L2 = L2_w_x + L2_w_x_flipped + L2_w2 + L2_ww
+            L2 = L2_w_x + L2_w2 + L2_ww
 
             #TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
             cost = T.mean(T.nnet.categorical_crossentropy(out_bidirectional, y)) + alpha_l2_reg * L2
@@ -523,11 +523,11 @@ class Recurrent_Context_Window_net(A_neural_network):
         if self.regularization:
             L2_w1 = T.sum(w1 ** 2)
             L2_w_x = T.sum(w_x ** 2)
-            L2_w_x_flipped = T.sum(w_x_flipped ** 2)
+            # L2_w_x_flipped = T.sum(w_x_flipped ** 2)
             L2_ww_forward = T.sum(ww_forward ** 2)
             L2_ww_backward = T.sum(ww_backwards ** 2)
             L2_w2 = T.sum(w2 ** 2)
-            L2 = L2_w_x + L2_w_x_flipped + L2_w2 + L2_ww_forward + L2_ww_backward
+            L2 = L2_w_x + L2_w2 + L2_ww_forward + L2_ww_backward
             cost = T.mean(T.nnet.categorical_crossentropy(out_bidirectional, y)) + alpha_l2_reg * L2
         else:
             cost = T.mean(T.nnet.categorical_crossentropy(out_bidirectional, y))
