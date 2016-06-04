@@ -33,14 +33,35 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
     # (feature_name, convolve, max_pool, use_context_window, nr_filters, filter_width, nr_region_sizes)
     # if "None", it gets determined by the instance attribute
+    # FEATURE_MAPPING = {
+    #     'w2v_c_nm': ('w2v', True, False, True, 1, 1, 1),
+    #     'w2v_nc_nm': ('w2v', False, False, True, 0, 0, 0),
+    #     'w2v_c_m': ('w2v', True, True, True, None, None, None),
+    #     'pos_c_m': ('pos', True, True, True, None, None, None),
+    #     'ner_c_m': ('ner', True, True, True, None, None, None),
+    #     'sent_nr_nc_nm': ('sent_nr', False, False, False, 0, 0, 0)
+    # }
+
+    CRF_POSITIONS = {'ner': 1, 'pos': 2}
+
     FEATURE_MAPPING = {
-        'w2v_c_nm': ('w2v', True, False, True, 1, 1, 1),
-        'w2v_nc_nm': ('w2v', False, False, True, 0, 0, 0),
-        'w2v_c_m': ('w2v', True, True, True, None, None, None),
-        'pos_c_m': ('pos', True, True, True, None, None, None),
-        'ner_c_m': ('ner', True, True, True, None, None, None),
-        'sent_nr_nc_nm': ('sent_nr', False, False, False, 0, 0, 0)
+        'w2v_c_nm': {'name': 'w2v', 'convolve': True, 'max_pool': False, 'use_cw': True, 'nr_filters': 1, 'filter_width': 1, 'nr_region_sizes': 1, 'crf_position': None},
+        'w2v_nc_nm': {'name': 'w2v', 'convolve': False, 'max_pool': False, 'use_cw': True, 'nr_filters': 0, 'filter_width': 0, 'nr_region_sizes': 0, 'crf_position': None},
+        'w2v_c_m': {'name': 'w2v', 'convolve': True, 'max_pool': True, 'use_cw': True, 'nr_filters': None, 'filter_width': None, 'nr_region_sizes': None, 'crf_position': None},
+        'pos_c_m': {'name': 'pos', 'convolve': True, 'max_pool': True, 'use_cw': True, 'nr_filters': None, 'filter_width': None, 'nr_region_sizes': None, 'crf_position': CRF_POSITIONS['pos']},
+        'ner_c_m': {'name': 'ner', 'convolve': True, 'max_pool': True, 'use_cw': True, 'nr_filters': None, 'filter_width': None, 'nr_region_sizes': None, 'crf_position': CRF_POSITIONS['ner']},
+        'sent_nr_nc_nm': {'name': 'sent_nr', 'convolve': False, 'max_pool': False, 'use_cw': False, 'nr_filters': 0, 'filter_width': 0, 'nr_region_sizes': 0, 'crf_position': None}
     }
+
+    @classmethod
+    def get_features_crf_position(cls, features):
+        positions = []
+        for feat in features:
+            pos = cls.FEATURE_MAPPING[feat]['crf_position']
+            if pos:
+                positions.append(pos)
+
+        return positions
 
     def __init__(self,
                  hidden_activation_f,
@@ -48,12 +69,9 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
                  n_filters,
                  features_to_use,
                  regularization=False,
-                 train_ner_feats=None,
-                 valid_ner_feats=None,
-                 test_ner_feats=None,
-                 train_pos_feats=None,
-                 valid_pos_feats=None,
-                 test_pos_feats=None,
+                 train_feats=None,
+                 valid_feats=None,
+                 test_feats=None,
                  train_sent_nr_feats=None,
                  valid_sent_nr_feats=None,
                  test_sent_nr_feats=None,
@@ -78,11 +96,28 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         self.params_to_get_l2 = []
 
         #POS features
-        self.train_pos_feats = np.array(train_pos_feats)
-        self.valid_pos_feats = np.array(valid_pos_feats)
-        self.test_pos_feats = np.array(test_pos_feats)
+        try:
+            train_pos_feats = np.array(train_feats[self.CRF_POSITIONS['pos']])
+            valid_pos_feats = np.array(valid_feats[self.CRF_POSITIONS['pos']])
+            test_pos_feats = np.array(test_feats[self.CRF_POSITIONS['pos']])
+        except KeyError:
+            train_pos_feats = None
+            valid_pos_feats = None
+            test_pos_feats = None
+
+        self.train_pos_feats = train_pos_feats
+        self.valid_pos_feats = valid_pos_feats
+        self.test_pos_feats = test_pos_feats
 
         #NER features
+        try:
+            train_ner_feats = np.array(train_feats[self.CRF_POSITIONS['ner']])
+            valid_ner_feats = np.array(valid_feats[self.CRF_POSITIONS['ner']])
+            test_ner_feats = np.array(test_feats[self.CRF_POSITIONS['ner']])
+        except KeyError:
+            train_ner_feats = None
+            valid_ner_feats = None
+            test_ner_feats = None
         self.train_ner_feats = np.array(train_ner_feats)
         self.valid_ner_feats = np.array(valid_ner_feats)
         self.test_ner_feats = np.array(test_ner_feats)
@@ -98,7 +133,7 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         self.n_filters = n_filters  # number of filters per region size
         #TODO: choose one.
         self.n_pos_emb = np.max(self.train_pos_feats)+1 #encoding for the POS tags
-        self.n_pos_emb = 100 #encoding for the POS tags
+        self.n_pos_emb = 40 #encoding for the POS tags
 
         self.n_ner_emb = 100 #encoding for the NER tags
         self.n_sent_nr_emb = 100 #encoding for the sent_nr tags
@@ -132,10 +167,10 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         result = None
 
         if convolve is None and max_pool is None:
-            result = [f for (f,_,_,_,_,_,_) in self.features_to_use if f==feature].__len__() > 0
+            result = any([feat['name'] == feature for feat in self.features_to_use])
         else:
-            result = [f for (f, c, m, _, _, _, _) in self.features_to_use
-                      if f==feature and c==convolve and m==max_pool].__len__() > 0
+            result = any([feat['name'] == feature and feat['convolve'] == convolve and feat['max_pool'] == max_pool
+                          for feat in self.features_to_use])
 
         assert result is not None
 
@@ -359,7 +394,7 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         return conv_concat
 
     def determine_nr_filters(self, feature):
-        nr_filters = self.__class__.FEATURE_MAPPING[feature][4] # i dont like this
+        nr_filters = self.__class__.FEATURE_MAPPING[feature]['nr_filters']
         if not nr_filters:
             nr_filters = self.n_filters
 
@@ -368,7 +403,7 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         return nr_filters
 
     def determine_filter_width(self, feature):
-        filter_width = self.__class__.FEATURE_MAPPING[feature][5] # i dont like this
+        filter_width = self.__class__.FEATURE_MAPPING[feature]['filter_width']
         if not filter_width:
             if feature == 'w2v':
                 filter_width = self.n_emb
@@ -380,7 +415,7 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         return filter_width
 
     def determine_nr_region_sizes(self, feature):
-        nr_regions = self.__class__.FEATURE_MAPPING[feature][6] # i dont like this
+        nr_regions = self.__class__.FEATURE_MAPPING[feature]['nr_region_sizes']
         if not nr_regions:
             nr_regions = self.region_sizes.__len__()
 
@@ -391,7 +426,13 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
     def determine_hidden_layer_size(self):
         size = 0
 
-        for (feature, convolve, max_pool, c_window, _, _, _) in self.features_to_use:
+        for desc in self.features_to_use:
+
+            feature = desc['name']
+            convolve = desc['convolve']
+            max_pool = desc['max_pool']
+            c_window = desc['use_cw']
+
             if max_pool:
                 feat_dimension = 1
             else:
@@ -581,9 +622,9 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         if self.using_pos_convolution_maxpool_feature():
             # create POS embeddings
             #TODO: one-hot or random?
-            # w1_pos = theano.shared(value=np.identity(self.n_pos_emb).astype(dtype=theano.config.floatX), name='w1_pos', borrow=True)
-            w1_pos = theano.shared(value=utils.NeuralNetwork.initialize_weights(
-                n_in=np.max(self.train_pos_feats)+1, n_out=self.n_pos_emb, function='tanh').astype(dtype=theano.config.floatX), name='w1_pos', borrow=True)
+            w1_pos = theano.shared(value=np.eye(np.max(self.train_pos_feats)+1, self.n_pos_emb).astype(dtype=theano.config.floatX), name='w1_pos', borrow=True)
+            # w1_pos = theano.shared(value=utils.NeuralNetwork.initialize_weights(
+            #     n_in=np.max(self.train_pos_feats)+1, n_out=self.n_pos_emb, function='tanh').astype(dtype=theano.config.floatX), name='w1_pos', borrow=True)
 
             # create POS filters
             pos_filters = self.create_filters(filter_width=self.pos_filter_width, region_sizes=self.region_sizes,
@@ -777,16 +818,17 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
             })
 
         train = theano.function(inputs=[train_idx, y],
-                                outputs=[cost,errors],
+                                outputs=[cost, errors],
                                 updates=updates,
                                 givens=givens)
 
         # theano.printing.debugprint(train)
 
-        train_predict = theano.function(inputs=[w2v_idxs, pos_idxs, ner_idxs, sent_nr_id, y],
+        train_predict = theano.function(inputs=[train_idx, y],
                                         outputs=[cost, errors, y_predictions],
                                         updates=[],
-                                        on_unused_input='ignore')
+                                        on_unused_input='ignore',
+                                        givens=givens)
 
         if self.regularization:
             train_l2_penalty = theano.function(inputs=[train_idx],
@@ -846,11 +888,9 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
             # valid_cost_1 = valid_results['cost']
             # valid_predictions_1 = valid_results['predictions']
             start1 = time.time()
-            for x_sample, pos_sample, ner_sample, sent_nr_sample, y_sample in zip(self.x_valid, self.valid_pos_feats,
-                                                                  self.valid_ner_feats, self.valid_sent_nr_feats,
-                                                                  self.y_valid):
+            for i, y_sample in enumerate(self.y_valid):
                 # cost_output = 0 #TODO: in the forest prediction, computing the cost yield and error (out of bounds for 1st misclassification).
-                cost_output, errors_output, pred = train_predict(x_sample, pos_sample, ner_sample, sent_nr_sample, [y_sample])
+                cost_output, errors_output, pred = train_predict(i, [y_sample])
                 valid_cost += cost_output
                 valid_error += errors_output
                 valid_predictions.append(np.asscalar(pred))
@@ -1144,31 +1184,51 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
         return conv_conc
 
-    def predict(self, on_training_set=False, on_validation_set=False, compute_cost_error=False, **kwargs):
+    def predict(self, on_training_set=False, on_validation_set=False, on_testing_set=False, compute_cost_error=False, **kwargs):
 
         results = defaultdict(None)
 
         if on_training_set:
             # predict on training set
             x_test = self.x_train.astype(dtype=INT)
-            x_pos_test = self.train_pos_feats.astype(dtype=INT)
-            x_ner_test = self.train_ner_feats.astype(dtype=INT)
-            x_sent_nr_test = self.train_sent_nr_feats.astype(dtype=INT)
+
+            if self.using_pos_feature():
+                x_pos_test = self.train_pos_feats.astype(dtype=INT)
+
+            if self.using_ner_feature():
+                x_ner_test = self.train_ner_feats.astype(dtype=INT)
+
+            if self.using_sent_nr_feature():
+                x_sent_nr_test = self.train_sent_nr_feats.astype(dtype=INT)
+
             y_test = self.y_train.astype(dtype=INT)
 
         elif on_validation_set:
             # predict on validation set
             x_test = self.x_valid.astype(dtype=INT)
-            x_pos_test = self.valid_pos_feats.astype(dtype=INT)
-            x_ner_test = self.valid_ner_feats.astype(dtype=INT)
-            x_sent_nr_test = self.valid_sent_nr_feats.astype(dtype=INT)
+            if self.using_pos_feature():
+                x_pos_test = self.valid_pos_feats.astype(dtype=INT)
+
+            if self.using_ner_feature():
+                x_ner_test = self.valid_ner_feats.astype(dtype=INT)
+
+            if self.using_sent_nr_feature():
+                x_sent_nr_test = self.valid_sent_nr_feats.astype(dtype=INT)
+
             y_test = self.y_valid.astype(dtype=INT)
-        else:
+        elif on_testing_set:
             # predict on test set
             x_test = self.x_test.astype(dtype=INT)
-            x_pos_test = self.test_pos_feats.astype(dtype=INT)
-            x_ner_test = self.test_ner_feats.astype(dtype=INT)
-            x_sent_nr_test = self.test_sent_nr_feats.astype(dtype=INT)
+
+            if self.using_pos_feature():
+                x_pos_test = self.test_pos_feats.astype(dtype=INT)
+
+            if self.using_ner_feature():
+                x_ner_test = self.test_ner_feats.astype(dtype=INT)
+
+            if self.using_sent_nr_feature():
+                x_sent_nr_test = self.test_sent_nr_feats.astype(dtype=INT)
+
             y_test = self.y_test
 
         # test_x = theano.shared(value=self.x_valid.astype(dtype=INT), name='test_x', borrow=True)
@@ -1199,6 +1259,27 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         if self.using_sent_nr_no_convolution_no_maxpool_feature():
             self.w_sent_nr_x = self.params['w1_sent_nr'][sent_nr_idxs]
 
+        givens = dict()
+        if self.using_w2v_feature():
+            givens.update({
+                w2v_idxs: x_test
+            })
+
+        if self.using_pos_feature():
+            givens.update({
+                pos_idxs: x_pos_test
+            })
+
+        if self.using_ner_feature():
+            givens.update({
+                ner_idxs: x_ner_test
+            })
+
+        if self.using_sent_nr_feature():
+            givens.update({
+                sent_nr_idxs: x_sent_nr_test
+            })
+
         #TODO: choose
         # out = self.perform_forward_pass_dense_step(w2v_conc, pos_conc)
         out = self.sgd_forward_pass(tensor_dim=4)
@@ -1216,19 +1297,21 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
             cost = T.mean(T.nnet.categorical_crossentropy(out, y)) + self.alpha_L2_reg * L2
 
-            perform_prediction = theano.function(inputs=[w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, y],
+            perform_prediction = theano.function(inputs=[y],
                                                  outputs=[cost, errors, y_predictions],
-                                                 on_unused_input='ignore')
+                                                 on_unused_input='ignore',
+                                                 givens=givens)
 
-            out_cost, out_errors, out_predictions = perform_prediction(x_test, x_pos_test, x_ner_test, x_sent_nr_test, y_test)
+            out_cost, out_errors, out_predictions = perform_prediction(y_test)
             results['errors'] = out_errors
             results['cost'] = out_cost
         else:
-            perform_prediction = theano.function(inputs=[w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs],
+            perform_prediction = theano.function(inputs=[],
                                                  outputs=y_predictions,
-                                                 on_unused_input='ignore')
+                                                 on_unused_input='ignore',
+                                                 givens=givens)
 
-            out_predictions = perform_prediction(x_test, x_pos_test, x_ner_test, x_sent_nr_test)
+            out_predictions = perform_prediction()
 
         results['flat_predictions'] = out_predictions
         results['flat_trues'] = y_test
