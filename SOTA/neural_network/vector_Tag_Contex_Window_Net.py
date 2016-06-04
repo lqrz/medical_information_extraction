@@ -352,11 +352,11 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
                     epoch_cost += cost_output
                     epoch_errors += errors_output
 
-                    if self.regularization:
-                        l2_w1, l2_w2, l2_wt = train_l2_penalty()
-                        epoch_l2_w1 += l2_w1
-                        epoch_l2_w2 += l2_w2
-                        epoch_l2_wt += l2_wt
+            if self.regularization:
+                l2_w1, l2_w2, l2_wt = train_l2_penalty()
+                epoch_l2_w1 += l2_w1
+                epoch_l2_w2 += l2_w2
+                epoch_l2_wt += l2_wt
 
             valid_error = 0
             valid_cost = 0

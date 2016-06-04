@@ -321,14 +321,14 @@ class Last_tag_neural_network_trainer(A_neural_network):
                 train_cost += cost_output
                 train_errors += errors_output
 
-                if self.regularization:
-                    l2_w1, l2_w2, l2_wt = train_l2_penalty()
-                    train_l2_emb += l2_w1
-                    train_l2_w2 += l2_w2
-                    train_l2_wt += l2_wt
-
                 train_cross_entropy += get_cross_entropy(self.x_train[idx], pad_y)
 
+            if self.regularization:
+                l2_w1, l2_w2, l2_wt = train_l2_penalty()
+                train_l2_emb += l2_w1
+                train_l2_w2 += l2_w2
+                train_l2_wt += l2_wt
+                
             valid_error = 0
             valid_cost = 0
             valid_predictions = []
