@@ -232,7 +232,7 @@ def determine_nnclass_and_parameters(args):
     n_window = args['window_size']
     nn_class = None
     get_output_path = None
-    feature_positions = None
+    multi_feats = []
 
     if args['nn_name'] == 'single_cw':
         nn_class = Single_Layer_Context_Window_Net
@@ -270,9 +270,9 @@ def determine_nnclass_and_parameters(args):
         get_output_path = get_multi_hidden_cw_path
         add_words = ['<PAD>']
         add_feats = ['<PAD>']
-        feature_positions = [1, 2]  #TODO: make param
+        multi_feats = args['multi_features']
 
-    return nn_class, hidden_f, out_f, add_words, add_tags, add_feats, tag_dim, n_window, get_output_path, feature_positions
+    return nn_class, hidden_f, out_f, add_words, add_tags, add_feats, tag_dim, n_window, get_output_path, multi_feats
 
 def determine_key_indexes(label2index, word2index):
     pad_tag = None
@@ -375,7 +375,7 @@ def use_testing_dataset(nn_class,
                         add_feats,
                         tag_dim,
                         get_output_path,
-                        feat_positions,
+                        multi_feats,
                         max_epochs=None,
                         minibatch_size=None,
                         regularization=None,
@@ -392,6 +392,8 @@ def use_testing_dataset(nn_class,
 
     logger.info('Loading CRF training data')
 
+    feat_positions = nn_class.get_features_crf_position(multi_feats)
+
     x_train, y_train, x_train_feats, \
     x_valid, y_valid, x_valid_feats, \
     x_test, y_test, x_test_feats,\
@@ -401,8 +403,9 @@ def use_testing_dataset(nn_class,
         nn_class.get_data(clef_training=True, clef_validation=True, clef_testing=True, add_words=add_words,
                           add_tags=add_tags, add_feats=add_feats, x_idx=None, n_window=n_window, feat_positions=feat_positions)
 
-    x_train_sent_nr_feats, x_valid_sent_nr_feats, x_test_sent_nr_feats = \
-        nn_class.get_word_sentence_number_features(clef_training=True, clef_validation=True, clef_testing=True)
+    if any(map(lambda x: str(x).startswith('sent_nr'), multi_feats)):
+        x_train_sent_nr_feats, x_valid_sent_nr_feats, x_test_sent_nr_feats = \
+            nn_class.get_word_sentence_number_features(clef_training=True, clef_validation=True, clef_testing=True)
 
     unique_words = word2index.keys()
 
@@ -535,7 +538,7 @@ if __name__ == '__main__':
     w2v_vectors, w2v_model, w2v_dims = load_w2v_model_and_vectors_cache(args)
 
     nn_class, hidden_f, out_f, add_words, add_tags, add_feats, tag_dim, n_window, get_output_path,\
-        feature_positions = determine_nnclass_and_parameters(args)
+        multi_feats = determine_nnclass_and_parameters(args)
 
     logger.info('Using Neural class: %s with window size: %d for epochs: %d' % (args['nn_name'],n_window,args['max_epochs']))
 
@@ -554,7 +557,7 @@ if __name__ == '__main__':
                                                    add_feats,
                                                    tag_dim,
                                                    get_output_path,
-                                                   feature_positions,
+                                                   multi_feats,
                                                    **args)
 
     cPickle.dump(results, open(get_output_path('prediction_results.p'),'wb'))
