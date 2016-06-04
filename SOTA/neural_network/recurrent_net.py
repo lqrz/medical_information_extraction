@@ -608,7 +608,7 @@ class Recurrent_net(A_neural_network):
         l2_ww_fw_list = []
         l2_ww_bw_list = []
 
-        flat_true = list(chain(*self.y_test))
+        flat_true = list(chain(*self.y_valid))
 
         for epoch_index in range(max_epochs):
             start = time.time()
