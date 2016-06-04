@@ -328,7 +328,7 @@ class Last_tag_neural_network_trainer(A_neural_network):
                 train_l2_emb += l2_w1
                 train_l2_w2 += l2_w2
                 train_l2_wt += l2_wt
-                
+
             valid_error = 0
             valid_cost = 0
             valid_predictions = []
