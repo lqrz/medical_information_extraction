@@ -449,12 +449,9 @@ def use_testing_dataset(nn_class,
         'pad_word': pad_word,
         'tag_dim': tag_dim,
         'get_output_path': get_output_path,
-        'train_ner_feats': x_train_feats[1] if x_train_feats else None,    #refers to NER tag features.
-        'valid_ner_feats': x_valid_feats[1] if x_train_feats else None,    #refers to NER tag features.
-        'test_ner_feats': x_test_feats[1] if x_train_feats else None,      #refers to NER tag features.
-        'train_pos_feats': x_train_feats[2] if x_train_feats else None,    #refers to POS tag features.
-        'valid_pos_feats': x_valid_feats[2] if x_train_feats else None,    #refers to POS tag features.
-        'test_pos_feats': x_test_feats[2] if x_train_feats else None,    #refers to POS tag features.
+        'train_feats': x_train_feats,
+        'valid_feats': x_valid_feats,
+        'test_feats': x_test_feats,
         'train_sent_nr_feats': x_train_sent_nr_feats,    #refers to sentence nr features.
         'valid_sent_nr_feats': x_valid_sent_nr_feats,    #refers to sentence nr features.
         'test_sent_nr_feats': x_test_sent_nr_feats,    #refers to sentence nr features.
