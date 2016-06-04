@@ -63,13 +63,9 @@ def parse_arguments():
     group_w2v.add_argument('--w2vvectorscache', action='store', type=str)
     group_w2v.add_argument('--w2vmodel', action='store', type=str, default=None)
 
-    group_rnn_dir = parser.add_mutually_exclusive_group(required=True)
-    group_rnn_dir.add_argument('--unidirectional', action='store_true', default=False)
-    group_rnn_dir.add_argument('--bidirectional', action='store_true', default=False)
-
-    group_rnn_shared = parser.add_mutually_exclusive_group(required=True)
-    group_rnn_shared.add_argument('--ownparams', action='store_true', default=False)
-    group_rnn_shared.add_argument('--sharedparams', action='store_true', default=False)
+    group_rnn = parser.add_argument_group(title='rnn', description='Recurrent neural net specifics.')
+    group_rnn.add_argument('--bidirectional', action='store_true', default=False)
+    group_rnn.add_argument('--sharedparams', action='store_true', default=False)
 
     parser.add_argument('--plot', action='store_true', default=False)
     parser.add_argument('--tags', action='store', type=str, default=None)
