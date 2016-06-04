@@ -620,3 +620,8 @@ class A_neural_network():
                                  output_filename=output_filename)
 
         return True
+
+
+    @classmethod
+    def get_features_crf_position(cls, features):
+        return []
