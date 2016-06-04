@@ -410,7 +410,7 @@ class A_neural_network():
     @classmethod
     def _get_partitioned_data_without_context_window(cls, doc_sentences_item, dictionary_mapping):
 
-        return [map(lambda x: dictionary_mapping[x], sentence) for sentence in doc_sentences_item]
+        return [map(lambda x: dictionary_mapping[x] if x else None, sentence) for sentence in doc_sentences_item]
         # y.extend([map(lambda x: label2index[x], sentence) for sentence in doc_sentences_tags])
 
     @classmethod
