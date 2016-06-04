@@ -66,8 +66,8 @@ class Recurrent_net(A_neural_network):
 
         return predictions
 
-    def forward_pass(self, weight_x, h_previous):
-        h_tmp = self.hidden_activation_f(weight_x + T.dot(self.params['ww'], h_previous) + self.params['b1'])
+    def forward_pass(self, weight_x, h_previous, weight_w):
+        h_tmp = self.hidden_activation_f(weight_x + T.dot(weight_w, h_previous) + self.params['b1'])
         forward_result = self.out_activation_f(T.dot(h_tmp, self.params['w2']) + self.params['b2'])
 
         return [h_tmp,forward_result]
@@ -108,7 +108,7 @@ class Recurrent_net(A_neural_network):
         [h,out], _ = theano.scan(fn=self.forward_pass,
                                 sequences=w_x,
                                 outputs_info=[dict(initial=T.zeros(self.n_window*self.n_emb)), None],
-                                non_sequences=[])
+                                non_sequences=[ww])
 
         if self.regularization:
             L2_w1 = T.sum(w1 ** 2)
@@ -195,11 +195,11 @@ class Recurrent_net(A_neural_network):
                 train_cost += cost_output
                 train_errors += errors_output
 
-                if self.regularization:
-                    l2_w1, l2_w2, l2_ww = train_l2_penalty()
-                    epoch_l2_w1 += l2_w1
-                    epoch_l2_w2 += l2_w2
-                    epoch_l2_ww += l2_ww
+            if self.regularization:
+                l2_w1, l2_w2, l2_ww = train_l2_penalty()
+                epoch_l2_w1 += l2_w1
+                epoch_l2_w2 += l2_w2
+                epoch_l2_ww += l2_ww
 
             valid_errors = 0
             valid_cost = 0
@@ -245,7 +245,7 @@ class Recurrent_net(A_neural_network):
         return True
 
     def train_bidirectional_with_shared_params(self, learning_rate=0.01, batch_size=512, max_epochs=100, alpha_l1_reg=0.001, alpha_l2_reg=0.01,
-              save_params=False, **kwargs):
+              save_params=False, plot=True, **kwargs):
 
         # train_x = theano.shared(value=self.x_train, name='train_x_shared')
         # train_y = theano.shared(value=self.y_train, name='train_y_shared')
@@ -282,12 +282,12 @@ class Recurrent_net(A_neural_network):
         [h,out], _ = theano.scan(fn=self.forward_pass,
                                 sequences=w_x,
                                 outputs_info=[dict(initial=T.zeros(self.n_window*self.n_emb)), None],
-                                non_sequences=[b1,w2,b2,ww])
+                                non_sequences=[ww])
 
         [h_flipped, out_flipped], _ = theano.scan(fn=self.forward_pass,
                                   sequences=w_x_flipped,
                                   outputs_info=[dict(initial=T.zeros(self.n_window * self.n_emb)), None],
-                                  non_sequences=[b1, w2, b2, ww])
+                                  non_sequences=[ww])
 
         h_flipped_flipped = h_flipped[::-1]
 
@@ -299,7 +299,12 @@ class Recurrent_net(A_neural_network):
         # test(self.x_train[0])
 
         if self.regularization:
-            L2 = T.sum(w_x ** 2) + T.sum(w_x_flipped ** 2) + T.sum(w2 ** 2) + T.sum(ww ** 2)
+            L2_w1 = T.sum(w1 ** 2)
+            L2_w_x = T.sum(w_x ** 2)
+            L2_w_x_flipped = T.sum(w_x_flipped ** 2)
+            L2_w2 = T.sum(w2 ** 2)
+            L2_ww = T.sum(ww ** 2)
+            L2 = L2_w_x + L2_w_x_flipped + L2_w2 + L2_ww
             # L2 = T.sum(w1 ** 2) + T.sum(w2 ** 2) + T.sum(ww ** 2)
             #TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
             cost = T.mean(T.nnet.categorical_crossentropy(out_bidirectional, y)) + alpha_l2_reg * L2
@@ -358,36 +363,93 @@ class Recurrent_net(A_neural_network):
                 updates.append((accum_grad, accum))
 
         train = theano.function(inputs=[theano.In(idxs,borrow=True), theano.In(y,borrow=True)],
-                                outputs=[cost,errors],
+                                outputs=[cost, errors],
                                 updates=updates)
 
         predict = theano.function(inputs=[theano.In(idxs,borrow=True), theano.In(y,borrow=True)],
-                                outputs=[cost,errors],
+                                outputs=[cost, errors, y_predictions],
                                 updates=[])
+
+        if self.regularization:
+            train_l2_penalty = theano.function(inputs=[],
+                                               outputs=[L2_w1, L2_w2, L2_ww],
+                                               givens=[])
+
+        # plotting purposes
+        train_costs_list = []
+        train_errors_list = []
+        valid_costs_list = []
+        valid_errors_list = []
+        precision_list = []
+        recall_list = []
+        f1_score_list = []
+        l2_w1_list = []
+        l2_w2_list = []
+        l2_ww_list = []
+
+        flat_true = list(chain(*self.y_valid))
 
         for epoch_index in range(max_epochs):
             start = time.time()
-            epoch_cost = 0
-            epoch_errors = 0
+            train_cost = 0
+            train_errors = 0
+            epoch_l2_w1 = 0
+            epoch_l2_w2 = 0
+            epoch_l2_ww = 0
             for j,(sentence_idxs, tags_idxs) in enumerate(zip(self.x_train, self.y_train)):
                 # for j,(sentence_idxs, tags_idxs) in enumerate(zip(train_x.get_value(borrow=True), train_y.get_value(borrow=True))):
                 # error = train(self.x_train, self.y_train)
                 # print 'Epoch %d Sentence %d' % (epoch_index, j)
                 cost_output, errors_output = train(sentence_idxs, tags_idxs)
-                epoch_cost += cost_output
-                epoch_errors += errors_output
+                train_cost += cost_output
+                train_errors += errors_output
 
-            test_error = 0
-            test_cost = 0
-            for sentence_idxs,tags_idxs in zip(self.x_test, self.y_test):
-                cost_output, errors_output = predict(sentence_idxs, tags_idxs)
-                test_cost += cost_output
-                test_error += errors_output
-            print 'Epoch %d  Train_cost: %f Train_errors: %d Test_cost: %f Test_errors: %d Took: %f' % \
-                  (epoch_index+1, epoch_cost, epoch_errors, test_cost, test_error, time.time()-start)
+            if self.regularization:
+                l2_w1, l2_w2, l2_ww = train_l2_penalty()
+                epoch_l2_w1 += l2_w1
+                epoch_l2_w2 += l2_w2
+                epoch_l2_ww += l2_ww
 
+            valid_errors = 0
+            valid_cost = 0
+            predictions = []
+            for sentence_idxs,tags_idxs in zip(self.x_valid, self.y_valid):
+                cost_output, errors_output, pred_output = predict(sentence_idxs, tags_idxs)
+                valid_cost += cost_output
+                valid_errors += errors_output
+                predictions.extend(pred_output)
+
+            train_costs_list.append(train_cost)
+            train_errors_list.append(train_errors)
+            valid_costs_list.append(valid_cost)
+            valid_errors_list.append(valid_errors)
+            l2_w1_list.append(epoch_l2_w1)
+            l2_w2_list.append(epoch_l2_w2)
+            l2_ww_list.append(epoch_l2_ww)
+
+            assert flat_true.__len__() == predictions.__len__()
+            results = Metrics.compute_all_metrics(y_true=flat_true, y_pred=predictions, average='macro')
+            f1_score = results['f1_score']
+            precision = results['precision']
+            recall = results['recall']
+            precision_list.append(precision)
+            recall_list.append(recall)
+            f1_score_list.append(f1_score)
+
+            end = time.time()
+            logger.info('Epoch %d Train_cost: %f Train_errors: %d Valid_cost: %f Valid_errors: %d F1-score: %f Took: %f'
+                        % (epoch_index + 1, train_cost, train_errors, valid_cost, valid_errors, f1_score, end - start))
         if save_params:
             self.save_params()
+
+        if plot:
+            actual_time = str(time.time())
+            self.plot_training_cost_and_error(train_costs_list, train_errors_list, valid_costs_list,
+                                              valid_errors_list,
+                                              actual_time)
+            self.plot_scores(precision_list, recall_list, f1_score_list, actual_time)
+            self.plot_penalties(l2_w1_list=l2_w1_list, l2_w2_list=l2_w2_list, l2_ww_fw_list=l2_ww_list,
+                                actual_time=actual_time)
 
         return True
 
@@ -439,12 +501,12 @@ class Recurrent_net(A_neural_network):
         [h, out], _ = theano.scan(fn=self.forward_pass,
                                   sequences=w_x,
                                   outputs_info=[dict(initial=T.zeros(self.n_window * self.n_emb)), None],
-                                  non_sequences=[b1, w2, b2, ww_forward])
+                                  non_sequences=[ww_forward])
 
         [h_flipped, out_flipped], _ = theano.scan(fn=self.forward_pass,
                                                   sequences=w_x_flipped,
                                                   outputs_info=[dict(initial=T.zeros(self.n_window * self.n_emb)), None],
-                                                  non_sequences=[b1, w2, b2, ww_backwards])
+                                                  non_sequences=[ww_backwards])
 
         h_flipped_flipped = h_flipped[::-1]
 
@@ -526,7 +588,7 @@ class Recurrent_net(A_neural_network):
                                 updates=updates)
 
         if self.regularization:
-            train_l2_penalty = theano.function(inputs=[idxs],
+            train_l2_penalty = theano.function(inputs=[],
                                                outputs=[L2_w1, L2_w2, L2_ww_forward, L2_ww_backwards])
 
         predict = theano.function(inputs=[theano.In(idxs, borrow=True), theano.In(y, borrow=True)],
@@ -536,8 +598,8 @@ class Recurrent_net(A_neural_network):
         # plotting purposes
         train_costs_list = []
         train_errors_list = []
-        test_costs_list = []
-        test_errors_list = []
+        valid_costs_list = []
+        valid_errors_list = []
         precision_list = []
         recall_list = []
         f1_score_list = []
@@ -550,8 +612,8 @@ class Recurrent_net(A_neural_network):
 
         for epoch_index in range(max_epochs):
             start = time.time()
-            epoch_cost = 0
-            epoch_errors = 0
+            train_cost = 0
+            train_errors = 0
             epoch_l2_w1 = 0
             epoch_l2_w2 = 0
             epoch_l2_ww_f = 0
@@ -562,29 +624,30 @@ class Recurrent_net(A_neural_network):
                 # print 'Epoch %d Sentence %d' % (epoch_index, j)
                 cost_output, errors_output = train(sentence_idxs, tags_idxs)
                 if self.regularization:
-                    l2_w1, l2_w2, l2_ww_fw, l2_ww_bw = train_l2_penalty(sentence_idxs)
+                    l2_w1, l2_w2, l2_ww_fw, l2_ww_bw = train_l2_penalty()
                     # print 'W1:%f W2:%f WW_f:%f WW_b:%f' % (l2_w1,l2_w2,l2_ww_fw,l2_ww_bw)
-                epoch_cost += cost_output
-                epoch_errors += errors_output
-                if j==0:
-                    epoch_l2_w1 = l2_w1
+                train_cost += cost_output
+                train_errors += errors_output
+
+            if self.regularization:
+                epoch_l2_w1 = l2_w1
                 epoch_l2_w2 += l2_w2
                 epoch_l2_ww_f += l2_ww_fw
                 epoch_l2_ww_b += l2_ww_bw
 
-            test_error = 0
-            test_cost = 0
+            valid_error = 0
+            valid_cost = 0
             predictions = []
-            for sentence_idxs, tags_idxs in zip(self.x_test, self.y_test):
+            for sentence_idxs, tags_idxs in zip(self.x_valid, self.y_valid):
                 cost_output, errors_output, preds = predict(sentence_idxs, tags_idxs)
-                test_cost += cost_output
-                test_error += errors_output
+                valid_cost += cost_output
+                valid_error += errors_output
                 predictions.append(preds)
 
-            train_costs_list.append(epoch_cost)
-            train_errors_list.append(epoch_errors)
-            test_costs_list.append(test_cost)
-            test_errors_list.append(test_error)
+            train_costs_list.append(train_cost)
+            train_errors_list.append(train_errors)
+            valid_costs_list.append(valid_cost)
+            valid_errors_list.append(valid_error)
             l2_w1_list.append(epoch_l2_w1)
             l2_w2_list.append(epoch_l2_w2)
             l2_ww_fw_list.append(epoch_l2_ww_f)
@@ -598,8 +661,9 @@ class Recurrent_net(A_neural_network):
             precision_list.append(precision)
             recall_list.append(recall)
             f1_score_list.append(f1_score)
-            print 'Epoch %d  Train_cost: %f Train_errors: %d Test_cost: %f Test_errors: %d F1:%f Took: %f' % \
-                  (epoch_index + 1, epoch_cost, epoch_errors, test_cost, test_error, f1_score, time.time() - start)
+
+            print 'Epoch %d  Train_cost: %f Train_errors: %d Valid_cost: %f Valid_errors: %d F1:%f Took: %f' % \
+                  (epoch_index + 1, train_cost, train_errors, valid_cost, valid_error, f1_score, time.time() - start)
 
         # cPickle.dump(train_costs_list, open('train_costs.p', 'wb'))
         # cPickle.dump(train_errors_list, open('train_errors.p', 'wb'))
@@ -611,10 +675,10 @@ class Recurrent_net(A_neural_network):
 
         if plot:
             actual_time = str(time.time())
-            self.plot_training_cost_and_error(train_costs_list, train_errors_list, test_costs_list, test_errors_list,
+            self.plot_training_cost_and_error(train_costs_list, train_errors_list, valid_costs_list, valid_errors_list,
                                               actual_time)
             self.plot_scores(precision_list, recall_list, f1_score_list, actual_time)
-            self.plot_penalties(l2_w1_list, l2_w2_list, l2_ww_fw_list, l2_ww_bw_list, actual_time)
+            self.plot_penalties(l2_w1_list, l2_w2_list=l2_w2_list, l2_ww_fw_list=l2_ww_fw_list, l2_ww_bw_list=l2_ww_bw_list, actual_time=actual_time)
 
         return True
 
@@ -624,7 +688,7 @@ class Recurrent_net(A_neural_network):
 
         return True
 
-    def predict(self, on_training_set=False, on_validation_set=False, on_testing_set=False, **kwargs):
+    def predict_unidirectional(self, on_training_set=False, on_validation_set=False, on_testing_set=False, **kwargs):
 
         results = dict()
 
@@ -649,7 +713,7 @@ class Recurrent_net(A_neural_network):
         [h,out], _ = theano.scan(fn=self.forward_pass,
                                 sequences=w_x,
                                 outputs_info=[dict(initial=T.zeros(self.n_window*self.n_emb)), None],
-                                non_sequences=[])
+                                non_sequences=[self.params['ww']])
 
         # out = self.forward_pass(w_x, 36)
         y_predictions = T.argmax(out[:,-1,:], axis=1)
@@ -674,28 +738,38 @@ class Recurrent_net(A_neural_network):
 
         return results
 
-    def predict_bidirectional_with_shared_params(self, **kwargs):
+    def predict_bidirectional_with_shared_params(self, on_training_set=False, on_validation_set=False, on_testing_set=False,
+                                   **kwargs):
+
+        results = dict()
+
+        if on_training_set:
+            x_test = self.x_train
+            y_test = self.y_train
+        elif on_validation_set:
+            x_test = self.x_valid
+            y_test = self.y_valid
+        elif on_testing_set:
+            x_test = self.x_test
+            y_test = self.y_test
 
         idxs = T.vector(name="test_idxs", dtype=INT)  # columns: context window size/lines: tokens in the sentence
-        n_emb = self.pretrained_embeddings.shape[1]  # embeddings dimension
         n_tokens = idxs.shape[0]  # tokens in sentence
 
-        w_x = self.params['w1'][idxs].reshape((n_tokens, n_emb * self.n_window))
+        w_x = self.params['w1'][idxs].reshape((n_tokens, self.n_emb * self.n_window))
         w_x_flipped = w_x[::-1]
 
         # Unchanging variables are passed to scan as non_sequences.
         # Initialization occurs in outputs_info
         [h_forward, out_forward], _ = theano.scan(fn=self.forward_pass,
                                   sequences=w_x,
-                                  outputs_info=[dict(initial=T.zeros(self.n_window * n_emb)), None],
-                                  non_sequences=[self.params['b1'], self.params['w2'], self.params['b2'],
-                                                 self.params['ww']])
+                                  outputs_info=[dict(initial=T.zeros(self.n_window * self.n_emb)), None],
+                                  non_sequences=[self.params['ww']])
 
         [h_backwards, out_backwards], _ = theano.scan(fn=self.forward_pass,
                                   sequences=w_x_flipped,
-                                  outputs_info=[dict(initial=T.zeros(self.n_window * n_emb)), None],
-                                  non_sequences=[self.params['b1'], self.params['w2'], self.params['b2'],
-                                                 self.params['ww']])
+                                  outputs_info=[dict(initial=T.zeros(self.n_window * self.n_emb)), None],
+                                  non_sequences=[self.params['ww']])
 
         h_backwards_flipped = h_backwards[::-1]
 
@@ -711,36 +785,51 @@ class Recurrent_net(A_neural_network):
                                              givens=[])
 
         predictions = []
-        for sentence_idxs in self.x_test:
-            predictions.append(perform_prediction(sentence_idxs))
+        for sentence_idxs in x_test:
+            predictions.extend(perform_prediction(sentence_idxs))
 
-        flat_predictions = list(chain(*predictions))
-        flat_true = list(chain(*self.y_test))
+        flat_true = list(chain(*y_test))
 
-        return flat_true, flat_predictions
+        assert flat_true.__len__() == predictions.__len__()
 
-    def predict_bidirectional_without_shared_params(self, **kwargs):
+        results['flat_trues'] = flat_true
+        results['flat_predictions'] = predictions
+
+        return results
+
+    def predict_bidirectional_without_shared_params(self, on_training_set=False, on_validation_set=False, on_testing_set=False,
+                                   **kwargs):
+
+        results = dict()
+
+        if on_training_set:
+            x_test = self.x_train
+            y_test = self.y_train
+        elif on_validation_set:
+            x_test = self.x_valid
+            y_test = self.y_valid
+        elif on_testing_set:
+            x_test = self.x_test
+            y_test = self.y_test
 
         idxs = T.vector(name="test_idxs", dtype=INT)  # columns: context window size/lines: tokens in the sentence
-        n_emb = self.pretrained_embeddings.shape[1]  # embeddings dimension
+
         n_tokens = idxs.shape[0]  # tokens in sentence
 
-        w_x = self.params['w1'][idxs].reshape((n_tokens, n_emb * self.n_window))
+        w_x = self.params['w1'][idxs].reshape((n_tokens, self.n_emb * self.n_window))
         w_x_flipped = w_x[::-1]
 
         # Unchanging variables are passed to scan as non_sequences.
         # Initialization occurs in outputs_info
         [h_forward, out_forward], _ = theano.scan(fn=self.forward_pass,
                                   sequences=w_x,
-                                  outputs_info=[dict(initial=T.zeros(self.n_window * n_emb)), None],
-                                  non_sequences=[self.params['b1'], self.params['w2'], self.params['b2'],
-                                                 self.params['ww_forward']])
+                                  outputs_info=[dict(initial=T.zeros(self.n_window * self.n_emb)), None],
+                                  non_sequences=[self.params['ww_forward']])
 
         [h_backwards, out_backwards], _ = theano.scan(fn=self.forward_pass,
                                   sequences=w_x_flipped,
-                                  outputs_info=[dict(initial=T.zeros(self.n_window * n_emb)), None],
-                                  non_sequences=[self.params['b1'], self.params['w2'], self.params['b2'],
-                                                 self.params['ww_backwards']])
+                                  outputs_info=[dict(initial=T.zeros(self.n_window * self.n_emb)), None],
+                                  non_sequences=[self.params['ww_backwards']])
 
         h_backwards_flipped = h_backwards[::-1]
 
@@ -756,13 +845,17 @@ class Recurrent_net(A_neural_network):
                                              givens=[])
 
         predictions = []
-        for sentence_idxs in self.x_test:
-            predictions.append(perform_prediction(sentence_idxs))
+        for sentence_idxs in x_test:
+            predictions.extend(perform_prediction(sentence_idxs))
 
-        flat_predictions = list(chain(*predictions))
-        flat_true = list(chain(*self.y_test))
+        flat_true = list(chain(*y_test))
 
-        return flat_true, flat_predictions, self.y_test, predictions
+        assert flat_true.__len__() == predictions.__len__()
+
+        results['flat_trues'] = flat_true
+        results['flat_predictions'] = predictions
+
+        return results
 
     def to_string(self):
         return 'RNN.'
