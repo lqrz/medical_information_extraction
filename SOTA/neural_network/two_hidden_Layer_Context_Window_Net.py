@@ -11,7 +11,6 @@ import time
 from collections import defaultdict
 
 from A_neural_network import A_neural_network
-from trained_models import get_cwnn_path
 from utils.metrics import Metrics
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.DEBUG)
@@ -24,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 INT = 'int64'
 
-class Hidden_Layer_Context_Window_Net(A_neural_network):
+class Two_Hidden_Layer_Context_Window_Net(A_neural_network):
     "Context window with SGD and adagrad"
 
     def __init__(self,
@@ -33,7 +32,7 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
                  regularization=False,
                  **kwargs):
 
-        super(Hidden_Layer_Context_Window_Net, self).__init__(**kwargs)
+        super(Two_Hidden_Layer_Context_Window_Net, self).__init__(**kwargs)
 
         # self.x_train = x_train
         # self.y_train = y_train
@@ -42,7 +41,8 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
 
         # self.n_samples = self.x_train.shape[0]
 
-        self.hidden_activation_f = hidden_activation_f
+        self.hidden_activation_f1 = hidden_activation_f
+        self.hidden_activation_f2 = utils.NeuralNetwork.relu
         self.out_activation_f = out_activation_f
         # self.pretrained_embeddings = embeddings
         self.regularization = regularization
@@ -64,17 +64,18 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
 
         return True
 
-    def sgd_forward_pass_extra_matrix(self, weight_x, n_tokens):
-        a = T.dot(weight_x.reshape((n_tokens, self.n_emb * self.n_window)), self.params['w1'])
-        h = self.hidden_activation_f(a + self.params['b1'])
-        return self.out_activation_f(T.dot(h, self.params['w2']) + self.params['b2'])
+    # def sgd_forward_pass_extra_matrix(self, weight_x, n_tokens):
+    #     a = T.dot(weight_x.reshape((n_tokens, self.n_emb * self.n_window)), self.params['w1'])
+    #     h = self.hidden_activation_f(a + self.params['b1'])
+    #     return self.out_activation_f(T.dot(h, self.params['w2']) + self.params['b2'])
 
     def sgd_forward_pass(self, weight_x, n_tokens):
-        h = self.compute_hidden_state(n_tokens, weight_x)
-        return self.out_activation_f(T.dot(h, self.params['w2']) + self.params['b2'])
+        h1 = self.hidden_activation_f1(weight_x.reshape((n_tokens, self.n_emb * self.n_window)) + self.params['b1'])
+        h2 = self.hidden_activation_f2(T.dot(h1,self.params['w2']) + self.params['b2'])
+        return self.out_activation_f(T.dot(h2, self.params['w3']) + self.params['b3'])
 
     def compute_hidden_state(self, n_tokens, weight_x):
-        return self.hidden_activation_f(weight_x.reshape((n_tokens, self.n_emb * self.n_window)) + self.params['b1'])
+        return self.hidden_activation_f1(weight_x.reshape((n_tokens, self.n_emb * self.n_window)) + self.params['b1'])
 
     def train_with_sgd(self, learning_rate=0.01, max_epochs=100,
                        alpha_L1_reg=0.001, alpha_L2_reg=0.01,
@@ -83,6 +84,9 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
                        static=False,
                        use_autoencoded_weight=False,
                        **kwargs):
+
+        #TODO: make param
+        self.n_hidden = 100
 
         train_x = theano.shared(value=np.array(self.x_train, dtype=INT), name='train_x', borrow=True)
         train_y = theano.shared(value=np.array(self.y_train, dtype=INT), name='train_y', borrow=True)
@@ -104,18 +108,24 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
             w2 = theano.shared(value=cPickle.load(open(self.get_output_path('autoencoded_w2.p'), 'rb')).astype(dtype=theano.config.floatX),
                                name='w2', borrow=True)
         else:
-            w2 = theano.shared(value=utils.NeuralNetwork.initialize_weights(n_in=self.n_window*self.n_emb, n_out=self.n_out, function='tanh').
+            w2 = theano.shared(value=utils.NeuralNetwork.initialize_weights(n_in=self.n_window*self.n_emb, n_out=self.n_hidden, function='tanh').
                                astype(dtype=theano.config.floatX),
                                name='w2', borrow=True)
+
+        w3 = theano.shared(value=utils.NeuralNetwork.initialize_weights(n_in=self.n_hidden, n_out=self.n_out, function='tanh').
+                           astype(dtype=theano.config.floatX),
+                           name='w2', borrow=True)
+
         b1 = theano.shared(value=np.zeros((self.n_window*self.n_emb)).astype(dtype=theano.config.floatX), name='b1', borrow=True)
-        b2 = theano.shared(value=np.zeros(self.n_out).astype(dtype=theano.config.floatX), name='b2', borrow=True)
+        b2 = theano.shared(value=np.zeros(self.n_hidden).astype(dtype=theano.config.floatX), name='b2', borrow=True)
+        b3 = theano.shared(value=np.zeros(self.n_out).astype(dtype=theano.config.floatX), name='b2', borrow=True)
 
         w_x = w1[idxs]
 
-        params = [w1,b1,w2,b2]
-        param_names = ['w1','b1','w2','b2']
-        params_to_get_grad = [b1,w2,b2]
-        params_to_get_grad_names = ['b1','w2','b2']
+        params = [w1,b1,w2,b2, w3,b3]
+        param_names = ['w1','b1','w2','b2','w3','b3']
+        params_to_get_grad = [b1,w2,b2,w3,b3]
+        params_to_get_grad_names = ['b1','w2','b2','w3','b3']
 
         if not static:
             params_to_get_grad.append(w_x)
@@ -131,45 +141,20 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
             L2_w1 = T.sum(w1 ** 2)
             L2_wx = T.sum(w_x ** 2)
             L2_w2 = T.sum(w2 ** 2)
-            L2 = L2_wx + L2_w2
+            L2_w3 = T.sum(w3 ** 2)
+            L2 = L2_wx + L2_w2 + L2_w3
 
-        if use_scan:
-            #TODO: DO I NEED THE SCAN AT ALL: NO! Im leaving it for reference only.
-            # Unchanging variables are passed to scan as non_sequences.
-            # Initialization occurs in outputs_info
-            out, _ = theano.scan(fn=self.sgd_forward_pass,
-                                    sequences=[w_x],
-                                    outputs_info=None,
-                                    non_sequences=[])
+        out = self.sgd_forward_pass(w_x, n_tokens)
 
-            mean_cross_entropy = T.mean(T.nnet.categorical_crossentropy(out[:, -1, :], y))
-            if self.regularization:
-                # TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
-                cost = mean_cross_entropy + alpha_L2_reg * L2
-            else:
-                cost = mean_cross_entropy
-
-            y_predictions = T.argmax(out[:,-1,:], axis=1)
-
-        else:
-            out = self.sgd_forward_pass(w_x, n_tokens)
-
-            mean_cross_entropy = T.mean(T.nnet.categorical_crossentropy(out, y))
-            if self.regularization:
-                # cost = T.mean(T.nnet.categorical_crossentropy(out, y)) + alpha_L1_reg*L1 + alpha_L2_reg*L2
-                cost = mean_cross_entropy + alpha_L2_reg * L2
-            else:
-                cost = mean_cross_entropy
-
-            y_predictions = T.argmax(out, axis=1)
+        mean_cross_entropy = T.mean(T.nnet.categorical_crossentropy(out, y))
 
         if self.regularization:
-            cost_prediction = T.mean(T.nnet.categorical_crossentropy(out, y)) + alpha_L2_reg*L2
+            # cost = T.mean(T.nnet.categorical_crossentropy(out, y)) + alpha_L1_reg*L1 + alpha_L2_reg*L2
+            cost = mean_cross_entropy + alpha_L2_reg * L2
         else:
-            cost_prediction = T.mean(T.nnet.categorical_crossentropy(out, y))
+            cost = mean_cross_entropy
 
-        # cost_prediction = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y))
-        # cost_prediction = alpha_L2_reg*L2
+        y_predictions = T.argmax(out, axis=1)
 
         errors = T.sum(T.neq(y_predictions,y))
 
@@ -215,22 +200,22 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
         # theano.printing.debugprint(train)
 
         train_predict_with_cost = theano.function(inputs=[idxs, y],
-                                             outputs=[cost, errors, y_predictions],
-                                             updates=[],
-                                             givens={
-                                                 n_tokens: 1
-                                             })
+                                                  outputs=[cost, errors, y_predictions],
+                                                  updates=[],
+                                                  givens={
+                                                      n_tokens: 1
+                                                  })
 
         train_predict_without_cost = theano.function(inputs=[idxs, y],
-                                             outputs=[errors, y_predictions],
-                                             updates=[],
-                                             givens={
-                                                 n_tokens: 1
-                                             })
+                                                     outputs=[errors, y_predictions],
+                                                     updates=[],
+                                                     givens={
+                                                         n_tokens: 1
+                                                     })
 
         if self.regularization:
             train_l2_penalty = theano.function(inputs=[],
-                                               outputs=[L2_w1, L2_w2],
+                                               outputs=[L2_w1, L2_w2, L2_w3],
                                                givens=[])
 
         get_cross_entropy = theano.function(inputs=[idxs, y],
@@ -258,6 +243,7 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
         f1_score_list = []
         l2_w1_list = []
         l2_w2_list = []
+        l2_w3_list = []
         train_cross_entropy_list = []
         valid_cross_entropy_list = []
 
@@ -269,6 +255,7 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
             train_errors = 0
             train_l2_emb = 0
             train_l2_w2 = 0
+            train_l2_w3 = 0
             train_cross_entropy = 0
             for i in np.random.permutation(self.n_samples):
                 # error = train(self.x_train, self.y_train)
@@ -281,9 +268,10 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
                     hidden_activations.append(get_hidden_state(train_x.get_value()[i]).reshape(-1,))
 
             if self.regularization:
-                l2_w1, l2_w2 = train_l2_penalty()
+                l2_w1, l2_w2, l2_w3 = train_l2_penalty()
                 train_l2_w2 += l2_w2
                 train_l2_emb += l2_w1
+                train_l2_w3 += l2_w3
 
             valid_error = 0
             valid_cost = 0
@@ -307,6 +295,7 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
             valid_errors_list.append(valid_error)
             l2_w1_list.append(train_l2_emb)
             l2_w2_list.append(train_l2_w2)
+            l2_w3_list.append(train_l2_w3)
 
             results = Metrics.compute_all_metrics(y_true=valid_flat_true, y_pred=valid_predictions, average='macro')
             f1_score = results['f1_score']
@@ -332,10 +321,16 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
                                               valid_errors_list,
                                               actual_time)
             self.plot_scores(precision_list, recall_list, f1_score_list, actual_time)
-            self.plot_penalties(l2_w1_list, l2_w2_list, actual_time=actual_time)
             self.plot_cross_entropies(train_cross_entropy_list, valid_cross_entropy_list, actual_time)
 
-        cPickle.dump(np.array(hidden_activations), open(get_cwnn_path('hidden_activations.p'), 'wb'))
+            plt_data_dict = {
+                'w2v_emb': l2_w1_list,
+                'w2': l2_w2_list,
+                'w3': l2_w3_list
+            }
+            self.plot_penalties_general(plt_data_dict, actual_time=actual_time)
+
+        cPickle.dump(np.array(hidden_activations), open(self.get_output_path('hidden_activations.p'), 'wb'))
 
         return True
 
@@ -591,7 +586,7 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
             self.plot_penalties(l2_w0_list=l2_w0_list, l2_w1_list=l2_w1_list, l2_w2_list=l2_w2_list, actual_time=actual_time)
             self.plot_cross_entropies(train_cross_entropy_list, valid_cross_entropy_list, actual_time)
 
-        cPickle.dump(np.array(hidden_activations), open(get_cwnn_path('hidden_activations.p'), 'wb'))
+        cPickle.dump(np.array(hidden_activations), open(self.get_output_path('hidden_activations.p'), 'wb'))
 
         return True
 
@@ -703,7 +698,7 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
 
     def save_params(self):
         for param_name,param_obj in self.params.iteritems():
-            cPickle.dump(param_obj, open(get_cwnn_path(param_name+'.p'),'wb'))
+            cPickle.dump(param_obj, open(self.get_output_path(param_name+'.p'),'wb'))
 
         return True
 

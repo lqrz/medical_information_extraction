@@ -21,6 +21,7 @@ from single_Layer_Context_Window_Net import Single_Layer_Context_Window_Net
 from recurrent_Context_Window_net import Recurrent_Context_Window_net
 from hidden_Layer_Context_Window_Net import Hidden_Layer_Context_Window_Net
 from vector_Tag_Contex_Window_Net import Vector_Tag_Contex_Window_Net
+from two_hidden_Layer_Context_Window_Net import Two_Hidden_Layer_Context_Window_Net
 from trained_models import get_vector_tag_path
 from trained_models import get_last_tag_path
 from trained_models import get_rnn_path
@@ -45,7 +46,8 @@ np.random.seed(1234)
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Neural net trainer')
     parser.add_argument('--net', type=str, action='store', required=True,
-                        choices=['single_cw','hidden_cw','vector_tag','last_tag','rnn', 'cw_rnn', 'multi_hidden_cw'],
+                        choices=['single_cw','hidden_cw','vector_tag','last_tag','rnn', 'cw_rnn', 'multi_hidden_cw',
+                                 'two_hidden_cw'],
                         help='NNet type')
     parser.add_argument('--window', type=int, action='store', required=True,
                         help='Context window size. 1 for RNN')
@@ -271,6 +273,10 @@ def determine_nnclass_and_parameters(args):
         add_words = ['<PAD>']
         add_feats = ['<PAD>']
         multi_feats = args['multi_features']
+    if args['nn_name'] == 'two_hidden_cw':
+        nn_class = Two_Hidden_Layer_Context_Window_Net
+        get_output_path = get_cwnn_path
+        add_words = ['<PAD>']
 
     return nn_class, hidden_f, out_f, add_words, add_tags, add_feats, tag_dim, n_window, get_output_path, multi_feats
 
