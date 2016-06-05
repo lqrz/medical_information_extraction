@@ -607,6 +607,22 @@ class A_neural_network():
 
         return True
 
+    def plot_penalties_general(self, data_dict, actual_time=None):
+
+        assert data_dict is not None
+
+        data_dict['epoch'] = np.arange(data_dict.values()[0].__len__(), dtype='int')
+
+        for values in data_dict.values():
+            assert values.__len__() == data_dict['epoch'].__len__()
+
+        output_filename = self.get_output_path('training_L2_penalty_plot' + actual_time)
+        utils.NeuralNetwork.plot(data_dict, x_axis='epoch', x_label='Epochs', y_label='Penalty',
+                                 title='Training weight penalties evolution',
+                                 output_filename=output_filename)
+
+        return True
+
     def plot_cross_entropies(self, train_cross_entropy, valid_cross_entropy, actual_time):
 
         assert train_cross_entropy.__len__() == valid_cross_entropy.__len__()
