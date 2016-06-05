@@ -573,12 +573,16 @@ class A_neural_network():
         return True
 
     def plot_penalties(self, l2_w1_list, l2_w2_list=None, l2_ww_fw_list=None, l2_ww_bw_list=None,
-                       l2_wt_list=None, actual_time=None):
+                       l2_wt_list=None, l2_w0_list=None, actual_time=None):
 
         data = {
             'epoch': np.arange(l2_w1_list.__len__(), dtype='int'),
             'L2_W1_sum': l2_w1_list,
         }
+
+        if l2_w0_list:
+            assert l2_w1_list.__len__() == l2_w0_list.__len__()
+            data['l2_W0_sum'] = l2_w0_list
 
         if l2_w2_list:
             assert l2_w1_list.__len__() == l2_w2_list.__len__()
