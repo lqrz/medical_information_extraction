@@ -172,11 +172,13 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
 
             L2 = L2_w_x + L2_w2 + L2_w_t
 
+        mean_cross_entropy = T.mean(T.nnet.categorical_crossentropy(out, y))
+
         if self.regularization:
             # TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
-            cost = T.mean(T.nnet.categorical_crossentropy(out, y)) + alpha_L2_reg*L2
+            cost = mean_cross_entropy + alpha_L2_reg * L2
         else:
-            cost = T.mean(T.nnet.categorical_crossentropy(out, y))
+            cost = mean_cross_entropy
 
         y_predictions = T.argmax(out, axis=1)
 
@@ -313,6 +315,12 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
                                             n_tokens: 1
                                         })
 
+        get_cross_entropy = theano.function(inputs=[idxs, y],
+                                            outputs=mean_cross_entropy,
+                                            givens={
+                                                n_tokens: 1
+                                            })
+
         if self.regularization:
             train_l2_penalty = theano.function(inputs=[],
                                                outputs=[L2_w1, L2_w2, L2_wt],
@@ -331,6 +339,8 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
         l2_w1_list = []
         l2_w2_list = []
         l2_wt_list = []
+        train_cross_entropy_list = []
+        valid_cross_entropy_list = []
 
         for epoch_index in range(max_epochs):
             start = time.time()
@@ -339,6 +349,7 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
             epoch_l2_w1 = 0
             epoch_l2_w2 = 0
             epoch_l2_wt = 0
+            train_cross_entropy = 0
             # predicted_tags = np.array(np.concatenate(([self.pad_tag]*(n_window/2),[self.unk_tag]*((n_window/2)+1))), dtype=INT)
             for x_train_sentence, y_train_sentence in zip(self.x_train, self.y_train):
                 self.prev_preds.set_value(np.array([self.unk_tag] * self.n_window, dtype=INT))
@@ -351,6 +362,7 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
                     self.prev_preds.set_value(next_preds_output)
                     epoch_cost += cost_output
                     epoch_errors += errors_output
+                    train_cross_entropy += get_cross_entropy(word_cw, [word_tag])
 
             if self.regularization:
                 l2_w1, l2_w2, l2_wt = train_l2_penalty()
@@ -360,6 +372,7 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
 
             valid_error = 0
             valid_cost = 0
+            valid_cross_entropy = 0
             predictions = []
             for x_valid_sentence, y_valid_sentence in zip(self.x_valid, self.y_valid):
                 self.prev_preds.set_value(np.array([self.unk_tag] * self.n_window, dtype=INT))
@@ -369,6 +382,7 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
                     valid_error += errors_output
                     predictions.append(np.asscalar(pred))
                     self.prev_preds.set_value(next_preds_output)
+                    valid_cross_entropy += get_cross_entropy(word_cw, [word_tag])
 
             train_costs_list.append(epoch_cost)
             train_errors_list.append(epoch_errors)
@@ -377,6 +391,8 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
             l2_w1_list.append(epoch_l2_w1)
             l2_w2_list.append(epoch_l2_w2)
             l2_wt_list.append(epoch_l2_wt)
+            train_cross_entropy_list.append(train_cross_entropy)
+            valid_cross_entropy_list.append(valid_cross_entropy)
 
             assert flat_true.__len__() == predictions.__len__()
             results = Metrics.compute_all_metrics(y_true=flat_true, y_pred=predictions, average='macro')
@@ -398,6 +414,7 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
                                               actual_time)
             self.plot_scores(precision_list, recall_list, f1_score_list, actual_time)
             self.plot_penalties(l2_w1_list=l2_w1_list, l2_w2_list=l2_w2_list, l2_wt_list=l2_wt_list, actual_time=actual_time)
+            self.plot_cross_entropies(train_cross_entropy_list, valid_cross_entropy_list, actual_time)
 
         if save_params:
             logger.info('Saving parameters to File system')
