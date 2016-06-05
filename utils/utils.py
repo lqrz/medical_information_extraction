@@ -129,3 +129,7 @@ class NeuralNetwork:
         ggsave(output_filename+'.png', p, dpi=100)
 
         return True
+
+    @staticmethod
+    def relu(x):
+        return T.nnet.relu(x)
