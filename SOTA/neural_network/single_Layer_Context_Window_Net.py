@@ -379,7 +379,7 @@ class Single_Layer_Context_Window_Net(A_neural_network):
             y_test = self.y_valid.astype(dtype=INT)
         elif on_testing_set:
             x_test = self.x_test.astype(dtype=INT)
-            y_test = self.y_test.astype(dtype=INT)
+            y_test = self.y_test
 
         idxs = T.matrix(name="test_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
 
