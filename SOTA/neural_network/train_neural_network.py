@@ -489,7 +489,11 @@ def use_testing_dataset(nn_class,
     results[0] = (valid_flat_true, valid_flat_predictions, train_flat_predictions, test_flat_predictions)
 
     cPickle.dump(pretrained_embeddings, open(get_output_path('original_vectors.p'), 'wb'))
-    cPickle.dump(nn_trainer.params['w1'].get_value(), open(get_output_path('trained_vectors.p'), 'wb'))
+    try:
+        # the CNN might not use this feature, and thus, not have a W1 weight
+        cPickle.dump(nn_trainer.params['w1'].get_value(), open(get_output_path('trained_vectors.p'), 'wb'))
+    except KeyError:
+        pass
     cPickle.dump(word2index, open(get_output_path('word2index.p'), 'wb'))
 
     return results, index2label
