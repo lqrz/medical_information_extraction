@@ -257,7 +257,7 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
                 w_x_c_nmp_4D = self.w_x_c_nmp.reshape(
                     shape=(self.w_x_c_nmp.shape[0], 1, self.w_x_c_nmp.shape[1], self.w_x_c_nmp.shape[2]))
                 w2v_conv_nmp = self.perform_nnet_word_embeddings_conv2d(w_x_c_nmp_4D,
-                                                                        region_sizes=[self.n_window],
+                                                                        region_sizes=self.region_sizes,
                                                                         max_pool=False,
                                                                         filter_prefix='w2v_c_nmp_filter_')
 
