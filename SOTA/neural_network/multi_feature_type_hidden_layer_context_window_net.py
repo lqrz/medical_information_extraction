@@ -45,7 +45,7 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
     CRF_POSITIONS = {'ner': 1, 'pos': 2}
 
     FEATURE_MAPPING = {
-        'w2v_c_nm': {'name': 'w2v', 'convolve': True, 'max_pool': False, 'use_cw': True, 'nr_filters': 1, 'filter_width': 1, 'nr_region_sizes': 1, 'crf_position': None},
+        'w2v_c_nm': {'name': 'w2v', 'convolve': True, 'max_pool': False, 'use_cw': True, 'nr_filters': None, 'filter_width': 1, 'nr_region_sizes': None, 'crf_position': None},
         'w2v_nc_nm': {'name': 'w2v', 'convolve': False, 'max_pool': False, 'use_cw': True, 'nr_filters': 0, 'filter_width': 0, 'nr_region_sizes': 0, 'crf_position': None},
         'w2v_c_m': {'name': 'w2v', 'convolve': True, 'max_pool': True, 'use_cw': True, 'nr_filters': None, 'filter_width': None, 'nr_region_sizes': None, 'crf_position': None},
         'pos_c_m': {'name': 'pos', 'convolve': True, 'max_pool': True, 'use_cw': True, 'nr_filters': None, 'filter_width': None, 'nr_region_sizes': None, 'crf_position': CRF_POSITIONS['pos']},
@@ -104,6 +104,11 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
                 train_pos_feats = np.array(train_feats[self.CRF_POSITIONS['pos']])
                 valid_pos_feats = np.array(valid_feats[self.CRF_POSITIONS['pos']])
                 test_pos_feats = np.array(test_feats[self.CRF_POSITIONS['pos']])
+
+                # TODO: choose one.
+                self.n_pos_emb = np.max(train_pos_feats) + 1  # encoding for the POS tags
+                self.n_pos_emb = 40  # encoding for the POS tags
+
             except KeyError:
                 train_pos_feats = None
                 valid_pos_feats = None
@@ -118,6 +123,11 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
                 train_ner_feats = np.array(train_feats[self.CRF_POSITIONS['ner']])
                 valid_ner_feats = np.array(valid_feats[self.CRF_POSITIONS['ner']])
                 test_ner_feats = np.array(test_feats[self.CRF_POSITIONS['ner']])
+
+                # TODO: choose one.
+                self.n_ner_emb = np.max(train_ner_feats) + 1  # encoding for the POS tags
+                self.n_ner_emb = 40  # encoding for the NER tags
+
             except KeyError:
                 train_ner_feats = None
                 valid_ner_feats = None
@@ -126,10 +136,6 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
             self.valid_ner_feats = np.array(valid_ner_feats)
             self.test_ner_feats = np.array(test_ner_feats)
 
-            # TODO: choose one.
-            self.n_pos_emb = np.max(self.train_pos_feats) + 1  # encoding for the POS tags
-            self.n_pos_emb = 40  # encoding for the POS tags
-            self.n_ner_emb = 100  # encoding for the NER tags
 
             self.pos_filter_width = self.n_pos_emb
             self.ner_filter_width = self.n_ner_emb
@@ -144,7 +150,7 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
         self.n_filters = n_filters  # number of filters per region size
 
-        self.n_sent_nr_emb = 100 #encoding for the sent_nr tags
+        self.n_sent_nr_emb = 40 #encoding for the sent_nr tags
 
         self.region_sizes = region_sizes
 
@@ -241,8 +247,10 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
             if tensor_dim == 2:
                 w2v_conv_nmp = self.convolve_word_embeddings(self.w_x_c_nmp,
                                                              filter_width=1,
-                                                             n_filters=1,
-                                                             region_sizes=[self.n_window],
+                                                             # n_filters=1,
+                                                             # region_sizes=[self.n_window],
+                                                             n_filters=self.n_filters,
+                                                             region_sizes=self.region_sizes,
                                                              max_pool=False,
                                                              filter_prefix='w2v_c_nmp_filter_')
             elif tensor_dim == 4:
@@ -429,6 +437,19 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
         return nr_regions
 
+    def determine_resulting_width(self, feature, feat_dim):
+        resulting_width = None
+        filter_width = self.__class__.FEATURE_MAPPING[feature]['filter_width']
+
+        if filter_width is not None:
+            resulting_width = feat_dim / filter_width
+        else:
+            resulting_width = 1
+
+        assert resulting_width is not None, 'Could not determine nr_region_sizes for feature: %s' % feature
+
+        return resulting_width
+
     def determine_hidden_layer_size(self):
         size = 0
 
@@ -438,26 +459,34 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
             convolve = desc['convolve']
             max_pool = desc['max_pool']
             c_window = desc['use_cw']
+            feat_dim = self.get_features_dimensions()[feature]
 
-            if max_pool:
-                feat_dimension = 1
-            else:
-                feat_dimension = self.features_dimensions[feature]
+            feat_extended = '_'.join([feature, 'c' if convolve else 'nc', 'm' if max_pool else 'nm'])
 
             if convolve:
-                feat_extended = '_'.join([feature, 'c' if convolve else 'nc', 'm' if max_pool else 'nm'])
                 window = 1
                 n_filters = self.determine_nr_filters(feat_extended)
                 n_regions = self.determine_nr_region_sizes(feat_extended)
+                filter_windows = np.sum([self.n_window - rs + 1 for rs in self.region_sizes])
+                filter_window_width = self.determine_resulting_width(feat_extended, feat_dim)
             else:
                 window = self.n_window
                 n_regions = 1
                 n_filters = 1
+                filter_window_width = feat_dim
+                filter_windows = 1
+
+            if max_pool:
+                feat_dimension = 1
+                filter_windows = self.determine_nr_region_sizes(feat_extended)
+            else:
+                feat_dimension = self.features_dimensions[feature]
 
             if not c_window:
                 window = 1
 
-            size += feat_dimension * window * n_regions * n_filters
+            # size += feat_dimension * window * n_regions * n_filters
+            size += filter_windows * filter_window_width * window * n_filters
 
         return size
 
@@ -577,14 +606,14 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
             self.w_x_directly = w_x_directly
 
         if self.using_w2v_convolution_no_maxpool_feature():
-            #TODO: test this feature only.
-            # word embeddings to be used directly.
             w1_c_nmp = theano.shared(value=np.array(self.pretrained_embeddings).astype(dtype=theano.config.floatX),
                                name='w1', borrow=True)
 
             # create w2v filters
-            w2v_c_nmp_filters = self.create_filters(filter_width=1, region_sizes=[self.n_window],
-                                                       n_filters=1)
+            # w2v_c_nmp_filters = self.create_filters(filter_width=1, region_sizes=[self.n_window],
+            #                                            n_filters=1)
+            w2v_c_nmp_filters = self.create_filters(filter_width=1, region_sizes=self.region_sizes,
+                                                       n_filters=self.n_filters)
             w2v_c_nmp_filters_names = map(lambda x: 'w2v_c_nmp_%s' % x.name, w2v_c_nmp_filters)
 
             # index embeddings
