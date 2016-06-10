@@ -34,6 +34,7 @@ from utils.plot_confusion_matrix import plot_confusion_matrix
 from data.dataset import Dataset
 from data import get_classification_report_labels
 from data import get_hierarchical_mapping
+from utils.get_word_tenses import get_training_set_tenses, get_validation_set_tenses, get_testing_set_tenses
 
 from multi_feature_type_hidden_layer_context_window_net import Multi_Feature_Type_Hidden_Layer_Context_Window_Net
 # from multi_feature_type_old import Multi_Feature_Type_Hidden_Layer_Context_Window_Net
@@ -390,8 +391,6 @@ def use_testing_dataset(nn_class,
                         **kwargs
                         ):
 
-    #TODO: make the feat_pos an argument.
-
     logger.info('Using CLEF testing data')
 
     results = dict()
@@ -415,6 +414,14 @@ def use_testing_dataset(nn_class,
     if any(map(lambda x: str(x).startswith('sent_nr'), multi_feats)):
         x_train_sent_nr_feats, x_valid_sent_nr_feats, x_test_sent_nr_feats = \
             nn_class.get_word_sentence_number_features(clef_training=True, clef_validation=True, clef_testing=True)
+
+    x_train_tense_feats = None
+    x_valid_tense_feats = None
+    x_test_tense_feats = None
+    tense_probs = None
+    if any(map(lambda x: str(x).startswith('tense'), multi_feats)):
+        x_train_tense_feats, x_valid_tense_feats, x_test_tense_feats, tense_probs = \
+            nn_class.get_tenses_features(clef_training=True, clef_validation=True, clef_testing=True)
 
     unique_words = word2index.keys()
 
@@ -458,9 +465,14 @@ def use_testing_dataset(nn_class,
         'train_feats': x_train_feats,
         'valid_feats': x_valid_feats,
         'test_feats': x_test_feats,
+        'features_indexes': features_indexes,
         'train_sent_nr_feats': x_train_sent_nr_feats,    #refers to sentence nr features.
         'valid_sent_nr_feats': x_valid_sent_nr_feats,    #refers to sentence nr features.
         'test_sent_nr_feats': x_test_sent_nr_feats,    #refers to sentence nr features.
+        'train_tense_feats': x_train_tense_feats,    #refers to tense features.
+        'valid_tense_feats': x_valid_tense_feats,    #refers to tense features.
+        'test_tense_feats': x_test_tense_feats,    #refers to tense features.
+        'tense_probs': tense_probs,
         'n_filters': args['n_filters'],
         'region_sizes': args['region_sizes'],
         'features_to_use': args['multi_features'],

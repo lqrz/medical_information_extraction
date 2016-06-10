@@ -2,12 +2,13 @@ __author__ = 'root'
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 import numpy as np
-from utils import utils
 from itertools import chain
 from collections import OrderedDict
 import copy
 
 from data.dataset import Dataset
+from utils import utils
+from utils import get_word_tenses
 
 class A_neural_network():
 
@@ -94,6 +95,38 @@ class A_neural_network():
     @abstractmethod
     def to_string(self):
         pass
+
+    @classmethod
+    def get_tenses_features(cls, clef_training=True, clef_validation=False, clef_testing=False):
+
+        if not clef_training and not clef_validation and not clef_testing:
+            raise Exception('At least one dataset must be loaded')
+
+        train_features = None
+        valid_features = None
+        test_features = None
+
+        if clef_training:
+            train_features = list(chain(*get_word_tenses.get_training_set_tenses().values()))
+
+        if clef_validation:
+            valid_features = list(chain(*get_word_tenses.get_validation_set_tenses().values()))
+
+        if clef_testing:
+            test_features = list(chain(*get_word_tenses.get_testing_set_tenses().values()))
+
+        tenses = set(train_features + valid_features + test_features)
+        mapping = dict(zip(tenses, range(tenses.__len__())))
+        train_features_mapped = map(lambda x: mapping[x], train_features)
+        valid_features_mapped = map(lambda x: mapping[x], valid_features)
+        test_features_mapped = map(lambda x: mapping[x], test_features)
+
+        probabilities = dict()
+        total = train_features.__len__()
+        for t in tenses:
+            probabilities[t] = [f for f in train_features if f == t].__len__() / float(total)
+
+        return train_features_mapped, valid_features_mapped, test_features_mapped, probabilities
 
     @classmethod
     def get_word_sentence_number_features(cls, clef_training=True, clef_validation=False, clef_testing=False):
@@ -209,14 +242,21 @@ class A_neural_network():
 
         features_indexes = None
         if feat_positions:
-            features_indexes = []
+            features_indexes = dict()
             for feat_pos in feat_positions:
                 features = copy.copy(x_train_features[feat_pos])
                 features.extend(x_valid_features[feat_pos])
                 features.extend(x_test_features[feat_pos])
                 feat2index, index2feat = cls._construct_index(add_items=add_feats, document_sentence_item=features)
-                features_indexes.append((feat2index, index2feat))
 
+                all_train_items = list(chain(*chain(*x_train_features[feat_pos])))
+                unique_items = set(chain(*chain(*features))).union(add_feats)
+                total = all_train_items.__len__()
+                probs = dict()
+                for item in unique_items:
+                    probs[feat2index[item]] = [f for f in all_train_items if f==item].__len__() / float(total)
+
+                features_indexes[feat_pos] = (feat2index, index2feat, probs)
 
         if clef_training:
             x_train, y_train = cls.get_partitioned_data(x_idx=x_idx,
@@ -270,7 +310,8 @@ class A_neural_network():
     def transform_features_with_context_window(cls, dataset_features, features_indexes, n_window):
 
         x_feats = dict()
-        for (feat_pos, features), (feat2index, index2feat) in zip(dataset_features.iteritems(), features_indexes):
+        for feat_pos, features in dataset_features.iteritems():
+            feat2index, index2feat, _ = features_indexes[feat_pos]
             feats = []
             for doc_features in features:
                 feats.extend(cls._get_partitioned_data_with_context_window(doc_features, n_window, feat2index))
@@ -331,44 +372,6 @@ class A_neural_network():
         assert item2index.keys() == index2item.values()
 
         return item2index, index2item
-
-
-    # @classmethod
-    # def _construct_indexes(cls, add_words, add_tags, document_sentence_words, document_sentence_tags):
-    #     #word indexes
-    #     index2word = OrderedDict()
-    #     word2index = OrderedDict()
-    #
-    #     #tag indexes
-    #     index2label = OrderedDict()
-    #     label2index = OrderedDict()
-    #
-    #     unique_words = list(
-    #         set([word for doc_sentences in document_sentence_words for sentence in doc_sentences for word in sentence]))
-    #     unique_labels = list(
-    #         set([tag for doc_sentences in document_sentence_tags for sentence in doc_sentences for tag in sentence
-    #              if tag]))  # the test data has "None" as tags (cause they are not included). Do not add it.
-    #
-    #     for i, word in enumerate(unique_words):
-    #         index2word[i] = word
-    #         word2index[word] = i
-    #     if add_words:
-    #         for i, word in enumerate(add_words):
-    #             word2index[word] = len(unique_words) + i
-    #             index2word[len(unique_words) + i] = word #for consistency purposes
-    #
-    #     for i, label in enumerate(unique_labels):
-    #         index2label[i] = label
-    #         label2index[label] = i
-    #     if add_tags:
-    #         for i, tag in enumerate(add_tags):
-    #             label2index[tag] = len(unique_labels) + i
-    #             index2label[len(unique_labels) + i] = tag   #for consistency purposes
-    #
-    #     assert index2word.values() == word2index.keys(), 'Inconsistency in word indexes.'
-    #     assert index2label.values() == label2index.keys(), 'Inconsistency in tag indexes.'
-    #
-    #     return label2index, index2label, word2index, index2word
 
     @classmethod
     def get_partitioned_data(cls, x_idx, document_sentences_words, document_sentences_tags,
