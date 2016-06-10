@@ -610,6 +610,9 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
         # create dense layer and bias
         hidden_layer_size = self.determine_hidden_layer_size()
+
+        logger.info('Hidden layer size: %d' % hidden_layer_size)
+
         w3 = theano.shared(value=utils.NeuralNetwork.initialize_weights(
             n_in=hidden_layer_size, n_out=self.n_out, function='softmax').astype(dtype=theano.config.floatX),
                            name="w3",
@@ -708,7 +711,7 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
             #TODO: one-hot, random, probabilistic ?
             w1_pos = theano.shared(value=utils.NeuralNetwork.initialize_weights(
                 n_in=np.max(self.train_pos_feats)+1, n_out=self.n_pos_emb, function='tanh').astype(dtype=theano.config.floatX), name='w1_pos', borrow=True)
-            
+
             # w1_pos = theano.shared(value=np.eye(np.max(self.train_pos_feats)+1, self.n_pos_emb).astype(dtype=theano.config.floatX), name='w1_pos', borrow=True)
 
             # w1_pos = theano.shared(value=np.matrix(self.pos_probs.values(), dtype=theano.config.floatX).reshape((-1,1)), name='w1_pos', borrow=True)
