@@ -26,35 +26,35 @@ class Autoencoder(object):
 
         self.hidden_function = hidden_function
 
-        self.x_train = x_train
+        self.x_train = np.array(x_train).astype(dtype=theano.config.floatX)
 
         self.output_path = output_path
 
         self.params = OrderedDict()
 
-    def train(self, learning_rate=0.01, batch_size=512, max_epochs=20):
+    def train(self, learning_rate=0.01, batch_size=512, max_epochs=20,
+              save_matrix=True, save_hidden=True, **kwargs):
 
         w1 = theano.shared(value=utils.NeuralNetwork.initialize_weights(self.n_in, self.n_hidden, function='linear').astype(dtype=theano.config.floatX), name='w1', borrow=True)
         w2 = theano.shared(value=utils.NeuralNetwork.initialize_weights(self.n_hidden, self.n_out, function='linear').astype(dtype=theano.config.floatX), name='w2', borrow=True)
         b1 = theano.shared(value=np.zeros(self.n_hidden), name='b1', borrow=True)
         b2 = theano.shared(value=np.zeros(self.n_out), name='b2', borrow=True)
 
-        param_names = ['w1']
-        params = [w1]
+        param_names = ['w1', 'w2']
+        params = [w1, w2]
         self.params.update(zip(param_names, params))
 
         train_x = theano.shared(value=np.array(self.x_train).astype(dtype=theano.config.floatX),
                                 name='train_x')
 
         h = self.hidden_function(T.dot(train_x, w1))
-        out = T.dot(h, w1.T)
+        out = T.dot(h, w2)
 
-        L2 = T.sum(w1**2)
+        L2_w1 = T.sum(w1 ** 2)
+        L2_w2 = T.sum(w2 ** 2)
+        L2 = L2_w1 + L2_w2
 
         error = T.sum(T.sqr(out-train_x)) + L2
-
-        theano.function(inputs=[],
-                        outputs=[out, error])
 
         grads = [T.grad(cost=error, wrt=param) for param in self.params.values()]
 
@@ -74,15 +74,26 @@ class Autoencoder(object):
                                 outputs=error,
                                 updates=updates)
 
+        compute_activations = theano.function(inputs=[],
+                                outputs=h,
+                                updates=[])
+
+        compute_weights = theano.function(inputs=[],
+                                          outputs=[L2_w1, L2_w2])
+
         for epoch in range(max_epochs):
             epoch_cost = train()
+            l2_w1, l2_w2 = compute_weights()
 
-            print 'Epoch %d Cost: %f' % (epoch, epoch_cost)
+            print 'Epoch %d Cost: %f W1_sum: %f W2_sum:%f' % (epoch, epoch_cost, l2_w1, l2_w2)
 
-        print '...Saving autoencoded weight matrix'
-        cPickle.dump(w1.get_value(), open(self.output_path('autoencoded_w2.p'), 'wb'))
+        if save_matrix:
+            print '...Saving autoencoded weight matrix'
+            cPickle.dump(w1.get_value(), open(self.output_path('autoencoded_w1.p'), 'wb'))
 
-        return True
+        h = compute_activations()
+
+        return h
 
 
 if __name__ == '__main__':
