@@ -19,7 +19,7 @@ np.random.seed(1234)
 
 class Autoencoder(object):
 
-    def __init__(self, n_in, n_hidden, hidden_function, x_train, output_path):
+    def __init__(self, n_in, n_hidden, hidden_function, x_train, output_path, regularization):
         self.n_in = n_in
         self.n_hidden = n_hidden
         self.n_out = self.n_in
@@ -29,6 +29,8 @@ class Autoencoder(object):
         self.x_train = np.array(x_train).astype(dtype=theano.config.floatX)
 
         self.output_path = output_path
+
+        self.regularization = regularization
 
         self.params = OrderedDict()
 
@@ -54,7 +56,10 @@ class Autoencoder(object):
         L2_w2 = T.sum(w2 ** 2)
         L2 = L2_w1 + L2_w2
 
-        error = T.sum(T.sqr(out-train_x)) + L2
+        if self.regularization:
+            error = T.sum(T.sqr(out-train_x)) + L2
+        else:
+            error = T.sum(T.sqr(out-train_x))
 
         grads = [T.grad(cost=error, wrt=param) for param in self.params.values()]
 

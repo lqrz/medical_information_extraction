@@ -21,7 +21,8 @@ if __name__ == '__main__':
         'n_hidden': n_hidden,
         'hidden_function': NeuralNetwork.linear_activation_function,
         'x_train': original_vectors,
-        'output_path': get_w2v_training_data_vectors
+        'output_path': get_w2v_training_data_vectors,
+        'regularization': True
     }
 
     autoencoder = Autoencoder(**params)
@@ -32,6 +33,6 @@ if __name__ == '__main__':
 
     resized_vectors = dict(zip(original_vectors_dict.keys(), hidden_activations))
 
-    cPickle.dump(resized_vectors, open(get_w2v_training_data_vectors('googlenews_representations_train_True_valid_True_test_False_300.p'),'wb'))
+    cPickle.dump(resized_vectors, open(get_w2v_training_data_vectors('googlenews_representations_train_True_valid_True_test_False_50.p'),'wb'))
 
     print 'End.'
