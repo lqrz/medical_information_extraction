@@ -78,7 +78,7 @@ def parse_arguments():
     group_cnn.add_argument('--static', action='store_true', default=False)
     group_cnn.add_argument('--maxpool', action='store_true', default=False)
     group_cnn.add_argument('--regionsizes', action='store', type=int, nargs='*')
-    group_cnn.add_argument('--multifeats', action='store', type=str, nargs='*',
+    group_cnn.add_argument('--multifeats', action='store', type=str, nargs='*', default=[],
                            choices=Multi_Feature_Type_Hidden_Layer_Context_Window_Net.FEATURE_MAPPING.keys())
 
     parser.add_argument('--autoencoded', action='store_true', default=False)
@@ -247,6 +247,8 @@ def determine_nnclass_and_parameters(args):
         nn_class = Hidden_Layer_Context_Window_Net
         get_output_path = get_cwnn_path
         add_words = ['<PAD>']
+        multi_feats = args['multi_features']
+        add_feats = ['<PAD>']
     elif args['nn_name'] == 'vector_tag':
         nn_class = Vector_Tag_Contex_Window_Net
         get_output_path = get_vector_tag_path
