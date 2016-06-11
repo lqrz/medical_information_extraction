@@ -11,8 +11,9 @@ import argparse
 import numpy as np
 import time
 from itertools import chain
-from utils.metrics import Metrics
+from collections import Counter
 
+from utils.metrics import Metrics
 from data import get_w2v_training_data_vectors
 from data import get_w2v_model
 from last_tag_neural_network import Last_tag_neural_network_trainer
@@ -83,6 +84,7 @@ def parse_arguments():
 
     parser.add_argument('--autoencoded', action='store_true', default=False)
     parser.add_argument('--aggregated', action='store_true', default=False)
+    parser.add_argument('--normalizesamples', action='store_true', default=False)
 
     #parse arguments
     arguments = parser.parse_args()
@@ -111,6 +113,7 @@ def parse_arguments():
     args['multi_features'] = arguments.multifeats
     args['use_autoencoded_weight'] = arguments.autoencoded
     args['meta_tags'] = arguments.aggregated
+    args['norm_samples'] = arguments.normalizesamples
 
     return args
 
@@ -236,6 +239,7 @@ def determine_nnclass_and_parameters(args):
     nn_class = None
     get_output_path = None
     multi_feats = []
+    normalize_samples = False
 
     if args['nn_name'] == 'single_cw':
         nn_class = Single_Layer_Context_Window_Net
@@ -248,6 +252,7 @@ def determine_nnclass_and_parameters(args):
         get_output_path = get_cwnn_path
         add_words = ['<PAD>']
         multi_feats = args['multi_features']
+        normalize_samples = args['norm_samples']
         add_feats = ['<PAD>']
     elif args['nn_name'] == 'vector_tag':
         nn_class = Vector_Tag_Contex_Window_Net
@@ -281,7 +286,8 @@ def determine_nnclass_and_parameters(args):
         get_output_path = get_cwnn_path
         add_words = ['<PAD>']
 
-    return nn_class, hidden_f, out_f, add_words, add_tags, add_feats, tag_dim, n_window, get_output_path, multi_feats
+    return nn_class, hidden_f, out_f, add_words, add_tags, add_feats, tag_dim, n_window, get_output_path, multi_feats, \
+           normalize_samples
 
 def determine_key_indexes(label2index, word2index):
     pad_tag = None
@@ -371,6 +377,19 @@ def get_aggregated_tags(y_train, y_valid, mapping, index2label):
 
     return y_aggregated_train_indexes, y_aggregated_valid_indexes, aggregated_label2index, aggregated_index2label
 
+def perform_sample_normalization(x_train, y_train):
+    counts = Counter(y_train)
+
+    higher_count = counts.most_common(n=1)[0][1]
+
+    for tag, cnt in counts.iteritems():
+        n_to_add = higher_count - cnt
+        tag_idxs = np.where(np.array(y_train)==tag)[0]
+        samples_to_add = np.random.choice(tag_idxs, n_to_add, replace=True)
+        x_train.extend(np.array(x_train)[samples_to_add].tolist())
+        y_train.extend(np.array(y_train)[samples_to_add].tolist())
+
+    return x_train, y_train
 
 def use_testing_dataset(nn_class,
                         hidden_f,
@@ -385,6 +404,7 @@ def use_testing_dataset(nn_class,
                         tag_dim,
                         get_output_path,
                         multi_feats,
+                        normalize_samples,
                         max_epochs=None,
                         minibatch_size=None,
                         regularization=None,
@@ -409,6 +429,10 @@ def use_testing_dataset(nn_class,
     features_indexes = \
         nn_class.get_data(clef_training=True, clef_validation=True, clef_testing=True, add_words=add_words,
                           add_tags=add_tags, add_feats=add_feats, x_idx=None, n_window=n_window, feat_positions=feat_positions)
+
+    if normalize_samples:
+        logger.info('Normalizing number of samples')
+        x_train, y_train = perform_sample_normalization(x_train, y_train)
 
     x_train_sent_nr_feats = None
     x_valid_sent_nr_feats = None
@@ -562,7 +586,7 @@ if __name__ == '__main__':
     w2v_vectors, w2v_model, w2v_dims = load_w2v_model_and_vectors_cache(args)
 
     nn_class, hidden_f, out_f, add_words, add_tags, add_feats, tag_dim, n_window, get_output_path,\
-        multi_feats = determine_nnclass_and_parameters(args)
+        multi_feats, normalize_samples = determine_nnclass_and_parameters(args)
 
     logger.info('Using Neural class: %s with window size: %d for epochs: %d' % (args['nn_name'],n_window,args['max_epochs']))
 
@@ -582,6 +606,7 @@ if __name__ == '__main__':
                                                    tag_dim,
                                                    get_output_path,
                                                    multi_feats,
+                                                   normalize_samples,
                                                    **args)
 
     cPickle.dump(results, open(get_output_path('prediction_results.p'),'wb'))
