@@ -792,7 +792,7 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
 
                 valid_true_cross_entropy += get_true_cross_entropy(x_sample, [y_sample])
 
-                if negative_sampling:
+                if negative_sampling and y_sample != self.na_tag_idx:
                     valid_negative_cross_entropy += get_negative_cross_entropy(x_sample)
                 valid_cost += cost_output
                 valid_error += errors_output
