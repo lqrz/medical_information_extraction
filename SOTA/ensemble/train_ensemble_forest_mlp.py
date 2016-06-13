@@ -430,7 +430,7 @@ def use_testing_dataset(nn_class,
     valid_flat_predictions_2nd_step = validation_set_predictions['flat_predictions']
 
     logger.info('Predicting on Testing set')
-    testing_set_predictions = nn_trainer.predict(on_validation_set=False, **kwargs)
+    testing_set_predictions = nn_trainer.predict(on_testing_set=True, **kwargs)
     test_flat_predictions_2nd_step = testing_set_predictions['flat_predictions']
 
     assert valid_flat_true_2nd_step.__len__() == valid_flat_predictions_2nd_step.__len__()
