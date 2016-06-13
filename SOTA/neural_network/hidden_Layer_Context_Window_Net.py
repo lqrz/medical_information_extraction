@@ -52,6 +52,7 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
                  test_tense_feats=None,
                  tense_probs=None,
                  features_to_use=None,
+                 na_tag=None,
                  **kwargs):
 
         super(Hidden_Layer_Context_Window_Net, self).__init__(**kwargs)
@@ -129,6 +130,8 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
         # self.n_emb = None
 
         self.features_to_use = self.parse_features_to_use(features_to_use)
+
+        self.na_tag_idx = na_tag
 
         self.params = OrderedDict()
 
@@ -531,14 +534,21 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
                        validation_cost=True,
                        static=False,
                        use_autoencoded_weight=False,
+                       negative_sampling=False,
                        **kwargs):
+
+        if negative_sampling:
+            logger.info('Training with negative sampling')
 
         train_x = theano.shared(value=np.array(self.x_train, dtype=INT), name='train_x', borrow=True)
         train_y = theano.shared(value=np.array(self.y_train, dtype=INT), name='train_y', borrow=True)
+        valid_x = theano.shared(value=np.array(self.x_valid, dtype=INT), name='valid_x', borrow=True)
+        valid_y = theano.shared(value=np.array(self.y_valid, dtype=INT), name='valid_y', borrow=True)
 
         # valid_x = theano.shared(value=np.array(self.x_valid, dtype=INT), name='valid_x', borrow=True)
 
         y = T.vector(name='y', dtype=INT)
+        y_negative = T.vector(name='y_negative', dtype=INT)
 
         idxs = T.vector(name="idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
 
@@ -603,22 +613,21 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
         else:
             out = self.sgd_forward_pass(w_x, n_tokens)
 
-            mean_cross_entropy = T.mean(T.nnet.categorical_crossentropy(out, y))
+            mean_true_cross_entropy = T.mean(T.nnet.categorical_crossentropy(out, y))
+
+            cost = mean_true_cross_entropy
+
             if self.regularization:
                 # cost = T.mean(T.nnet.categorical_crossentropy(out, y)) + alpha_L1_reg*L1 + alpha_L2_reg*L2
-                cost = mean_cross_entropy + alpha_L2_reg * L2
-            else:
-                cost = mean_cross_entropy
+                cost += alpha_L2_reg * L2
+
+            if negative_sampling:
+                mean_negative_cross_entropy = T.mean(T.nnet.categorical_crossentropy(out+10**-8, y_negative))
+                # if T.isnan(mean_negative_cross_entropy):
+                #     mean_negative_cross_entropy = T.constant(0.)
+                negative_cost = cost - mean_negative_cross_entropy
 
             y_predictions = T.argmax(out, axis=1)
-
-        if self.regularization:
-            cost_prediction = T.mean(T.nnet.categorical_crossentropy(out, y)) + alpha_L2_reg*L2
-        else:
-            cost_prediction = T.mean(T.nnet.categorical_crossentropy(out, y))
-
-        # cost_prediction = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y))
-        # cost_prediction = alpha_L2_reg*L2
 
         errors = T.sum(T.neq(y_predictions,y))
 
@@ -654,38 +663,61 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
         # test_wx(self.x_train[0], self.y_train[0])
         train_idx = T.scalar(name="train_idx", dtype=INT)
 
+        givens_train = {
+            idxs: train_x[train_idx],
+            n_tokens: 1
+        }
+        givens_valid = {
+            idxs: valid_x[train_idx],
+            n_tokens: 1
+        }
+        if negative_sampling:
+            givens_train[y_negative] = np.array([self.na_tag_idx], dtype=INT)
+            givens_valid[y_negative] = np.array([self.na_tag_idx], dtype=INT)
+
         train = theano.function(inputs=[train_idx, y],
-                                outputs=[cost,errors],
+                                outputs=[cost, errors],
                                 updates=updates,
                                 givens={
                                     idxs: train_x[train_idx],
                                     n_tokens: 1
                                 })
+
+        train_negative = theano.function(inputs=[train_idx, y],
+                                outputs=[negative_cost, errors],
+                                updates=updates,
+                                givens=givens_train)
+
         # theano.printing.debugprint(train)
 
-        train_predict_with_cost = theano.function(inputs=[idxs, y],
-                                             outputs=[cost, errors, y_predictions],
-                                             updates=[],
-                                             givens={
-                                                 n_tokens: 1
-                                             })
+        train_predict_with_cost = theano.function(inputs=[train_idx, y],
+                                                  outputs=[cost, errors, y_predictions],
+                                                  updates=[],
+                                                  givens=givens_valid,
+                                                  on_unused_input='ignore')
 
-        train_predict_without_cost = theano.function(inputs=[idxs, y],
+        train_predict_without_cost = theano.function(inputs=[train_idx, y],
                                              outputs=[errors, y_predictions],
                                              updates=[],
-                                             givens={
-                                                 n_tokens: 1
-                                             })
+                                             givens=givens_valid,
+                                             on_unused_input='ignore')
 
         if self.regularization:
             train_l2_penalty = theano.function(inputs=[],
                                                outputs=[L2_w1, L2_w2],
                                                givens=[])
 
-        get_cross_entropy = theano.function(inputs=[idxs, y],
-                                            outputs=mean_cross_entropy,
+        get_true_cross_entropy = theano.function(inputs=[idxs, y],
+                                            outputs=mean_true_cross_entropy,
                                             givens={
                                                 n_tokens: 1
+                                            })
+
+        get_negative_cross_entropy = theano.function(inputs=[idxs],
+                                            outputs=mean_negative_cross_entropy,
+                                            givens={
+                                                n_tokens: 1,
+                                                y_negative: np.array([self.na_tag_idx], dtype=INT)
                                             })
 
         hidden_activation = self.compute_hidden_state(n_tokens, w_x)
@@ -707,8 +739,10 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
         f1_score_list = []
         l2_w1_list = []
         l2_w2_list = []
-        train_cross_entropy_list = []
-        valid_cross_entropy_list = []
+        train_true_cross_entropy_list = []
+        train_negative_cross_entropy_list = []
+        valid_true_cross_entropy_list = []
+        valid_negative_cross_entropy_list = []
 
         hidden_activations = []
 
@@ -718,14 +752,21 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
             train_errors = 0
             train_l2_emb = 0
             train_l2_w2 = 0
-            train_cross_entropy = 0
+            train_true_cross_entropy = 0
+            train_negative_cross_entropy = 0
             for i in np.random.permutation(self.n_samples):
                 # error = train(self.x_train, self.y_train)
-                cost_output, errors_output = train(i, [train_y.get_value()[i]])
+                y_sample = train_y.get_value()[i]
+                if negative_sampling and y_sample != self.na_tag_idx:
+                    cost_output, errors_output = train_negative(i, [y_sample])
+                    train_negative_cross_entropy += get_negative_cross_entropy(train_x.get_value()[i])
+                else:
+                    cost_output, errors_output = train(i, [y_sample])
+
                 train_cost += cost_output
                 train_errors += errors_output
 
-                train_cross_entropy += get_cross_entropy(train_x.get_value()[i], [train_y.get_value()[i]])
+                train_true_cross_entropy += get_true_cross_entropy(train_x.get_value()[i], [y_sample])
                 if epoch_index == max_epochs-1:
                     hidden_activations.append(get_hidden_state(train_x.get_value()[i]).reshape(-1,))
 
@@ -737,15 +778,22 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
             valid_error = 0
             valid_cost = 0
             valid_predictions = []
-            valid_cross_entropy = 0
-            for x_sample, y_sample in zip(self.x_valid, self.y_valid):
+            valid_true_cross_entropy = 0
+            valid_negative_cross_entropy = 0
+            for j in range(self.x_valid.shape[0]):
+                x_sample = valid_x.get_value()[j]
+                y_sample = valid_y.get_value()[j]
                 if validation_cost:
-                    cost_output, errors_output, pred = train_predict_with_cost(x_sample, [y_sample])
+                    cost_output, errors_output, pred = train_predict_with_cost(j, [y_sample])
                 else:
                     # in the forest prediction, computing the cost yield and error (out of bounds for 1st misclassification).
                     cost_output = 0
-                    errors_output, pred = train_predict_without_cost(x_sample, [y_sample])
-                valid_cross_entropy += get_cross_entropy(x_sample, [y_sample])
+                    errors_output, pred = train_predict_without_cost(j, [y_sample])
+
+                valid_true_cross_entropy += get_true_cross_entropy(x_sample, [y_sample])
+
+                if negative_sampling:
+                    valid_negative_cross_entropy += get_negative_cross_entropy(x_sample)
                 valid_cost += cost_output
                 valid_error += errors_output
                 valid_predictions.append(np.asscalar(pred))
@@ -764,8 +812,10 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
             precision_list.append(precision)
             recall_list.append(recall)
             f1_score_list.append(f1_score)
-            train_cross_entropy_list.append(train_cross_entropy)
-            valid_cross_entropy_list.append(valid_cross_entropy)
+            train_true_cross_entropy_list.append(train_true_cross_entropy)
+            valid_true_cross_entropy_list.append(valid_true_cross_entropy)
+            train_negative_cross_entropy_list.append(train_negative_cross_entropy)
+            valid_negative_cross_entropy_list.append(valid_negative_cross_entropy)
 
             end = time.time()
             logger.info('Epoch %d Train_cost: %f Train_errors: %d Valid_cost: %f Valid_errors: %d F1-score: %f Took: %f'
@@ -782,7 +832,9 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
                                               actual_time)
             self.plot_scores(precision_list, recall_list, f1_score_list, actual_time)
             self.plot_penalties(l2_w1_list, l2_w2_list, actual_time=actual_time)
-            self.plot_cross_entropies(train_cross_entropy_list, valid_cross_entropy_list, actual_time)
+            self.plot_cross_entropies(train_true_cross_entropy_list, valid_true_cross_entropy_list, actual_time)
+            self.plot_cross_entropies(train_negative_cross_entropy_list, valid_negative_cross_entropy_list, actual_time,
+                                      title='Negative cross-entropy evolution', output_name='negative_cross_entropy_plot')
 
         cPickle.dump(np.array(hidden_activations), open(get_cwnn_path('hidden_activations.p'), 'wb'))
 

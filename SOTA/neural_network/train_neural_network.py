@@ -85,6 +85,7 @@ def parse_arguments():
     parser.add_argument('--autoencoded', action='store_true', default=False)
     parser.add_argument('--aggregated', action='store_true', default=False)
     parser.add_argument('--normalizesamples', action='store_true', default=False)
+    parser.add_argument('--negativesampling', action='store_true', default=False)
 
     #parse arguments
     arguments = parser.parse_args()
@@ -114,6 +115,7 @@ def parse_arguments():
     args['use_autoencoded_weight'] = arguments.autoencoded
     args['meta_tags'] = arguments.aggregated
     args['norm_samples'] = arguments.normalizesamples
+    args['negative_sampling'] = arguments.negativesampling
 
     return args
 
@@ -470,6 +472,8 @@ def use_testing_dataset(nn_class,
 
     pad_tag, unk_tag, pad_word = determine_key_indexes(label2index, word2index)
 
+    na_tag = label2index['NA']
+
     params = {
         'x_train': x_train,
         'y_train': y_train,
@@ -502,7 +506,8 @@ def use_testing_dataset(nn_class,
         'n_filters': args['n_filters'],
         'region_sizes': args['region_sizes'],
         'features_to_use': args['multi_features'],
-        'static': args['static']
+        'static': args['static'],
+        'na_tag': na_tag
     }
 
     nn_trainer = nn_class(**params)
