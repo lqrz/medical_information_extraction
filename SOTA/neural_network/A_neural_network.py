@@ -626,7 +626,8 @@ class A_neural_network():
 
         return True
 
-    def plot_cross_entropies(self, train_cross_entropy, valid_cross_entropy, actual_time):
+    def plot_cross_entropies(self, train_cross_entropy, valid_cross_entropy, actual_time,
+                             title='Cross-entropy evolution', output_name='cross_entropy_plot'):
 
         assert train_cross_entropy.__len__() == valid_cross_entropy.__len__()
 
@@ -636,10 +637,10 @@ class A_neural_network():
             'valid': valid_cross_entropy
         }
 
-        output_filename = self.get_output_path('cross_entropy_plot' + actual_time)
+        output_filename = self.get_output_path(output_name + actual_time)
 
         utils.NeuralNetwork.plot(data, x_axis='epoch', x_label='Epochs', y_label='Cross-entropy',
-                                 title='Cross-entropy evolution',
+                                 title=title,
                                  output_filename=output_filename)
 
         return True
