@@ -683,10 +683,11 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
                                     n_tokens: 1
                                 })
 
-        train_negative = theano.function(inputs=[train_idx, y],
-                                outputs=[negative_cost, errors],
-                                updates=updates,
-                                givens=givens_train)
+        if negative_sampling:
+            train_negative = theano.function(inputs=[train_idx, y],
+                                    outputs=[negative_cost, errors],
+                                    updates=updates,
+                                    givens=givens_train)
 
         # theano.printing.debugprint(train)
 
@@ -713,12 +714,13 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
                                                 n_tokens: 1
                                             })
 
-        get_negative_cross_entropy = theano.function(inputs=[idxs],
-                                            outputs=mean_negative_cross_entropy,
-                                            givens={
-                                                n_tokens: 1,
-                                                y_negative: np.array([self.na_tag_idx], dtype=INT)
-                                            })
+        if negative_sampling:
+            get_negative_cross_entropy = theano.function(inputs=[idxs],
+                                                outputs=mean_negative_cross_entropy,
+                                                givens={
+                                                    n_tokens: 1,
+                                                    y_negative: np.array([self.na_tag_idx], dtype=INT)
+                                                })
 
         hidden_activation = self.compute_hidden_state(n_tokens, w_x)
         get_hidden_state = theano.function(inputs=[idxs],
