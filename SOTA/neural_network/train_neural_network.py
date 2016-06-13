@@ -35,6 +35,7 @@ from utils.plot_confusion_matrix import plot_confusion_matrix
 from data.dataset import Dataset
 from data import get_classification_report_labels
 from data import get_hierarchical_mapping
+from data import get_aggregated_classification_report_labels
 from utils.get_word_tenses import get_training_set_tenses, get_validation_set_tenses, get_testing_set_tenses
 
 from multi_feature_type_hidden_layer_context_window_net import Multi_Feature_Type_Hidden_Layer_Context_Window_Net
@@ -626,9 +627,16 @@ if __name__ == '__main__':
     results_macro = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, average='macro')
 
     if args['plot']:
-        labels_list = get_classification_report_labels()
+        if args['meta_tags']:
+            labels_list = get_aggregated_classification_report_labels()
+        else:
+            labels_list = get_classification_report_labels()
         cm = Metrics.compute_confusion_matrix(valid_y_true, valid_y_pred, labels=labels_list)
         plot_confusion_matrix(cm, labels=labels_list, output_filename=get_output_path('confusion_matrix.png'))
+
+        results_noaverage = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, labels=labels_list, average=None)
+        print 'No-average results'
+        print results_noaverage
 
     print 'MICRO results'
     print results_micro
