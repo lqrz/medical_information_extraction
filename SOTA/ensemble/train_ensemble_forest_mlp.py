@@ -10,6 +10,7 @@ import numpy as np
 import argparse
 from itertools import chain
 import time
+from collections import Counter
 
 from forests import Forest
 from SOTA.neural_network.A_neural_network import A_neural_network
@@ -19,6 +20,7 @@ from SOTA.neural_network.last_tag_neural_network import Last_tag_neural_network_
 from SOTA.neural_network.vector_Tag_Contex_Window_Net import Vector_Tag_Contex_Window_Net
 from SOTA.neural_network.recurrent_net import Recurrent_net
 from SOTA.neural_network.recurrent_Context_Window_net import Recurrent_Context_Window_net
+from SOTA.neural_network.multi_feature_type_hidden_layer_context_window_net import Multi_Feature_Type_Hidden_Layer_Context_Window_Net
 from trained_models import get_ensemble_forest_mlp_path
 from data import get_param
 from utils import utils
@@ -57,6 +59,10 @@ def parse_arguments():
     parser.add_argument('--tags', action='store', type=str, default=None)
     parser.add_argument('--classifier', action='store', type=str, default=None)
     parser.add_argument('--forestwindow', action='store', type=int, default=None, required=True)
+    parser.add_argument('--multifeats', action='store', type=str, nargs='*', default=[],
+                           choices=Multi_Feature_Type_Hidden_Layer_Context_Window_Net.FEATURE_MAPPING.keys())
+    parser.add_argument('--normalizesamples', action='store_true', default=False)
+    parser.add_argument('--negativesampling', action='store_true', default=False)
 
     #parse arguments
     arguments = parser.parse_args()
@@ -80,6 +86,9 @@ def parse_arguments():
     args['tags'] = arguments.tags
     args['classifier'] = arguments.classifier
     args['forest_window'] = arguments.forestwindow
+    args['multi_features'] = arguments.multifeats
+    args['norm_samples'] = arguments.normalizesamples
+    args['negative_sampling'] = arguments.negativesampling
 
     return args
 
@@ -196,9 +205,12 @@ def determine_nnclass_and_parameters(args):
     out_f = utils.NeuralNetwork.softmax_activation_function
     add_words = []
     add_tags = []
+    add_feats = []
     tag_dim = None
     net_window = args['net_window']
     nn_class = None
+    multi_feats = []
+    normalize_samples = False
 
     if args['nn_name'] == 'single_cw':
         nn_class = Single_Layer_Context_Window_Net
@@ -208,6 +220,9 @@ def determine_nnclass_and_parameters(args):
         # one hidden layer with context window. Either minibatch or SGD.
         nn_class = Hidden_Layer_Context_Window_Net
         add_words = ['<PAD>']
+        multi_feats = args['multi_features']
+        normalize_samples = args['norm_samples']
+        add_feats = ['<PAD>']
     elif args['nn_name'] == 'vector_tag':
         nn_class = Vector_Tag_Contex_Window_Net
         tag_dim = args['tagdim']
@@ -223,8 +238,22 @@ def determine_nnclass_and_parameters(args):
     elif args['nn_name'] == 'cw_rnn':
         nn_class = Recurrent_Context_Window_net
         add_words = ['<PAD>']
+    return nn_class, hidden_f, out_f, add_words, add_tags, add_feats, tag_dim, net_window, multi_feats, \
+           normalize_samples
 
-    return nn_class, hidden_f, out_f, add_words, add_tags, tag_dim, net_window
+def perform_sample_normalization(x_train, y_train):
+    counts = Counter(y_train)
+
+    higher_count = counts.most_common(n=1)[0][1]
+
+    for tag, cnt in counts.iteritems():
+        n_to_add = higher_count - cnt
+        tag_idxs = np.where(np.array(y_train)==tag)[0]
+        samples_to_add = np.random.choice(tag_idxs, n_to_add, replace=True)
+        x_train.extend(np.array(x_train)[samples_to_add].tolist())
+        y_train.extend(np.array(y_train)[samples_to_add].tolist())
+
+    return x_train, y_train
 
 def use_testing_dataset(nn_class,
                         hidden_f,
@@ -234,8 +263,11 @@ def use_testing_dataset(nn_class,
                         w2v_dims,
                         add_words,
                         add_tags,
+                        add_feats,
                         tag_dim,
                         get_output_path,
+                        multi_feats,
+                        normalize_samples,
                         classifier,
                         forest_window,
                         net_window,
@@ -252,12 +284,33 @@ def use_testing_dataset(nn_class,
 
     logger.info('Loading CRF training data')
 
-    x_train, y_train_all, _, x_valid, y_valid_all, _, x_test, y_test_all, _, word2index_all, \
-    index2word_all, label2index_all, index2label_all, _ = \
+    feat_positions = nn_class.get_features_crf_position(multi_feats)
+
+    x_train, y_train_all, x_train_feats, x_valid, y_valid_all, x_valid_feats, x_test, y_test_all, x_test_feats, word2index_all, \
+    index2word_all, label2index_all, index2label_all, features_indexes = \
         nn_class.get_data(clef_training=True, clef_validation=True, clef_testing=True, add_words=add_words,
-                          add_tags=add_tags, x_idx=None, n_window=forest_window)
+                          add_tags=add_tags, add_feats=add_feats, x_idx=None, n_window=forest_window, feat_positions=feat_positions)
+
+    if normalize_samples:
+        logger.info('Normalizing number of samples')
+        x_train, y_train = perform_sample_normalization(x_train, y_train_all)
 
     unique_words = word2index_all.keys()
+
+    x_train_sent_nr_feats = None
+    x_valid_sent_nr_feats = None
+    x_test_sent_nr_feats = None
+    if any(map(lambda x: str(x).startswith('sent_nr'), multi_feats)):
+        x_train_sent_nr_feats, x_valid_sent_nr_feats, x_test_sent_nr_feats = \
+            nn_class.get_word_sentence_number_features(clef_training=True, clef_validation=True, clef_testing=True)
+
+    x_train_tense_feats = None
+    x_valid_tense_feats = None
+    x_test_tense_feats = None
+    tense_probs = None
+    if any(map(lambda x: str(x).startswith('tense'), multi_feats)):
+        x_train_tense_feats, x_valid_tense_feats, x_test_tense_feats, tense_probs = \
+            nn_class.get_tenses_features(clef_training=True, clef_validation=True, clef_testing=True)
 
     pretrained_embeddings = A_neural_network.initialize_w(w2v_dims, unique_words, w2v_vectors=w2v_vectors, w2v_model=w2v_model)
 
@@ -287,10 +340,9 @@ def use_testing_dataset(nn_class,
 
     if forest_window != net_window:
         # the forest and the nnet might use different window sizes.
-
-        x_train, _, _, x_valid, _, _, x_test, _, _, _, _, _, _, _ = \
-            nn_class.get_data(clef_training=True, clef_validation=True, clef_testing=True, add_words=add_words,
-                              add_tags=add_tags, x_idx=None, n_window=net_window)
+        x_train, _, x_train_feats, x_valid, _, x_valid_feats, x_test, _, x_test_feats, _, _, _, _, features_indexes = \
+        nn_class.get_data(clef_training=True, clef_validation=True, clef_testing=True, add_words=add_words,
+                              add_tags=add_tags, add_feats=add_feats, x_idx=None, n_window=net_window, feat_positions=feat_positions)
         # x_train, _, x_test, _, _, _, _, _ = \
         #     A_neural_network.get_data(crf_training_data_filename, test_data_filename, add_words, add_tags,
         #                               x_idx=None, n_window=net_window)
@@ -347,6 +399,16 @@ def use_testing_dataset(nn_class,
         'pad_word': pad_word,
         'tag_dim': tag_dim,
         'get_output_path': get_output_path,
+        'train_ner_feats': x_train_feats[1] if x_train_feats else None,  # refers to NER tag features.
+        'valid_ner_feats': x_valid_feats[1] if x_train_feats else None,  # refers to NER tag features.
+        'test_ner_feats': x_test_feats[1] if x_train_feats else None,  # refers to NER tag features.
+        'train_pos_feats': x_train_feats[2] if x_train_feats else None,  # refers to POS tag features.
+        'valid_pos_feats': x_valid_feats[2] if x_train_feats else None,  # refers to POS tag features.
+        'test_pos_feats': x_test_feats[2] if x_train_feats else None,  # refers to POS tag features.
+        'train_sent_nr_feats': x_train_sent_nr_feats,  # refers to sentence nr features.
+        'valid_sent_nr_feats': x_valid_sent_nr_feats,  # refers to sentence nr features.
+        'test_sent_nr_feats': x_test_sent_nr_feats,  # refers to sentence nr features.
+        'features_to_use': args['multi_features'],
         'validation_cost': False
     }
 
@@ -451,7 +513,8 @@ if __name__ == '__main__':
 
     w2v_vectors, w2v_model, w2v_dims = load_w2v_model_and_vectors_cache(args)
 
-    nn_class, hidden_f, out_f, add_words, add_tags, tag_dim, net_window = determine_nnclass_and_parameters(args)
+    nn_class, hidden_f, out_f, add_words, add_tags, add_feats, tag_dim, net_window, multi_feats, normalize_samples = \
+        determine_nnclass_and_parameters(args)
 
     get_output_path = get_ensemble_forest_mlp_path
 
@@ -470,8 +533,11 @@ if __name__ == '__main__':
                                         w2v_dims,
                                         add_words,
                                         add_tags,
+                                        add_feats,
                                         tag_dim,
                                         get_output_path,
+                                        multi_feats,
+                                        normalize_samples,
                                         **args)
 
     cPickle.dump(results, open(get_output_path('prediction_results.p'),'wb'))
