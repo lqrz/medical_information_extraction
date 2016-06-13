@@ -29,5 +29,8 @@ def get_param(file_name):
 def get_classification_report_labels():
     return cPickle.load(open(pkg_resources.resource_filename('data', 'params/classification_report/labels_order.p'),'rb'))
 
+def get_aggregated_classification_report_labels():
+    return cPickle.load(open(pkg_resources.resource_filename('data', 'params/classification_report/aggregated_labels_order.p'),'rb'))
+
 def get_hierarchical_mapping():
     return cPickle.load(open(pkg_resources.resource_filename('data', 'params/tag_mapping/mapping.p'),'rb'))
