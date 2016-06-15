@@ -11,8 +11,10 @@ from empirical_distribution import Empirical_distribution
 
 def construct_word_tags_counts(training_words):
     d = dict()
-    for word in set(training_words):
-        idxs = np.where(np.array(training_words) == word)[0]
+    training_words_lower = [w.lower() for w in training_words]
+    unique_training_words_lower = set(training_words_lower)
+    for word in unique_training_words_lower:
+        idxs = np.where(np.array(training_words_lower) == word)[0]
         word_tags = np.array(training_tags)[idxs]
         d[word] = Counter(word_tags)
 
@@ -21,7 +23,8 @@ def construct_word_tags_counts(training_words):
 
 def predict(validation_words, d, default_tag=None):
     predictions = []
-    for word in validation_words:
+    validation_words_lower = [w.lower() for w in validation_words]
+    for word in validation_words_lower:
         try:
             prediction = d[word].most_common(n=1)[0][0]
         except KeyError:
