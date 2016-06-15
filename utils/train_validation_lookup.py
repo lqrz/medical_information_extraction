@@ -106,11 +106,14 @@ if __name__ == '__main__':
 
     cm = Metrics.compute_confusion_matrix(y_true=validation_tags, y_pred=predictions, labels=labels)
     df = pd.DataFrame(cm, index=labels, columns=labels)
-    cm_filename = get_lookup_path('lookup_confusion_matrix')
+    cm_filename = get_lookup_path(''.join(['lookup_confusion_matrix',
+                                           '_sampling' if args['with_sampling'] else '_no_sampling']))
     plot_confusion_matrix(cm, labels, output_filename=cm_filename, title='Lookup confusion matrix')
 
     results_df = pd.DataFrame(results_noaverage, index=labels)
-    results_filename = get_lookup_path('lookup_results.csv')
+    results_filename = get_lookup_path(''.join(['lookup_results',
+                                               '_sampling' if args['with_sampling'] else '_no_sampling'
+                                               ,'.csv']))
     results_df.to_csv(results_filename)
 
     correct = np.where(map(lambda (x,y): x==y, zip(validation_tags, predictions)))[0].__len__()
