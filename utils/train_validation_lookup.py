@@ -4,10 +4,14 @@ from itertools import chain
 from collections import Counter
 import numpy as np
 import argparse
+import pandas as pd
 
 from data.dataset import Dataset
 from metrics import Metrics
 from empirical_distribution import Empirical_distribution
+from data import get_classification_report_labels
+from plot_confusion_matrix import plot_confusion_matrix
+from analysis import get_lookup_path
 
 def construct_word_tags_counts(training_words):
     d = dict()
@@ -95,6 +99,20 @@ if __name__ == '__main__':
     results_micro = Metrics.compute_all_metrics(y_true=validation_tags, y_pred=predictions, average='micro')
     results_macro = Metrics.compute_all_metrics(y_true=validation_tags, y_pred=predictions, average='macro')
 
+    labels = get_classification_report_labels()
+    labels = labels + [default_tag]
+    results_noaverage = Metrics.compute_all_metrics(y_true=validation_tags, y_pred=predictions, average=None,
+                                                    labels=labels)
+
+    cm = Metrics.compute_confusion_matrix(y_true=validation_tags, y_pred=predictions, labels=labels)
+    df = pd.DataFrame(cm, index=labels, columns=labels)
+    cm_filename = get_lookup_path('lookup_confusion_matrix')
+    plot_confusion_matrix(cm, labels, output_filename=cm_filename, title='Lookup confusion matrix')
+
+    results_df = pd.DataFrame(results_noaverage, index=labels)
+    results_filename = get_lookup_path('lookup_results.csv')
+    results_df.to_csv(results_filename)
+
     correct = np.where(map(lambda (x,y): x==y, zip(validation_tags, predictions)))[0].__len__()
     errors = validation_tags.__len__() - correct
 
@@ -106,5 +124,9 @@ if __name__ == '__main__':
 
     print '##MACRO average'
     print results_macro
+
+    print '##No average'
+    print results_noaverage
+
 
     print '...End'
