@@ -12,6 +12,7 @@ import numpy as np
 import time
 from itertools import chain
 from collections import Counter
+import pandas as pd
 
 from utils.metrics import Metrics
 from data import get_w2v_training_data_vectors
@@ -311,22 +312,22 @@ def determine_key_indexes(label2index, word2index):
 
     return pad_tag, unk_tag, pad_word
 
-def filter_tags_to_predict(x_train, y_train, x_test, y_test, label2index, index2label, tags):
+def filter_tags_to_predict(y_train, y_valid, index2label, tags):
 
     default_tag = '<OTHER>'
 
     y_train_labels = []
-    y_test_labels = []
+    y_valid_labels = []
 
     #recurrent nets use lists of lists.
     if isinstance(y_train[0], list):
         for i, sent in enumerate(y_train):
             y_train_labels.append(map(lambda x: index2label[x], sent))
-        for i, sent in enumerate(y_test):
-            y_test_labels.append(map(lambda x: index2label[x], sent))
+        for i, sent in enumerate(y_valid):
+            y_valid_labels.append(map(lambda x: index2label[x], sent))
     else:
         y_train_labels = map(lambda x: index2label[x], y_train)
-        y_test_labels = map(lambda x: index2label[x], y_test)
+        y_valid_labels = map(lambda x: index2label[x], y_valid)
 
     #recreate indexes so they are continuous and start from 0.
     new_index2label = dict()
@@ -353,14 +354,14 @@ def filter_tags_to_predict(x_train, y_train, x_test, y_test, label2index, index2
     if isinstance(y_train[0], list):
         for i, sent in enumerate(y_train_labels):
             y_train[i] = map(replace_tag, sent)
-        for i, sent in enumerate(y_test_labels):
-            y_test[i] = map(replace_tag, sent)
+        for i, sent in enumerate(y_valid_labels):
+            y_valid[i] = map(replace_tag, sent)
     else:
         y_train = map(replace_tag, y_train_labels)
-        y_test = map(replace_tag, y_test_labels)
+        y_valid = map(replace_tag, y_valid_labels)
 
     #im returning the params, but python is gonna change the outer param anyways.
-    return y_train, y_test, new_label2index, new_index2label
+    return y_train, y_valid, new_label2index, new_index2label
 
 def get_aggregated_tags(y_train, y_valid, mapping, index2label):
 
@@ -458,8 +459,8 @@ def use_testing_dataset(nn_class,
 
     if tags:
         tags = get_param(tags)
-        y_train, y_test, label2index, index2label = \
-            filter_tags_to_predict(x_train, y_train, x_test, y_test, label2index, index2label, tags)
+        y_train, y_valid, label2index, index2label = \
+            filter_tags_to_predict(y_train, y_valid, index2label, tags)
 
     if meta_tags:
         logger.info('Using aggregated tags')
@@ -473,7 +474,11 @@ def use_testing_dataset(nn_class,
 
     pad_tag, unk_tag, pad_word = determine_key_indexes(label2index, word2index)
 
-    na_tag = label2index['NA']
+    try:
+        # if im filtering tags, there might not be an "NA" tag
+        na_tag = label2index['NA']
+    except KeyError:
+        na_tag = None
 
     params = {
         'x_train': x_train,
@@ -623,25 +628,38 @@ if __name__ == '__main__':
     train_y_pred = list(chain(*[pred for _, _, pred, _ in results.values()]))
     test_y_pred = list(chain(*[pred for _, _, _, pred in results.values()]))
 
-    results_micro = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, average='micro')
-    results_macro = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, average='macro')
-
-    if args['plot']:
-        if args['meta_tags']:
-            labels_list = get_aggregated_classification_report_labels()
+    if args['meta_tags']:
+        labels_list = get_aggregated_classification_report_labels()
+    else:
+        if args['tags']:
+            labels_list = list(set(valid_y_true))
         else:
             labels_list = get_classification_report_labels()
+
+    if labels_list.__len__() > 2:
+        results_micro = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, average='micro')
+        results_macro = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, average='macro')
+
+        print 'MICRO results'
+        print results_micro
+
+        print 'MACRO results'
+        print results_macro
+
+    assert labels_list is not None
+
+    results_noaverage = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, labels=labels_list, average=None)
+
+    print '...Saving no-averaged results to CSV file'
+    df = pd.DataFrame(results_noaverage, index=labels_list)
+    df.to_csv(get_output_path('no_average_results.csv'))
+
+    print 'No-average results'
+    print results_noaverage
+
+    if args['plot']:
         cm = Metrics.compute_confusion_matrix(valid_y_true, valid_y_pred, labels=labels_list)
         plot_confusion_matrix(cm, labels=labels_list, output_filename=get_output_path('confusion_matrix.png'))
-
-        results_noaverage = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, labels=labels_list, average=None)
-        print 'No-average results'
-        print results_noaverage
-
-    print 'MICRO results'
-    print results_micro
-    print 'MACRO results'
-    print results_macro
 
     print '...Saving predictions to file'
     save_predictions_to_file(train_y_pred, valid_y_pred, test_y_pred, get_output_path)
