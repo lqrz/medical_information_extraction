@@ -11,7 +11,6 @@ import argparse
 import numpy as np
 import time
 from itertools import chain
-from collections import Counter
 import pandas as pd
 
 from utils.metrics import Metrics
@@ -38,9 +37,10 @@ from data import get_classification_report_labels
 from data import get_hierarchical_mapping
 from data import get_aggregated_classification_report_labels
 from utils.get_word_tenses import get_training_set_tenses, get_validation_set_tenses, get_testing_set_tenses
-
 from multi_feature_type_hidden_layer_context_window_net import Multi_Feature_Type_Hidden_Layer_Context_Window_Net
 # from multi_feature_type_old import Multi_Feature_Type_Hidden_Layer_Context_Window_Net
+from utils.utils import Others
+from utils.utils import NeuralNetwork
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -88,6 +88,7 @@ def parse_arguments():
     parser.add_argument('--aggregated', action='store_true', default=False)
     parser.add_argument('--normalizesamples', action='store_true', default=False)
     parser.add_argument('--negativesampling', action='store_true', default=False)
+    parser.add_argument('--lr', action='store', type=float, default=False)
 
     #parse arguments
     arguments = parser.parse_args()
@@ -118,6 +119,7 @@ def parse_arguments():
     args['meta_tags'] = arguments.aggregated
     args['norm_samples'] = arguments.normalizesamples
     args['negative_sampling'] = arguments.negativesampling
+    args['learning_rate'] = arguments.lr
 
     return args
 
@@ -312,56 +314,6 @@ def determine_key_indexes(label2index, word2index):
 
     return pad_tag, unk_tag, pad_word
 
-def filter_tags_to_predict(y_train, y_valid, index2label, tags):
-
-    default_tag = '<OTHER>'
-
-    y_train_labels = []
-    y_valid_labels = []
-
-    #recurrent nets use lists of lists.
-    if isinstance(y_train[0], list):
-        for i, sent in enumerate(y_train):
-            y_train_labels.append(map(lambda x: index2label[x], sent))
-        for i, sent in enumerate(y_valid):
-            y_valid_labels.append(map(lambda x: index2label[x], sent))
-    else:
-        y_train_labels = map(lambda x: index2label[x], y_train)
-        y_valid_labels = map(lambda x: index2label[x], y_valid)
-
-    #recreate indexes so they are continuous and start from 0.
-    new_index2label = dict()
-    new_label2index = dict()
-    for i,tag in enumerate(tags):
-        new_label2index[tag] = i
-        new_index2label[i] = tag
-
-    #add the default tag
-    new_label2index[default_tag] = new_index2label.__len__()
-    new_index2label[new_index2label.__len__()] = default_tag
-
-    # tags_indexes = map(lambda x: label2index[x], tags)
-
-    def replace_tag(tag):
-        new_index = None
-        try:
-            new_index = new_label2index[tag]
-        except KeyError:
-            new_index = new_label2index[default_tag]
-
-        return new_index
-
-    if isinstance(y_train[0], list):
-        for i, sent in enumerate(y_train_labels):
-            y_train[i] = map(replace_tag, sent)
-        for i, sent in enumerate(y_valid_labels):
-            y_valid[i] = map(replace_tag, sent)
-    else:
-        y_train = map(replace_tag, y_train_labels)
-        y_valid = map(replace_tag, y_valid_labels)
-
-    #im returning the params, but python is gonna change the outer param anyways.
-    return y_train, y_valid, new_label2index, new_index2label
 
 def get_aggregated_tags(y_train, y_valid, mapping, index2label):
 
@@ -380,20 +332,6 @@ def get_aggregated_tags(y_train, y_valid, mapping, index2label):
     y_aggregated_valid_indexes = map(lambda x: aggregated_label2index[x], y_aggregated_valid_labels)
 
     return y_aggregated_train_indexes, y_aggregated_valid_indexes, aggregated_label2index, aggregated_index2label
-
-def perform_sample_normalization(x_train, y_train):
-    counts = Counter(y_train)
-
-    higher_count = counts.most_common(n=1)[0][1]
-
-    for tag, cnt in counts.iteritems():
-        n_to_add = higher_count - cnt
-        tag_idxs = np.where(np.array(y_train)==tag)[0]
-        samples_to_add = np.random.choice(tag_idxs, n_to_add, replace=True)
-        x_train.extend(np.array(x_train)[samples_to_add].tolist())
-        y_train.extend(np.array(y_train)[samples_to_add].tolist())
-
-    return x_train, y_train
 
 def use_testing_dataset(nn_class,
                         hidden_f,
@@ -436,7 +374,7 @@ def use_testing_dataset(nn_class,
 
     if normalize_samples:
         logger.info('Normalizing number of samples')
-        x_train, y_train = perform_sample_normalization(x_train, y_train)
+        x_train, y_train = NeuralNetwork.perform_sample_normalization(x_train, y_train)
 
     x_train_sent_nr_feats = None
     x_valid_sent_nr_feats = None
@@ -460,7 +398,7 @@ def use_testing_dataset(nn_class,
     if tags:
         tags = get_param(tags)
         y_train, y_valid, label2index, index2label = \
-            filter_tags_to_predict(y_train, y_valid, index2label, tags)
+            Others.filter_tags_to_predict(y_train, y_valid, index2label, tags)
 
     if meta_tags:
         logger.info('Using aggregated tags')
@@ -519,7 +457,7 @@ def use_testing_dataset(nn_class,
     nn_trainer = nn_class(**params)
 
     logger.info(' '.join(['Training Neural network', 'with' if regularization else 'without', 'regularization']))
-    nn_trainer.train(learning_rate=.01, batch_size=minibatch_size, max_epochs=max_epochs, save_params=False, **kwargs)
+    nn_trainer.train(batch_size=minibatch_size, max_epochs=max_epochs, save_params=False, **kwargs)
 
     logger.info('Predicting on Training set')
     nnet_results = nn_trainer.predict(on_training_set=True, **kwargs)
