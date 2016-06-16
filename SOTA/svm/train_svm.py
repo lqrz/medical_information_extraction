@@ -79,6 +79,8 @@ if __name__ == '__main__':
     tags = args['tags']
     apply_tanh = args['tanh']
 
+    print ' '.join(['Not' if not apply_tanh else '', 'Applying tanh'])
+
     w2v_vectors, w2v_model, w2v_dims = load_w2v_model_and_vectors_cache(args)
 
     feat_positions = Multi_Feature_Type_Hidden_Layer_Context_Window_Net.get_features_crf_position(multi_feats)
