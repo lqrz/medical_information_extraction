@@ -5,9 +5,10 @@ import numpy as np
 import time
 import pandas
 from ggplot import *
+from collections import Counter
+
 
 class Word2Vec:
-
     def __init__(self):
         pass
 
@@ -133,3 +134,75 @@ class NeuralNetwork:
     @staticmethod
     def relu(x):
         return T.nnet.relu(x)
+
+    @staticmethod
+    def perform_sample_normalization(x_train, y_train):
+        counts = Counter(y_train)
+
+        higher_count = counts.most_common(n=1)[0][1]
+
+        for tag, cnt in counts.iteritems():
+            n_to_add = higher_count - cnt
+            tag_idxs = np.where(np.array(y_train) == tag)[0]
+            samples_to_add = np.random.choice(tag_idxs, n_to_add, replace=True)
+            x_train.extend(np.array(x_train)[samples_to_add].tolist())
+            y_train.extend(np.array(y_train)[samples_to_add].tolist())
+
+        return x_train, y_train
+
+
+class Others:
+    def __init__(self):
+        pass
+
+    @staticmethod
+    def filter_tags_to_predict(y_train, y_valid, index2label, tags):
+
+        default_tag = '<OTHER>'
+
+        y_train_labels = []
+        y_valid_labels = []
+
+        # recurrent nets use lists of lists.
+        if isinstance(y_train[0], list):
+            for i, sent in enumerate(y_train):
+                y_train_labels.append(map(lambda x: index2label[x], sent))
+            for i, sent in enumerate(y_valid):
+                y_valid_labels.append(map(lambda x: index2label[x], sent))
+        else:
+            y_train_labels = map(lambda x: index2label[x], y_train)
+            y_valid_labels = map(lambda x: index2label[x], y_valid)
+
+        # recreate indexes so they are continuous and start from 0.
+        new_index2label = dict()
+        new_label2index = dict()
+        for i, tag in enumerate(tags):
+            new_label2index[tag] = i
+            new_index2label[i] = tag
+
+        # add the default tag
+        new_label2index[default_tag] = new_index2label.__len__()
+        new_index2label[new_index2label.__len__()] = default_tag
+
+        # tags_indexes = map(lambda x: label2index[x], tags)
+
+        def replace_tag(tag):
+            new_index = None
+            try:
+                new_index = new_label2index[tag]
+            except KeyError:
+                new_index = new_label2index[default_tag]
+
+            return new_index
+
+        if isinstance(y_train[0], list):
+            for i, sent in enumerate(y_train_labels):
+                y_train[i] = map(replace_tag, sent)
+            for i, sent in enumerate(y_valid_labels):
+                y_valid[i] = map(replace_tag, sent)
+        else:
+            y_train = map(replace_tag, y_train_labels)
+            y_valid = map(replace_tag, y_valid_labels)
+
+        # im returning the params, but python is gonna change the outer param anyways.
+        return y_train, y_valid, new_label2index, new_index2label
