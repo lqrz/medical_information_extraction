@@ -8,8 +8,10 @@ import os
 import cPickle
 from sklearn.svm import SVC
 import numpy as np
+import argparse
 
 from SOTA.neural_network.A_neural_network import A_neural_network
+from SOTA.neural_network.multi_feature_type_hidden_layer_context_window_net import Multi_Feature_Type_Hidden_Layer_Context_Window_Net
 from utils.utils import Others
 from utils.utils import NeuralNetwork
 from utils.utils import Word2Vec
@@ -35,19 +37,48 @@ def load_w2v_model_and_vectors_cache(args):
 
     return w2v_vectors, w2v_model, w2v_dims
 
+def parse_arguments():
+    parser = argparse.ArgumentParser(description='An SVM baseline')
+
+    group_w2v = parser.add_mutually_exclusive_group(required=True)
+    group_w2v.add_argument('--w2vvectorscache', action='store', type=str)
+    group_w2v.add_argument('--w2vmodel', action='store', type=str, default=None)
+
+    parser.add_argument('--normalizesamples', action='store_true', default=False)
+    parser.add_argument('--window', action='store', type=int, required=True)
+    parser.add_argument('--tags', action='store', type=str, default=None)
+
+    parser.add_argument('--multifeats', action='store', type=str, nargs='*', default=[],
+                           choices=Multi_Feature_Type_Hidden_Layer_Context_Window_Net.FEATURE_MAPPING.keys())
+
+    arguments = parser.parse_args()
+    args = dict()
+
+    args['window_size'] = arguments.window
+    args['norm_samples'] = arguments.normalizesamples
+    args['multi_features'] = arguments.multifeats
+    args['tags'] = arguments.tags
+    args['w2v_vectors_cache'] = arguments.w2vvectorscache
+    args['w2v_model_name'] = arguments.w2vmodel
+
+    return args
+
 if __name__ == '__main__':
     add_tags = []
     add_feats = []
     add_words = ['<PAD>']
-    n_window = 7
     feat_positions = []
-    normalize_samples = False
-    multi_feats = []
-    tags = None
 
-    args = dict()
-    args['w2v_vectors_cache'] = 'googlenews_representations_train_True_valid_True_test_False.p'
+    args = parse_arguments()
+
+    n_window = args['window_size']
+    multi_feats = args['multi_features']
+    normalize_samples = args['norm_samples']
+    tags = args['tags']
+
     w2v_vectors, w2v_model, w2v_dims = load_w2v_model_and_vectors_cache(args)
+
+    feat_positions = Multi_Feature_Type_Hidden_Layer_Context_Window_Net.get_features_crf_position(multi_feats)
 
     x_train_idxs, y_train, x_train_feats, \
     x_valid_idxs, y_valid, x_valid_feats, \
@@ -61,7 +92,7 @@ if __name__ == '__main__':
 
     if normalize_samples:
         print('Normalizing number of samples')
-        x_train_idxs, y_train_idxs = NeuralNetwork.perform_sample_normalization(x_train_idxs, y_train_idxs)
+        x_train_idxs, y_train_idxs = NeuralNetwork.perform_sample_normalization(x_train_idxs, y_train)
 
     x_train_sent_nr_feats = None
     x_valid_sent_nr_feats = None
