@@ -748,7 +748,7 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
 
         hidden_activations = []
 
-        last_valid_cost = np.inf
+        last_valid_errors = np.inf
 
         for epoch_index in range(max_epochs):
             start = time.time()
@@ -803,11 +803,11 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
                 valid_error += errors_output
                 valid_predictions.append(np.asscalar(pred))
 
-            if valid_cost > last_valid_cost:
-                logger.info('Changing learning rate from %f to %f' % (learning_rate, learning_rate/10))
-                learning_rate /= 10
+            if valid_error > last_valid_errors:
+                logger.info('Changing learning rate from %f to %f' % (learning_rate, .5*learning_rate))
+                learning_rate *= .5
 
-            last_valid_cost = valid_cost
+            last_valid_errors = valid_error
 
             train_costs_list.append(train_cost)
             train_errors_list.append(train_errors)
