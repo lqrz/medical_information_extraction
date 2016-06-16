@@ -89,6 +89,7 @@ def parse_arguments():
     parser.add_argument('--normalizesamples', action='store_true', default=False)
     parser.add_argument('--negativesampling', action='store_true', default=False)
     parser.add_argument('--lr', action='store', type=float, default=False)
+    parser.add_argument('--hidden', action='store', type=int, default=False)
 
     #parse arguments
     arguments = parser.parse_args()
@@ -120,6 +121,7 @@ def parse_arguments():
     args['norm_samples'] = arguments.normalizesamples
     args['negative_sampling'] = arguments.negativesampling
     args['learning_rate'] = arguments.lr
+    args['n_hidden'] = arguments.hidden
 
     return args
 
@@ -140,6 +142,10 @@ def check_arguments_consistency(args):
         if np.max(args['region_sizes']) > args['window_size']:
             logger.error('Region size higher than window size.')
             exit()
+
+    if args['nn_name'] == 'two_hidden_cw' and not args['n_hidden']:
+        logger.error('Must specify a hidden layer size for a two hidden layer nnet.')
+        exit()
 
 def perform_leave_one_out(nn_class,
                           hidden_f,
@@ -451,7 +457,8 @@ def use_testing_dataset(nn_class,
         'region_sizes': args['region_sizes'],
         'features_to_use': args['multi_features'],
         'static': args['static'],
-        'na_tag': na_tag
+        'na_tag': na_tag,
+        'n_hidden': args['n_hidden']
     }
 
     nn_trainer = nn_class(**params)

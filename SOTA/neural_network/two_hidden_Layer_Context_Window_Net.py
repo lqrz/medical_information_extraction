@@ -29,25 +29,19 @@ class Two_Hidden_Layer_Context_Window_Net(A_neural_network):
     def __init__(self,
                  hidden_activation_f,
                  out_activation_f,
+                 n_hidden,
                  regularization=False,
                  **kwargs):
 
         super(Two_Hidden_Layer_Context_Window_Net, self).__init__(**kwargs)
 
-        # self.x_train = x_train
-        # self.y_train = y_train
-        # self.x_valid = x_test
-        # self.y_valid = y_test
-
-        # self.n_samples = self.x_train.shape[0]
-
         self.hidden_activation_f1 = hidden_activation_f
         self.hidden_activation_f2 = utils.NeuralNetwork.relu
         self.out_activation_f = out_activation_f
-        # self.pretrained_embeddings = embeddings
+
         self.regularization = regularization
 
-        # self.n_emb = None
+        self.n_hidden = n_hidden
 
         self.params = OrderedDict()
 
@@ -84,9 +78,6 @@ class Two_Hidden_Layer_Context_Window_Net(A_neural_network):
                        static=False,
                        use_autoencoded_weight=False,
                        **kwargs):
-
-        #TODO: make param
-        self.n_hidden = 100
 
         train_x = theano.shared(value=np.array(self.x_train, dtype=INT), name='train_x', borrow=True)
         train_y = theano.shared(value=np.array(self.y_train, dtype=INT), name='train_y', borrow=True)
