@@ -47,6 +47,7 @@ def parse_arguments():
     parser.add_argument('--normalizesamples', action='store_true', default=False)
     parser.add_argument('--window', action='store', type=int, required=True)
     parser.add_argument('--tags', action='store', type=str, default=None)
+    parser.add_argument('--tanh', action='store_true', default=False)
 
     parser.add_argument('--multifeats', action='store', type=str, nargs='*', default=[],
                            choices=Multi_Feature_Type_Hidden_Layer_Context_Window_Net.FEATURE_MAPPING.keys())
@@ -60,6 +61,7 @@ def parse_arguments():
     args['tags'] = arguments.tags
     args['w2v_vectors_cache'] = arguments.w2vvectorscache
     args['w2v_model_name'] = arguments.w2vmodel
+    args['tanh'] = arguments.tanh
 
     return args
 
@@ -75,6 +77,7 @@ if __name__ == '__main__':
     multi_feats = args['multi_features']
     normalize_samples = args['norm_samples']
     tags = args['tags']
+    apply_tanh = args['tanh']
 
     w2v_vectors, w2v_model, w2v_dims = load_w2v_model_and_vectors_cache(args)
 
@@ -123,11 +126,19 @@ if __name__ == '__main__':
 
     x_train = []
     for sample_idxs in x_train_idxs:
-        x_train.append(pretrained_embeddings[sample_idxs].reshape(-1,))
+        if apply_tanh:
+            vector = np.tanh(pretrained_embeddings[sample_idxs].reshape(-1,))
+        else:
+            vector = pretrained_embeddings[sample_idxs].reshape(-1,)
+        x_train.append(vector)
 
     x_valid = []
     for sample_idxs in x_valid_idxs:
-        x_valid.append(pretrained_embeddings[sample_idxs].reshape(-1,))
+        if apply_tanh:
+            vector = np.tanh(pretrained_embeddings[sample_idxs].reshape(-1, ))
+        else:
+            vector = pretrained_embeddings[sample_idxs].reshape(-1,)
+        x_valid.append(vector)
 
     svm_model = SVC()
 
