@@ -529,6 +529,7 @@ class Two_Hidden_Layer_Context_Window_Net(A_neural_network):
             valid_cost = 0
             valid_predictions = []
             valid_cross_entropy = 0
+            last_validation_error = np.inf # for learning rate decay
             for x_sample, y_sample in zip(self.x_valid, self.y_valid):
                 if validation_cost:
                     cost_output, errors_output, pred = train_predict_with_cost(x_sample, [y_sample])
@@ -540,6 +541,12 @@ class Two_Hidden_Layer_Context_Window_Net(A_neural_network):
                 valid_cost += cost_output
                 valid_error += errors_output
                 valid_predictions.append(np.asscalar(pred))
+
+            if valid_error > last_validation_error:
+                logger.info('Changing learning rate from %f to %f' % (learning_rate, .5*learning_rate))
+                learning_rate *= .5
+
+            last_validation_error = valid_error
 
             train_costs_list.append(train_cost)
             train_errors_list.append(train_errors)
