@@ -1,11 +1,12 @@
 __author__ = 'root'
 
-import data
 import zipfile
 from collections import defaultdict
 import io
 from nltk import sent_tokenize
 import re
+
+import data
 
 class Dataset:
 
@@ -271,7 +272,32 @@ class Dataset:
                                                       separator=' ',
                                                       include_tag=False)
 
+    @staticmethod
+    def get_wsj_dataset():
+        treebank_file = open(data.get_wsj_treebank_filename(), 'rb')
+
+        sentence_words = []
+        sentence_tags = []
+
+        sent_count = 0
+        for sent in treebank_file:
+
+            if sent.startswith('(TOP'):
+                sent_count += 1
+                tokens = [m[1] for m in re.findall(r'(\")([^\s]+)(\")', sent)]
+                tags = [m[0] for m in re.findall(r'((?<=\()[\-A-Z\-\$\|\#]+)(?=\s((\")([^\s]+)(\")))', sent)]
+
+                assert tokens.__len__() == tags.__len__()
+
+                sentence_words.append(tokens)
+                sentence_tags.append(tags)
+
+        return sentence_words, sentence_tags
+
 if __name__ == '__main__':
+
+    Dataset.get_wsj_dataset()
+
     training_data, sentences, document_sentence_words, document_sentence_tags = \
         Dataset.get_clef_training_dataset()
 
