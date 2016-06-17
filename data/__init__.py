@@ -34,3 +34,6 @@ def get_aggregated_classification_report_labels():
 
 def get_hierarchical_mapping():
     return cPickle.load(open(pkg_resources.resource_filename('data', 'params/tag_mapping/mapping.p'),'rb'))
+
+def get_wsj_treebank_filename():
+    return pkg_resources.resource_filename('data', 'wsj/wsj01-21-right-branching-w-postags-m40.txt')
