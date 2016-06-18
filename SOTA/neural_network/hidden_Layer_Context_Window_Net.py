@@ -148,6 +148,10 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
             elif kwargs['nce']:
                 logger.info('Training with SGD binary classification with noise')
                 self.train_with_sgd_nce(**kwargs)
+            elif kwargs['n_hidden']:
+                logger.info('Training with SGD with extra matrix')
+                # self.train_with_sgd(**kwargs)
+                self.train_with_sgd_with_extra_matrix(**kwargs)
             else:
                 logger.info('Training with SGD and no multi features')
                 # self.train_with_sgd(**kwargs)
@@ -1133,20 +1137,21 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
 
         return True
 
-    def train_with_sgd_with_extra_matrix(self, learning_rate=0.01, max_epochs=100,
-                       alpha_L1_reg=0.001, alpha_L2_reg=0.01,
-                       save_params=False, use_scan=False, plot=False,
-                       validation_cost=True,
-                       static=False,
-                       use_autoencoded_weight=False,
-                       **kwargs):
+    def train_with_sgd_with_extra_matrix(self,
+                                         n_hidden,
+                                         learning_rate,
+                                         max_epochs,
+                                         alpha_L2_reg=0.01,
+                                         save_params=False,
+                                         plot=False,
+                                         validation_cost=True,
+                                         static=False,
+                                         use_autoencoded_weight=False,
+                                         **kwargs):
         '''
         Adds an extra weight matrix (W1). The word embeddings are now W0.
         The hidden layer is computed as: h(T.dot(W0[idxs], W1) + b1)
         '''
-
-        #TODO: make param
-        self.n_hidden = 50
 
         train_x = theano.shared(value=np.array(self.x_train, dtype=INT), name='train_x', borrow=True)
         train_y = theano.shared(value=np.array(self.y_train, dtype=INT), name='train_y', borrow=True)
@@ -1163,7 +1168,7 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
         w0 = theano.shared(value=np.array(self.pretrained_embeddings).astype(dtype=theano.config.floatX),
                            name='w1', borrow=True)
 
-        w1 = theano.shared(value=utils.NeuralNetwork.initialize_weights(n_in=self.n_window*self.n_emb, n_out=self.n_hidden, function='tanh').
+        w1 = theano.shared(value=utils.NeuralNetwork.initialize_weights(n_in=self.n_window*self.n_emb, n_out=n_hidden, function='tanh').
                            astype(dtype=theano.config.floatX),
                            name='w1', borrow=True)
 
@@ -1172,10 +1177,10 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
             w2 = theano.shared(value=cPickle.load(open(self.get_output_path('autoencoded_w2.p'), 'rb')).astype(dtype=theano.config.floatX),
                                name='w2', borrow=True)
         else:
-            w2 = theano.shared(value=utils.NeuralNetwork.initialize_weights(n_in=self.n_hidden, n_out=self.n_out, function='tanh').
+            w2 = theano.shared(value=utils.NeuralNetwork.initialize_weights(n_in=n_hidden, n_out=self.n_out, function='tanh').
                                astype(dtype=theano.config.floatX),
                                name='w2', borrow=True)
-        b1 = theano.shared(value=np.zeros((self.n_hidden)).astype(dtype=theano.config.floatX), name='b1', borrow=True)
+        b1 = theano.shared(value=np.zeros((n_hidden)).astype(dtype=theano.config.floatX), name='b1', borrow=True)
         b2 = theano.shared(value=np.zeros(self.n_out).astype(dtype=theano.config.floatX), name='b2', borrow=True)
 
         # word embeddings indexed
