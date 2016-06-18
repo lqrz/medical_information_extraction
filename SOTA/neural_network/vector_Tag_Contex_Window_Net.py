@@ -396,12 +396,6 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
                     self.prev_preds.set_value(next_preds_output)
                     valid_cross_entropy += get_cross_entropy(word_cw, [word_tag])
 
-            if valid_error > last_valid_errors:
-                logger.info('Changing learning rate from %f to %f' % (learning_rate, learning_rate*.5))
-                learning_rate *= .5
-
-            last_valid_errors = valid_error
-
             train_costs_list.append(epoch_cost)
             train_errors_list.append(epoch_errors)
             valid_costs_list.append(valid_cost)
@@ -424,6 +418,12 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
             end = time.time()
             logger.info('Epoch %d Train_cost: %f Train_errors: %d Valid_cost: %f Valid_errors: %d F1-score: %f Took: %f'
                         % (epoch_index + 1, epoch_cost, epoch_errors, valid_cost, valid_error, f1_score, end - start))
+
+            if valid_error > last_valid_errors:
+                logger.info('Changing learning rate from %f to %f' % (learning_rate, learning_rate * .5))
+                learning_rate *= .5
+
+            last_valid_errors = valid_error
 
         if plot:
             actual_time = str(time.time())
@@ -672,12 +672,6 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
                     self.prev_preds.set_value(next_preds_output)
                     valid_cross_entropy += get_cross_entropy(word_cw, [word_tag])
 
-            if valid_error > last_valid_errors:
-                logger.info('Changing learning rate from %f to %f' % (learning_rate, learning_rate * .5))
-                learning_rate *= .5
-
-            last_valid_errors = valid_error
-
             train_costs_list.append(epoch_cost)
             train_errors_list.append(epoch_errors)
             valid_costs_list.append(valid_cost)
@@ -700,6 +694,12 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
             end = time.time()
             logger.info('Epoch %d Train_cost: %f Train_errors: %d Valid_cost: %f Valid_errors: %d F1-score: %f Took: %f'
                         % (epoch_index + 1, epoch_cost, epoch_errors, valid_cost, valid_error, f1_score, end - start))
+
+            if valid_error > last_valid_errors:
+                logger.info('Changing learning rate from %f to %f' % (learning_rate, learning_rate * .5))
+                learning_rate *= .5
+
+            last_valid_errors = valid_error
 
         if plot:
             actual_time = str(time.time())
