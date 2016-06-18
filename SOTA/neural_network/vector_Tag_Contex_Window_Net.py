@@ -61,8 +61,12 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
             self.train_with_minibatch(**kwargs)
         else:
             # train with SGD
-            logger.info('Training with SGD')
-            self.train_with_sgd(**kwargs)
+            if kwargs['n_hidden']:
+                logger.info('Training with SGD two hidden layer')
+                self.train_with_sgd_two_layers(**kwargs)
+            else:
+                logger.info('Training with SGD one hidden layer')
+                self.train_with_sgd_one_layer(**kwargs)
 
         return True
 
@@ -83,19 +87,25 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
 
             return [pred,result,prev_preds,next_preds,w_x,w_t]
 
-    # def forward_pass_matrix(self, weight_x, weight_t, bias_1, weight_2, bias_2):
-    #     # ret = T.eq(idxs, self.pad_word).nonzero()[0]
-    #     # prev_preds = T.set_subtensor(prev_preds[ret], 5, inplace=False)
-    #     prev_rep = weight_t.reshape(shape=(self.tag_dim*self.n_window,))
-    #     # return [prev_preds,weight_x]
-    #     w_x_res = weight_x.reshape((self.n_emb*self.n_window,))
-    #     h = self.hidden_activation_f(T.concatenate([w_x_res,prev_rep])+bias_1)
-    #     result = self.out_activation_f(T.dot(h, weight_2)+bias_2)
-    #     pred = T.argmax(result)
-    #
-    #     return [pred,result]
+    def sgd_forward_pass_two_layers(self, idxs, n_tokens):
+            idxs_to_replace = T.eq(idxs, self.pad_word).nonzero()[0]
+            prev_preds = T.set_subtensor(self.prev_preds[idxs_to_replace], self.pad_tag)
+            w_t = self.params['wt'][prev_preds]
+            w_x = self.params['w1'][idxs]
+            prev_rep = w_t.reshape(shape=(n_tokens,self.tag_dim*self.n_window))
+            # return [prev_preds,weight_x]
+            h1 = self.hidden_activation_f(T.concatenate([w_x.reshape(shape=(n_tokens,self.n_emb*self.n_window)),prev_rep], axis=1)+self.params['b1'])
+            h2 = self.hidden_activation_f(T.dot(h1,self.params['w2']) + self.params['b2'])
+            result = self.out_activation_f(T.dot(h2, self.params['w3']) + self.params['b3'])
+            pred = T.argmax(result)
 
-    def train_with_sgd(self, learning_rate=0.01, max_epochs=100,
+            next_preds = T.set_subtensor(prev_preds[self.n_window/2],pred)
+            next_preds = T.set_subtensor(next_preds[:-1],next_preds[1:])
+            next_preds = T.set_subtensor(next_preds[-((self.n_window/2)+1):],self.unk_tag)
+
+            return [pred,result,prev_preds,next_preds,w_x,w_t]
+
+    def train_with_sgd_one_layer(self, learning_rate=0.01, max_epochs=100,
               alpha_L1_reg=0.001, alpha_L2_reg=0.01, save_params=False, use_grad_means=False, plot=False, **kwargs):
 
         logger.info('Mean gradients: '+str(use_grad_means))
@@ -300,6 +310,274 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
         #                             n_tokens: np.int32(1)
         # })
         # test(0)
+
+        train = theano.function(inputs=[idxs, y],
+                                outputs=[cost,errors,prev_preds,pred,next_preds],
+                                updates=updates,
+                                givens={
+                                    n_tokens: 1
+                                })
+
+        train_predict = theano.function(inputs=[idxs, y],
+                                        outputs=[cost, errors, y_predictions, next_preds],
+                                        updates=[],
+                                        givens={
+                                            n_tokens: 1
+                                        })
+
+        get_cross_entropy = theano.function(inputs=[idxs, y],
+                                            outputs=mean_cross_entropy,
+                                            givens={
+                                                n_tokens: 1
+                                            })
+
+        if self.regularization:
+            train_l2_penalty = theano.function(inputs=[],
+                                               outputs=[L2_w1, L2_w2, L2_wt],
+                                               givens=[])
+
+        flat_true = list(chain(*self.y_valid))
+
+        # plotting purposes
+        train_costs_list = []
+        train_errors_list = []
+        valid_costs_list = []
+        valid_errors_list = []
+        precision_list = []
+        recall_list = []
+        f1_score_list = []
+        l2_w1_list = []
+        l2_w2_list = []
+        l2_wt_list = []
+        train_cross_entropy_list = []
+        valid_cross_entropy_list = []
+
+        for epoch_index in range(max_epochs):
+            start = time.time()
+            epoch_cost = 0
+            epoch_errors = 0
+            epoch_l2_w1 = 0
+            epoch_l2_w2 = 0
+            epoch_l2_wt = 0
+            train_cross_entropy = 0
+            # predicted_tags = np.array(np.concatenate(([self.pad_tag]*(n_window/2),[self.unk_tag]*((n_window/2)+1))), dtype=INT)
+            for x_train_sentence, y_train_sentence in zip(self.x_train, self.y_train):
+                self.prev_preds.set_value(np.array([self.unk_tag] * self.n_window, dtype=INT))
+                # train_x_sample = train_x.get_value()[i]
+                # idxs_to_replace = np.where(train_x_sample==self.pad_word)
+                # predicted_tags[idxs_to_replace] = self.pad_tag
+                for word_cw, word_tag in zip(x_train_sentence, y_train_sentence):
+                    cost_output, errors_output, prev_preds_output, pred_output, next_preds_output = train(word_cw, [word_tag])
+                    next_preds_output[(self.n_window/2)-1] = word_tag   #do not propagate the prediction, but use the true_tag instead.
+                    self.prev_preds.set_value(next_preds_output)
+                    epoch_cost += cost_output
+                    epoch_errors += errors_output
+                    train_cross_entropy += get_cross_entropy(word_cw, [word_tag])
+
+            if self.regularization:
+                l2_w1, l2_w2, l2_wt = train_l2_penalty()
+                epoch_l2_w1 += l2_w1
+                epoch_l2_w2 += l2_w2
+                epoch_l2_wt += l2_wt
+
+            valid_error = 0
+            valid_cost = 0
+            valid_cross_entropy = 0
+            predictions = []
+            for x_valid_sentence, y_valid_sentence in zip(self.x_valid, self.y_valid):
+                self.prev_preds.set_value(np.array([self.unk_tag] * self.n_window, dtype=INT))
+                for word_cw, word_tag in zip(x_valid_sentence, y_valid_sentence):
+                    cost_output, errors_output, pred, next_preds_output = train_predict(word_cw, [word_tag])
+                    valid_cost += cost_output
+                    valid_error += errors_output
+                    predictions.append(np.asscalar(pred))
+                    self.prev_preds.set_value(next_preds_output)
+                    valid_cross_entropy += get_cross_entropy(word_cw, [word_tag])
+
+            train_costs_list.append(epoch_cost)
+            train_errors_list.append(epoch_errors)
+            valid_costs_list.append(valid_cost)
+            valid_errors_list.append(valid_error)
+            l2_w1_list.append(epoch_l2_w1)
+            l2_w2_list.append(epoch_l2_w2)
+            l2_wt_list.append(epoch_l2_wt)
+            train_cross_entropy_list.append(train_cross_entropy)
+            valid_cross_entropy_list.append(valid_cross_entropy)
+
+            assert flat_true.__len__() == predictions.__len__()
+            results = Metrics.compute_all_metrics(y_true=flat_true, y_pred=predictions, average='macro')
+            f1_score = results['f1_score']
+            precision = results['precision']
+            recall = results['recall']
+            precision_list.append(precision)
+            recall_list.append(recall)
+            f1_score_list.append(f1_score)
+
+            end = time.time()
+            logger.info('Epoch %d Train_cost: %f Train_errors: %d Valid_cost: %f Valid_errors: %d F1-score: %f Took: %f'
+                        % (epoch_index + 1, epoch_cost, epoch_errors, valid_cost, valid_error, f1_score, end - start))
+
+        if plot:
+            actual_time = str(time.time())
+            self.plot_training_cost_and_error(train_costs_list, train_errors_list, valid_costs_list,
+                                              valid_errors_list,
+                                              actual_time)
+            self.plot_scores(precision_list=precision_list, recall_list=recall_list, f1_score_list=f1_score_list,
+                             actual_time=actual_time)
+            self.plot_penalties(l2_w1_list=l2_w1_list, l2_w2_list=l2_w2_list, l2_wt_list=l2_wt_list,
+                                actual_time=actual_time)
+            self.plot_cross_entropies(train_cross_entropy_list, valid_cross_entropy_list, actual_time)
+
+        if save_params:
+            logger.info('Saving parameters to File system')
+            self.save_params()
+
+        return True
+
+    def train_with_sgd_two_layers(self,
+                                  n_hidden,
+                                  learning_rate=0.01,
+                                  max_epochs=100,
+                                  alpha_L2_reg=0.01,
+                                  save_params=False,
+                                  use_grad_means=False,
+                                  plot=False,
+                                  **kwargs):
+
+        self.n_hidden = n_hidden
+
+        logger.info('Mean gradients: '+str(use_grad_means))
+
+        y = T.vector(name='y', dtype=INT)
+
+        idxs = T.vector(name="idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
+        n_tokens = T.scalar(name='n_tokens', dtype=INT)
+
+        w1 = theano.shared(value=np.array(self.pretrained_embeddings).astype(dtype=theano.config.floatX),
+                           name='w1', borrow=True)
+        w2 = theano.shared(value=utils.NeuralNetwork.initialize_weights(n_in=self.n_window*(self.n_emb+self.tag_dim), n_out=n_hidden, function='tanh').
+                           astype(dtype=theano.config.floatX),
+                           name='w2', borrow=True)
+        w3 = theano.shared(value=utils.NeuralNetwork.initialize_weights(n_in=n_hidden, n_out=self.n_out, function='tanh').
+                           astype(dtype=theano.config.floatX),
+                           name='w3', borrow=True)
+        b1 = theano.shared(value=np.zeros((self.n_window*(self.n_emb+self.tag_dim))).astype(dtype=theano.config.floatX), name='b1', borrow=True)
+        b2 = theano.shared(value=np.zeros(n_hidden).astype(dtype=theano.config.floatX), name='b2', borrow=True)
+        b3 = theano.shared(value=np.zeros(self.n_out).astype(dtype=theano.config.floatX), name='b3', borrow=True)
+
+        # #include tag structure
+        wt = theano.shared(value=utils.NeuralNetwork.initialize_weights(n_in=self.n_out,n_out=self.tag_dim,function='tanh').astype(
+            dtype=theano.config.floatX), name='wt', borrow=True)
+        # wt = theano.shared(value=np.zeros((n_tags,self.tag_dim),dtype=theano.config.floatX), name='wt', borrow=True)  #this was for test only
+
+        # prev_preds = theano.shared(value=np.array(np.concatenate(([self.pad_tag]*(n_window/2),[self.unk_tag]*((n_window/2)+1))), dtype=INT),
+        self.prev_preds = theano.shared(value=np.array([self.unk_tag]*self.n_window, dtype=INT),
+                                   name='previous_predictions', borrow=True)
+
+        params = [w1,b1,w2,b2,wt,w3,b3]
+        param_names = ['w1','b1','w2','b2','wt','w3','b3']
+
+        self.params = OrderedDict(zip(param_names, params))
+
+        # grad_params = [self.params['b1'], self.params['w_x'],self.params['w2'],self.params['b2'],self.params['w_t']]
+        grad_params_names = ['w_x','w_t','b1','w2','b2','w3','b3']
+
+        pred,out,prev_preds,next_preds,w_x,w_t = self.sgd_forward_pass_two_layers(idxs, n_tokens)
+
+        self.params['w_x'] = w_x
+        self.params['w_t'] = w_t
+
+        #TODO: with regularization??
+        if self.regularization:
+            # symbolic Theano variable that represents the L1 regularization term
+            # L1 = T.sum(abs(w1)) + T.sum(abs(w2))
+
+            # symbolic Theano variable that represents the squared L2 term
+            L2_w1 = T.sum(w1 ** 2)
+            L2_w_x = T.sum(w_x ** 2)
+            L2_w2 = T.sum(w2 ** 2)
+            L2_wt = T.sum(wt ** 2)
+            L2_w_t = T.sum(w_t ** 2)
+
+            L2 = L2_w_x + L2_w2 + L2_w_t
+
+        mean_cross_entropy = T.mean(T.nnet.categorical_crossentropy(out, y))
+
+        if self.regularization:
+            # TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
+            cost = mean_cross_entropy + alpha_L2_reg * L2
+        else:
+            cost = mean_cross_entropy
+
+        y_predictions = T.argmax(out, axis=1)
+
+        errors = T.sum(T.neq(y_predictions,y))
+
+        # for reference: grad_params_names = ['w_x','w_t','b1','w2','b2']
+        grads = [T.grad(cost, self.params[param_name]) for param_name in grad_params_names]
+
+        # adagrad
+        accumulated_grad = []
+        for param_name in grad_params_names:
+            if param_name == 'w_x':
+                eps = np.zeros_like(self.params['w1'].get_value(), dtype=theano.config.floatX)
+            elif param_name == 'w_t':
+                eps = np.zeros_like(self.params['wt'].get_value(), dtype=theano.config.floatX)
+            else:
+                eps = np.zeros_like(self.params[param_name].get_value(), dtype=theano.config.floatX)
+            accumulated_grad.append(theano.shared(value=eps, borrow=True))
+
+        def take_mean(uniq_val, uniq_val_start_idx, res_grad, prev_preds, grad):
+            same_idxs = T.eq(prev_preds,uniq_val).nonzero()[0]
+            same_grads = grad[same_idxs]
+            grad_mean = T.mean(same_grads,axis=0)
+            res_grad = T.set_subtensor(res_grad[uniq_val_start_idx,:], grad_mean)
+
+            return res_grad
+
+        updates = []
+        for param_name, grad, accum_grad in zip(grad_params_names, grads, accumulated_grad):
+            param = self.params[param_name]
+            if param_name == 'w_x':
+                #this will return the whole accum_grad structure incremented in the specified idxs
+                accum = T.inc_subtensor(accum_grad[idxs],T.sqr(grad))
+                #this will return the whole w1 structure decremented according to the idxs vector.
+                update = T.inc_subtensor(param, - learning_rate * grad/(T.sqrt(accum[idxs])+10**-5))
+                #update whole structure with whole structure
+                updates.append((self.params['w1'],update))
+                #update whole structure with whole structure
+                updates.append((accum_grad,accum))
+            elif param_name == 'w_t':
+
+                if use_grad_means:
+
+                    uniq_values, uniq_values_start_idxs,_ = T.extra_ops.Unique(True, True, False)(prev_preds)
+                    out_grad = T.zeros(shape=(grad.shape[0], self.tag_dim),dtype=theano.config.floatX)
+
+                    mean_grad, _ = theano.scan(fn=take_mean,
+                                sequences=[uniq_values,uniq_values_start_idxs],
+                                outputs_info=out_grad,
+                                non_sequences=[prev_preds,grad])
+
+                    grad = T.set_subtensor(grad[:],mean_grad[-1])
+                    accum_grad = accumulated_grad[1]
+                    acum_idx = accum_grad[prev_preds]
+                    accum = T.inc_subtensor(acum_idx, T.sqr(grad))
+                    upd = - learning_rate * grad / (T.sqrt(accum[prev_preds]) + 10 ** -5)
+                    update = T.inc_subtensor(self.params['w_t'], upd)
+                else:
+                    #this will return the whole accum_grad structure incremented in the specified idxs
+                    accum = T.inc_subtensor(accum_grad[prev_preds],T.sqr(grad))
+                    #this will return the whole w1 structure decremented according to the idxs vector.
+                    update = T.inc_subtensor(param, - learning_rate * grad/(T.sqrt(accum[prev_preds])+10**-5))
+                #update whole structure with whole structure
+                updates.append((self.params['wt'],update))
+                #update whole structure with whole structure
+                updates.append((accum_grad,accum))
+            else:
+                accum = accum_grad + T.sqr(grad)
+                updates.append((param, param - learning_rate * grad/(T.sqrt(accum)+10**-5)))
+                updates.append((accum_grad, accum))
 
         train = theano.function(inputs=[idxs, y],
                                 outputs=[cost,errors,prev_preds,pred,next_preds],
