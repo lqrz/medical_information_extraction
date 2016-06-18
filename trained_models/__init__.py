@@ -141,3 +141,11 @@ def get_factored_model_path(filename):
         os.makedirs(dir)
 
     return path
+
+def get_POS_nnet_path(filename):
+    path = pkg_resources.resource_filename('trained_models', 'POS_net/' + filename)
+    dir = os.path.dirname(path)
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+    return path
