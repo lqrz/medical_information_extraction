@@ -149,3 +149,11 @@ def get_POS_nnet_path(filename):
         os.makedirs(dir)
 
     return path
+
+def get_two_cwnn_path(filename):
+    path = pkg_resources.resource_filename('trained_models', 'two_cwnn/' + filename)
+    dir = os.path.dirname(path)
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+    return path
