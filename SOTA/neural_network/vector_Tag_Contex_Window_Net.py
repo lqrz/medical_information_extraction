@@ -352,6 +352,8 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
         train_cross_entropy_list = []
         valid_cross_entropy_list = []
 
+        last_valid_errors = np.inf
+
         for epoch_index in range(max_epochs):
             start = time.time()
             epoch_cost = 0
@@ -393,6 +395,12 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
                     predictions.append(np.asscalar(pred))
                     self.prev_preds.set_value(next_preds_output)
                     valid_cross_entropy += get_cross_entropy(word_cw, [word_tag])
+
+            if valid_error > last_valid_errors:
+                logger.info('Changing learning rate from %f to %f' % (learning_rate, learning_rate*.5))
+                learning_rate *= .5
+
+            last_valid_errors = valid_error
 
             train_costs_list.append(epoch_cost)
             train_errors_list.append(epoch_errors)
@@ -620,6 +628,8 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
         train_cross_entropy_list = []
         valid_cross_entropy_list = []
 
+        last_valid_errors = np.inf
+
         for epoch_index in range(max_epochs):
             start = time.time()
             epoch_cost = 0
@@ -661,6 +671,12 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
                     predictions.append(np.asscalar(pred))
                     self.prev_preds.set_value(next_preds_output)
                     valid_cross_entropy += get_cross_entropy(word_cw, [word_tag])
+
+            if valid_error > last_valid_errors:
+                logger.info('Changing learning rate from %f to %f' % (learning_rate, learning_rate * .5))
+                learning_rate *= .5
+
+            last_valid_errors = valid_error
 
             train_costs_list.append(epoch_cost)
             train_errors_list.append(epoch_errors)
