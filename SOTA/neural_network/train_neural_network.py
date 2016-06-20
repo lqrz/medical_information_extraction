@@ -69,6 +69,7 @@ def parse_arguments():
     group_w2v = parser.add_mutually_exclusive_group(required=True)
     group_w2v.add_argument('--w2vvectorscache', action='store', type=str)
     group_w2v.add_argument('--w2vmodel', action='store', type=str, default=None)
+    group_w2v.add_argument('--w2vrandomdim', action='store', type=int, default=None)
 
     group_rnn = parser.add_argument_group(title='rnn', description='Recurrent neural net specifics.')
     group_rnn.add_argument('--bidirectional', action='store_true', default=False)
@@ -89,7 +90,7 @@ def parse_arguments():
     parser.add_argument('--aggregated', action='store_true', default=False)
     parser.add_argument('--normalizesamples', action='store_true', default=False)
     parser.add_argument('--negativesampling', action='store_true', default=False)
-    parser.add_argument('--lr', action='store', type=float, default=False)
+    parser.add_argument('--lr', action='store', type=float, default=.1)
     parser.add_argument('--hidden', action='store', type=int, default=False)
 
     #parse arguments
@@ -123,11 +124,12 @@ def parse_arguments():
     args['negative_sampling'] = arguments.negativesampling
     args['learning_rate'] = arguments.lr
     args['n_hidden'] = arguments.hidden
+    args['w2v_random_dim'] = arguments.w2vrandomdim
 
     return args
 
 def check_arguments_consistency(args):
-    if not args['w2v_vectors_cache'] and not args['w2v_model']:
+    if not args['w2v_vectors_cache'] and not args['w2v_model_name'] and not args['w2v_random_dim']:
         logger.error('Provide either a w2vmodel or a w2v vectors cache')
         exit()
 
@@ -400,7 +402,11 @@ def use_testing_dataset(nn_class,
 
     unique_words = word2index.keys()
 
-    pretrained_embeddings = nn_class.initialize_w(w2v_dims, unique_words, w2v_vectors=w2v_vectors, w2v_model=w2v_model)
+    if w2v_vectors or w2v_model:
+        pretrained_embeddings = nn_class.initialize_w(w2v_dims, unique_words, w2v_vectors=w2v_vectors, w2v_model=w2v_model)
+    else:
+        n_unique_words = len(unique_words)
+        pretrained_embeddings = utils.NeuralNetwork.initialize_weights(n_unique_words, w2v_dims, function='tanh')
 
     if tags:
         tags = get_param(tags)
@@ -465,7 +471,7 @@ def use_testing_dataset(nn_class,
     nn_trainer = nn_class(**params)
 
     logger.info(' '.join(['Training Neural network', 'with' if regularization else 'without', 'regularization']))
-    nn_trainer.train(batch_size=minibatch_size, max_epochs=max_epochs, save_params=False, **kwargs)
+    nn_trainer.train(batch_size=minibatch_size, max_epochs=max_epochs, save_params=False, nce=False, **kwargs)
 
     logger.info('Predicting on Training set')
     nnet_results = nn_trainer.predict(on_training_set=True, **kwargs)
@@ -540,7 +546,13 @@ if __name__ == '__main__':
 
     check_arguments_consistency(args)
 
-    w2v_vectors, w2v_model, w2v_dims = load_w2v_model_and_vectors_cache(args)
+    if args['w2v_vectors_cache'] or args['w2v_model_name']:
+        w2v_vectors, w2v_model, w2v_dims = load_w2v_model_and_vectors_cache(args)
+    elif args['w2v_random_dim']:
+        logger.info('Using randomly initialised word embeddings of %d dimensions' % args['w2v_random_dim'])
+        w2v_vectors = None
+        w2v_model = None
+        w2v_dims = args['w2v_random_dim']
 
     nn_class, hidden_f, out_f, add_words, add_tags, add_feats, tag_dim, n_window, get_output_path,\
         multi_feats, normalize_samples = determine_nnclass_and_parameters(args)
