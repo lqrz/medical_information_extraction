@@ -65,6 +65,8 @@ def parse_arguments():
     parser.add_argument('--aggregated', action='store_true', default=False)
     parser.add_argument('--normalizesamples', action='store_true', default=False)
     parser.add_argument('--negativesampling', action='store_true', default=False)
+    parser.add_argument('--lr', action='store', type=float, default=.1)
+    parser.add_argument('--hidden', action='store', type=int, default=False)
 
     #parse arguments
     arguments = parser.parse_args()
@@ -90,6 +92,8 @@ def parse_arguments():
     args['meta_tags'] = arguments.aggregated
     args['norm_samples'] = arguments.normalizesamples
     args['negative_sampling'] = arguments.negativesampling
+    args['learning_rate'] = arguments.lr
+    args['n_hidden'] = arguments.hidden
 
     return args
 
@@ -295,7 +299,11 @@ def use_testing_dataset(nn_class,
 
     pad_tag, unk_tag, pad_word = determine_key_indexes(label2index, word2index)
 
-    na_tag = label2index['NA']
+    try:
+        # if im filtering tags, there might not be an "NA" tag
+        na_tag = label2index['NA']
+    except KeyError:
+        na_tag = None
 
     params = {
         'x_train': x_train,
@@ -327,13 +335,15 @@ def use_testing_dataset(nn_class,
         'n_filters': args['n_filters'],
         'region_sizes': args['region_sizes'],
         'features_to_use': args['multi_features'],
-        'static': args['static']
+        'static': args['static'],
+        'na_tag': na_tag,
+        'n_hidden': args['n_hidden']
     }
 
     nn_trainer = nn_class(**params)
 
     logger.info(' '.join(['Training Neural network', 'with' if regularization else 'without', 'regularization']))
-    nn_trainer.train(learning_rate=.01, batch_size=minibatch_size, max_epochs=max_epochs, save_params=False, **kwargs)
+    nn_trainer.train(batch_size=minibatch_size, max_epochs=max_epochs, save_params=False, nce=False, **kwargs)
 
     logger.info('Predicting on Training set')
     nnet_results = nn_trainer.predict_distribution(on_training_set=True, **kwargs)
