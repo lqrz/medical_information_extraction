@@ -59,21 +59,32 @@ def count_tags(all_tags_padded):
         try:
             bigram = ngram[:2]
             prob = counts[ngram] / float(counts[bigram])
+
+            if counts[ngram] > counts[bigram]:
+                print 'debug'
         except ZeroDivisionError:
             raise Exception('Something went wrong. This cannot happen. Debug.')
         probs[ngram] = prob
+        if prob > 1.0:
+            print 'debug'
 
     # bigram probabilities
     for ngram in set(bigrams):
         try:
             unigram = ngram[0]
             prob = counts[ngram] / float(counts[unigram])
+            if counts[ngram] > counts[unigram]:
+                print 'debug'
         except ZeroDivisionError:
             raise Exception('Something went wrong. This cannot happen. Debug.')
         probs[ngram] = prob
+        if prob > 1.0:
+            print 'debug'
 
     for word in set(unigrams):
-        probs[word] = counts[word] / float(set(unigrams).__len__())
+        probs[word] = counts[word] / float(unigrams.__len__())
+        if counts[word] > unigrams.__len__():
+            print 'debug'
 
     # fix prob for sentence start token
     probs[('<PAD>')] = 1.0
