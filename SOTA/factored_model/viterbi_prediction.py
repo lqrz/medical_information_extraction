@@ -255,8 +255,8 @@ if __name__ == '__main__':
     best_ba = None
     best_bw = None
     # for bw in [0.0, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 0.96]:
-    for ba in [0.1]:
-        for bw in [200]:
+    for ba in [0.1, 0.25, 0.6]:
+        for bw in [200, 500]:
             search = Search(top_n=bw,
                             get_output_path=get_output_path,
                             output_distribution=distribution,
