@@ -91,6 +91,7 @@ def parse_arguments():
     parser.add_argument('--normalizesamples', action='store_true', default=False)
     parser.add_argument('--negativesampling', action='store_true', default=False)
     parser.add_argument('--lr', action='store', type=float, default=.1)
+    parser.add_argument('--lrdecay', action='store_true', default=False)
     parser.add_argument('--hidden', action='store', type=int, default=False)
 
     #parse arguments
@@ -125,6 +126,7 @@ def parse_arguments():
     args['learning_rate'] = arguments.lr
     args['n_hidden'] = arguments.hidden
     args['w2v_random_dim'] = arguments.w2vrandomdim
+    args['lr_decay'] = arguments.lrdecay
 
     return args
 

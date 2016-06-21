@@ -541,10 +541,14 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
                        static=False,
                        use_autoencoded_weight=False,
                        negative_sampling=False,
+                       lr_decay=True,
                        **kwargs):
 
         if negative_sampling:
             logger.info('Training with negative sampling')
+
+        if lr_decay:
+            logger.info('Applying learning rate step decay')
 
         train_x = theano.shared(value=np.array(self.x_train, dtype=INT), name='train_x', borrow=True)
         train_y = theano.shared(value=np.array(self.y_train, dtype=INT), name='train_y', borrow=True)
@@ -831,7 +835,7 @@ class Hidden_Layer_Context_Window_Net(A_neural_network):
             logger.info('Epoch %d Train_cost: %f Train_errors: %d Valid_cost: %f Valid_errors: %d F1-score: %f Took: %f'
                         % (epoch_index+1, train_cost, train_errors, valid_cost, valid_error, f1_score, end-start))
 
-            if valid_error > last_valid_errors:
+            if lr_decay and (valid_error > last_valid_errors):
                 logger.info('Changing learning rate from %f to %f' % (learning_rate, .5 * learning_rate))
                 learning_rate *= .5
 
