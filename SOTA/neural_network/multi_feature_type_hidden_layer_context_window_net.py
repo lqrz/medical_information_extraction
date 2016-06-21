@@ -211,18 +211,26 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         return result
 
     def train(self, **kwargs):
+
+        nnet_description = ' '.join(['Training with SGD',
+                                     'context_win:', str(kwargs['window_size']),
+                                     'statically' if kwargs['static'] else 'dynamically',
+                                     'filters_per_region:', str(kwargs['n_filters']),
+                                     'region_sizes:', '[', ','.join(map(str, kwargs['region_sizes'])), ']',
+                                     'with' if kwargs['max_pool'] else 'without', 'max pooling'])
+
         if kwargs['batch_size']:
             # train with minibatch
             logger.info('Training with minibatch size: %d' % kwargs['batch_size'])
             self.train_with_minibatch(**kwargs)
+
+        elif kwargs['n_hidden']:
+            logger.info('Training with SGD with two layers')
+            logger.info(nnet_description)
+            self.train_with_sgd_two_layers(**kwargs)
         else:
             # train with SGD
-            nnet_description = ' '.join(['Training with SGD',
-                                         'context_win:', str(kwargs['window_size']),
-                                         'statically' if kwargs['static'] else 'dynamically',
-                                         'filters_per_region:', str(kwargs['n_filters']),
-                                         'region_sizes:', '[', ','.join(map(str,kwargs['region_sizes'])), ']',
-                                         'with' if kwargs['max_pool'] else 'without', 'max pooling'])
+            logger.info('Training with SGD with one layer')
             logger.info(nnet_description)
             self.train_with_sgd(**kwargs)
 
