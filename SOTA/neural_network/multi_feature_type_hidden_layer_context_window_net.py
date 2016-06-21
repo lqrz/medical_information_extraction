@@ -554,15 +554,20 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
     def using_tense_no_convolution_no_maxpool_feature(self):
         return self.using_feature(feature='tense', convolve=False, max_pool=False)
 
-    def train_with_sgd(self, learning_rate=0.01, max_epochs=100,
-                       alpha_L1_reg=0.001, alpha_L2_reg=0.01,
+    def train_with_sgd(self, learning_rate,
+                       max_epochs,
+                       alpha_L2_reg=0.01,
                        save_params=False, plot=False,
                        static=False, max_pool=True,
+                       lr_decay=True,
                        **kwargs):
 
         self.alpha_L2_reg = alpha_L2_reg
         self.max_pool = max_pool
         self.static = static
+
+        if lr_decay:
+            logger.info('Applying learning rate step decay.')
 
         # indexes the w2v embeddings
         w2v_idxs = T.vector(name="w2v_train_idxs",
@@ -1034,6 +1039,8 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         train_cross_entropy_list = []
         valid_cross_entropy_list = []
 
+        last_valid_errors = np.inf
+
         for epoch_index in range(max_epochs):
             start = time.time()
             train_cost = 0
@@ -1124,6 +1131,12 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
             logger.info('Epoch %d Train_cost: %f Train_errors: %d Valid_cost: %f Valid_errors: %d F1-score: %f Took: %f'
                         % (epoch_index+1, train_cost, train_errors, valid_cost, valid_errors, f1_score, end-start))
 
+            if lr_decay and (valid_errors > last_valid_errors):
+                logger.info('Changing learning rate from %f to %f' % (learning_rate, .5*learning_rate))
+                learning_rate *= .5
+
+            last_valid_errors = valid_errors
+            
         if save_params:
             logger.info('Saving parameters to File system')
             self.save_params()
