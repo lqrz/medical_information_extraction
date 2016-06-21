@@ -9,7 +9,9 @@ pos_tense_mapping = {
     'VBN': 'past',
     'VBP': 'present',
     'VBZ': 'present',
-    '#NA': 'NA'
+    '#NA': 'NA',
+    'MD': 'modal',   # e.g "will"
+    '#FUTURE': 'future'
 }
 
 def determine_pos(previous_pos, word_dict, governor_word_dict, sent_dicts, i):
@@ -20,6 +22,8 @@ def determine_pos(previous_pos, word_dict, governor_word_dict, sent_dicts, i):
         if previous_pos == 'VBZ':
             # then this refers to present perfect
             return 'VBZ'
+        elif pos_tag == 'MD' and word_dict['word'] == 'will':
+            return '#FUTURE'
         else:
             return pos_tag
     else:
@@ -94,7 +98,7 @@ def get_testing_set_tenses():
     return get_dataset_sentence_tenses(testing_dicts)
 
 if __name__ == '__main__':
-
+    get_training_set_tenses()
 
     # [(word['word'], word['features'][5], word['tag']) for word in sent_dicts]
     # [(f['word'], f['features'][2], f['features'][4], f['features'][5]) for f in training_data[0][7]]
