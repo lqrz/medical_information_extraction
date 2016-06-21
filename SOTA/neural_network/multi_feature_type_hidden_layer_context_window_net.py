@@ -248,11 +248,39 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
         return self.out_activation_f(T.dot(h, self.params['w3']) + self.params['b3'])
 
+    def perform_forward_pass_dense_step_two_layers(self, features_hidden_state, ndim):
+        """
+        performs the last step in the nnet forward pass (the dense layer and softmax).
+
+        :param w2v_conv:
+        :param pos_conv:
+        :return:
+        """
+
+        a = self.concatenate(features_hidden_state)
+
+        if ndim == 1:
+            a = self.concatenate(features_hidden_state)
+        elif ndim == 2:
+            a = self.concatenate(features_hidden_state, axis=1)
+
+        h = self.hidden_activation_f(a)
+
+        h1 = self.hidden_activation_f(T.dot(h, self.params['w3']) + self.params['b3'])
+
+        return self.out_activation_f(T.dot(h1, self.params['w4']) + self.params['b4'])
+
     def sgd_forward_pass(self, tensor_dim):
 
         hidden_state = self.compute_hidden_state(tensor_dim)
 
         return self.perform_forward_pass_dense_step(hidden_state, ndim=tensor_dim/2)
+
+    def sgd_forward_pass_two_layers(self, tensor_dim):
+
+        hidden_state = self.compute_hidden_state(tensor_dim)
+
+        return self.perform_forward_pass_dense_step_two_layers(hidden_state, ndim=tensor_dim/2)
 
     def compute_hidden_state(self, tensor_dim):
         hidden_state = []
@@ -1136,7 +1164,7 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
                 learning_rate *= .5
 
             last_valid_errors = valid_errors
-            
+
         if save_params:
             logger.info('Saving parameters to File system')
             self.save_params()
@@ -1160,6 +1188,635 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
                 'sent_nr_nc_nmp_emb': epoch_l2_sent_nr_weight_list,
                 'tense_nc_nmp_emb': epoch_l2_tense_weight_list,
                 'w3': epoch_l2_w3_list
+            }
+            self.plot_penalties_general(plot_data_dict, actual_time=actual_time)
+
+            self.plot_cross_entropies(train_cross_entropy_list, valid_cross_entropy_list, actual_time)
+
+        return True
+
+    def train_with_sgd_two_layers(self,
+                                  learning_rate,
+                                  max_epochs,
+                                  n_hidden,
+                                  alpha_L2_reg=0.01,
+                                  save_params=False, plot=False,
+                                  static=False, max_pool=True,
+                                  lr_decay=True,
+                                  **kwargs):
+
+        self.alpha_L2_reg = alpha_L2_reg
+        self.max_pool = max_pool
+        self.static = static
+
+        if lr_decay:
+            logger.info('Applying learning rate step decay.')
+
+        # indexes the w2v embeddings
+        w2v_idxs = T.vector(name="w2v_train_idxs",
+                            dtype=INT)  # columns: context window size/lines: tokens in the sentence
+
+        # indexes the POS matrix
+        pos_idxs = T.vector(name="pos_train_idxs",
+                            dtype=INT)  # columns: context window size/lines: tokens in the sentence
+
+        # indexes the NER matrix
+        ner_idxs = T.vector(name="ner_train_idxs",
+                            dtype=INT)  # columns: context window size/lines: tokens in the sentence
+
+        sent_nr_id = T.scalar(name="sent_nr_id", dtype=INT)
+
+        tense_id = T.scalar(name="tense_id", dtype=INT)
+
+        train_y = theano.shared(value=np.array(self.y_train, dtype=INT), name='train_y', borrow=True)
+
+        if self.using_w2v_feature():
+            train_x = theano.shared(value=np.array(self.x_train, dtype=INT), name='train_x', borrow=True)
+            valid_x = theano.shared(value=np.array(self.x_valid, dtype=INT), name='valid_x', borrow=True)
+
+        if self.using_pos_feature():
+            # shared variable with training POS features
+            train_pos_x = theano.shared(value=np.array(self.train_pos_feats, dtype=INT), name='train_pos_x', borrow=True)
+            valid_pos_x = theano.shared(value=np.array(self.valid_pos_feats, dtype=INT), name='valid_pos_x', borrow=True)
+
+        if self.using_ner_feature():
+            # shared variable with training POS features
+            train_ner_x = theano.shared(value=np.array(self.train_ner_feats, dtype=INT), name='train_ner_x', borrow=True)
+            valid_ner_x = theano.shared(value=np.array(self.valid_ner_feats, dtype=INT), name='valid_ner_x', borrow=True)
+
+        if self.using_sent_nr_feature():
+            train_sent_nr_x = theano.shared(value=np.array(self.train_sent_nr_feats, dtype=INT), name='train_sent_nr_x', borrow=True)
+            valid_sent_nr_x = theano.shared(value=np.array(self.valid_sent_nr_feats, dtype=INT), name='valid_sent_nr_x', borrow=True)
+
+        if self.using_tense_feature():
+            train_tense_x = theano.shared(value=self.train_tense_feats.astype(dtype=INT), name='train_tense_x', borrow=True)
+            valid_tense_x = theano.shared(value=self.valid_tense_feats.astype(dtype=INT), name='valid_tense_x', borrow=True)
+
+        # valid_x = theano.shared(value=np.array(self.x_valid, dtype=INT), name='valid_x', borrow=True)
+
+        y = T.vector(name='y', dtype=INT)
+
+        # create dense layer and bias
+        hidden_layer_size = self.determine_hidden_layer_size()
+
+        logger.info('Hidden layer size: %d' % hidden_layer_size)
+
+        w3 = theano.shared(value=utils.NeuralNetwork.initialize_weights(
+            n_in=hidden_layer_size, n_out=n_hidden, function='softmax').astype(dtype=theano.config.floatX),
+                           name='w3',
+                           borrow=True)
+        b3 = theano.shared(value=np.zeros(n_hidden).astype(dtype=theano.config.floatX),
+                           name='b3',
+                           borrow=True)
+        w4 = theano.shared(value=utils.NeuralNetwork.initialize_weights(
+            n_in=n_hidden, n_out=self.n_out, function='softmax').astype(dtype=theano.config.floatX),
+                           name='w4',
+                           borrow=True)
+        b4 = theano.shared(value=np.zeros(self.n_out).astype(dtype=theano.config.floatX),
+                           name='b4',
+                           borrow=True)
+
+        params = [w3, b3, w4, b4]
+        param_names = ['w3', 'b3', 'w4', 'b4']
+        params_to_get_l2 = ['w3', 'b3', 'w4', 'b4']
+        params_to_get_grad = [w3, b3, w4, b4]
+        params_to_get_grad_names = ['w3', 'b3', 'w4', 'b4']
+
+        self.params = OrderedDict(zip(param_names, params))
+
+        if self.using_w2v_no_convolution_no_maxpool_feature():
+            # word embeddings to be used directly.
+            w1 = theano.shared(value=np.array(self.pretrained_embeddings).astype(dtype=theano.config.floatX),
+                               name='w1', borrow=True)
+
+            # index embeddings
+            w_x_directly = w1[w2v_idxs]
+
+            # add structures to self.params
+            self.params['w1'] = w1
+
+            if not self.static:
+                # learn word_embeddings
+                params_to_get_grad.append(w_x_directly)
+                params_to_get_grad_names.append('w_x_directly')
+                params_to_get_l2.append('w_x_directly')
+
+            self.w_x_directly = w_x_directly
+
+        if self.using_w2v_convolution_no_maxpool_feature():
+            w1_c_nmp = theano.shared(value=np.array(self.pretrained_embeddings).astype(dtype=theano.config.floatX),
+                               name='w1', borrow=True)
+
+            # create w2v filters
+            # w2v_c_nmp_filters = self.create_filters(filter_width=1, region_sizes=[self.n_window],
+            #                                            n_filters=1)
+            w2v_c_nmp_filters = self.create_filters(filter_width=1, region_sizes=self.region_sizes,
+                                                       n_filters=self.n_filters)
+            w2v_c_nmp_filters_names = map(lambda x: 'w2v_c_nmp_%s' % x.name, w2v_c_nmp_filters)
+
+            # index embeddings
+            w_x_c_nmp = w1_c_nmp[w2v_idxs]
+
+            # add structures to self.params
+            self.params['w1_c_nmp'] = w1_c_nmp
+            self.params.update(dict(zip(w2v_c_nmp_filters_names, w2v_c_nmp_filters)))
+            params_to_get_l2.extend(w2v_c_nmp_filters_names)
+            params_to_get_grad.extend(w2v_c_nmp_filters)
+            params_to_get_grad_names.extend(w2v_c_nmp_filters_names)
+
+            if not self.static:
+                # learn word_embeddings
+                params_to_get_grad.append(w_x_c_nmp)
+                params_to_get_grad_names.append('w_x_c_nmp')
+                params_to_get_l2.append('w_x_c_nmp')
+
+            self.w_x_c_nmp = w_x_c_nmp
+
+        if self.using_w2v_convolution_maxpool_feature():
+            # word embeddings for constructing higher order features
+            w1_w2v = theano.shared(value=np.array(self.pretrained_embeddings).astype(dtype=theano.config.floatX),
+                                   name='w1_w2v', borrow=True)
+
+            # create w2v filters
+            w2v_filters = self.create_filters(filter_width=self.w2v_filter_width, region_sizes=self.region_sizes,
+                                              n_filters=self.n_filters)
+            w2v_filters_names = map(lambda x: 'w2v_%s' % x.name, w2v_filters)
+
+            # index embeddings
+            w_x = w1_w2v[w2v_idxs]
+
+            # add structures to self.params
+            self.params['w1_w2v'] = w1_w2v
+            self.params.update(dict(zip(w2v_filters_names, w2v_filters)))
+            params_to_get_l2.append('w1_w2v')
+            params_to_get_l2.extend(w2v_filters_names)
+            params_to_get_grad.extend(w2v_filters)
+            params_to_get_grad_names.extend(w2v_filters_names)
+
+            if not self.static:
+                # learn word_embeddings
+                params_to_get_grad.append(w_x)
+                params_to_get_grad_names.append('w_x')
+                params_to_get_l2.append('w_x')
+
+            self.w_x = w_x
+
+        if self.using_pos_convolution_maxpool_feature():
+            # create POS embeddings
+            #TODO: one-hot, random, probabilistic ?
+            w1_pos = theano.shared(value=utils.NeuralNetwork.initialize_weights(
+                n_in=np.max(self.train_pos_feats)+1, n_out=self.n_pos_emb, function='tanh').astype(dtype=theano.config.floatX), name='w1_pos', borrow=True)
+
+            # w1_pos = theano.shared(value=np.eye(np.max(self.train_pos_feats)+1, self.n_pos_emb).astype(dtype=theano.config.floatX), name='w1_pos', borrow=True)
+
+            # w1_pos = theano.shared(value=np.matrix(self.pos_probs.values(), dtype=theano.config.floatX).reshape((-1,1)), name='w1_pos', borrow=True)
+            # self.n_pos_emb = 1
+            # self.pos_filter_width = self.n_pos_emb
+
+            # create POS filters
+            pos_filters = self.create_filters(filter_width=self.pos_filter_width, region_sizes=self.region_sizes,
+                                              n_filters=self.n_filters)
+            pos_filters_names = map(lambda x: 'pos_%s' % x.name, pos_filters)
+
+            # index embeddings
+            w_pos_x = w1_pos[pos_idxs]
+
+            # add structures to self.params
+            self.params['w1_pos'] = w1_pos
+            self.params.update(dict(zip(pos_filters_names,pos_filters)))
+            params_to_get_l2.extend(pos_filters_names)
+            params_to_get_grad.extend(pos_filters)
+            params_to_get_grad_names.extend(pos_filters_names)
+
+            if not self.static:
+                params_to_get_grad.append(w_pos_x)
+                params_to_get_grad_names.append('w_pos_x')
+                params_to_get_l2.append('w_pos_x')
+
+            self.w_pos_x = w_pos_x
+
+        if self.using_ner_convolution_maxpool_feature():
+            # w1_ner = theano.shared(value=utils.NeuralNetwork.initialize_weights(
+            #     n_in=np.max(self.train_ner_feats)+1, n_out=self.n_ner_emb, function='tanh').astype(dtype=theano.config.floatX),
+            #                        name='w1_ner', borrow=True)
+            w1_ner = theano.shared(
+                value=np.eye(np.max(self.train_ner_feats) + 1, self.n_ner_emb).astype(dtype=theano.config.floatX),
+                name='w1_ner', borrow=True)
+
+            # create NER filters
+            ner_filters = self.create_filters(filter_width=self.ner_filter_width, region_sizes=self.region_sizes,
+                                              n_filters=self.n_filters)
+            ner_filters_names = map(lambda x: 'ner_%s' % x.name, ner_filters)
+
+            # index embeddings
+            w_ner_x = w1_ner[ner_idxs]
+
+            # add structures to self.params
+            self.params['w1_ner'] = w1_ner
+            self.params.update(dict(zip(ner_filters_names, ner_filters)))
+            params_to_get_l2.extend(ner_filters_names)
+            params_to_get_grad.extend(ner_filters)
+            params_to_get_grad_names.extend(ner_filters_names)
+            if not self.static:
+                params_to_get_grad.append(w_ner_x)
+                params_to_get_grad_names.append('w_ner_x')
+                params_to_get_l2.append('w_ner_x')
+
+            self.w_ner_x = w_ner_x
+
+        if self.using_sent_nr_no_convolution_no_maxpool_feature():
+            w1_sent_nr = theano.shared(value=utils.NeuralNetwork.initialize_weights(
+                n_in=np.max(self.train_sent_nr_feats)+1, n_out=self.n_sent_nr_emb, function='tanh').astype(dtype=theano.config.floatX),
+                                   name='w1_sent_nr', borrow=True)
+
+            # index embeddings
+            w_sent_nr_x = w1_sent_nr[sent_nr_id]
+
+            # add structures to self.params
+            self.params['w1_sent_nr'] = w1_sent_nr
+
+            if not self.static:
+                # learn word_embeddings
+                params_to_get_grad.append(w_sent_nr_x)
+                params_to_get_grad_names.append('w_sent_nr_x')
+                params_to_get_l2.append('w_sent_nr_x')
+
+            self.w_sent_nr_x = w_sent_nr_x
+
+        if self.using_tense_no_convolution_no_maxpool_feature():
+            w1_tense = theano.shared(value=utils.NeuralNetwork.initialize_weights(
+                n_in=np.max(self.train_tense_feats)+1, n_out=self.n_tense_emb, function='tanh').astype(dtype=theano.config.floatX),
+                                   name='w1_tense', borrow=True)
+
+            # index embeddings
+            w_tense_x = w1_tense[tense_id]
+
+            # add structures to self.params
+            self.params['w1_tense'] = w1_tense
+
+            if not self.static:
+                # learn word_embeddings
+                params_to_get_grad.append(w_tense_x)
+                params_to_get_grad_names.append('w_tense_x')
+                params_to_get_l2.append('w_tense_x')
+
+            self.w_tense_x = w_tense_x
+
+        self.params_to_get_l2 = params_to_get_l2
+
+        if self.regularization:
+            # symbolic Theano variable that represents the L1 regularization term
+            # L1 = T.sum(abs(w1)) + T.sum(abs(w2))
+
+            L2_w2v_nc_nmp_weight, L2_w2v_c_mp_filters, L2_w_x, L2_w2v_c_nmp_filters, \
+            L2_w2v_c_nmp_weight, L2_pos_c_mp_filters, L2_w_pos_x, L2_ner_c_mp_filters, L2_w_ner_x, \
+            L2_w_sent_nr_x, L2_w_tense_x, L2_w3 = self.compute_regularization_cost()
+
+            L2_w4 = T.sum(self.params['w4'] ** 2)
+
+            L2 = L2_w2v_nc_nmp_weight + L2_w2v_c_mp_filters + L2_w_x + L2_w2v_c_nmp_filters + \
+                 L2_w2v_c_nmp_weight + L2_pos_c_mp_filters + L2_w_pos_x + L2_ner_c_mp_filters + \
+                 L2_w_ner_x + L2_w_sent_nr_x + L2_w_tense_x + L2_w3 + L2_w4
+
+        W1_tense_sum, W1_sent_nr_sum, W1_ner_sum, W1_pos_sum, W1_w2v_sum, W1_c_nmp_sum, W1_sum = self.compute_weight_evolution()
+
+        out = self.sgd_forward_pass_two_layers(tensor_dim=2)
+
+        mean_cross_entropy = T.mean(T.nnet.categorical_crossentropy(out, y))
+        if self.regularization:
+            # cost = T.mean(T.nnet.categorical_crossentropy(out, y)) + alpha_L1_reg*L1 + alpha_L2_reg*L2
+            cost = mean_cross_entropy + self.alpha_L2_reg * L2
+        else:
+            cost = mean_cross_entropy
+
+        y_predictions = T.argmax(out, axis=1)
+
+        # cost_prediction = mean_cross_entropy + alpha_L2_reg * L2
+        # cost_prediction = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y))
+        # cost_prediction = alpha_L2_reg*L2
+
+        errors = T.sum(T.neq(y_predictions, y))
+
+        grads = [T.grad(cost, param) for param in params_to_get_grad]
+
+        # test = theano.function([w2v_idxs, pos_idxs, y], [out, grads[0]])
+        # test(self.x_train[0], self.train_pos_feats[0], self.y_train[0])
+
+        # adagrad
+        accumulated_grad = []
+        for name, param in zip(params_to_get_grad_names, params_to_get_grad):
+            if name == 'w_x':
+                eps = np.zeros_like(self.params['w1_w2v'].get_value(), dtype=theano.config.floatX)
+            elif name == 'w_pos_x':
+                eps = np.zeros_like(self.params['w1_pos'].get_value(), dtype=theano.config.floatX)
+            elif name == 'w_ner_x':
+                eps = np.zeros_like(self.params['w1_ner'].get_value(), dtype=theano.config.floatX)
+            elif name == 'w_x_directly':
+                eps = np.zeros_like(self.params['w1'].get_value(), dtype=theano.config.floatX)
+            elif name == 'w_x_c_nmp':
+                eps = np.zeros_like(self.params['w1_c_nmp'].get_value(), dtype=theano.config.floatX)
+            elif name == 'w_sent_nr_x':
+                eps = np.zeros_like(self.params['w1_sent_nr'].get_value(), dtype=theano.config.floatX)
+            elif name == 'w_tense_x':
+                eps = np.zeros_like(self.params['w1_tense'].get_value(), dtype=theano.config.floatX)
+            else:
+                eps = np.zeros_like(param.get_value(), dtype=theano.config.floatX)
+            accumulated_grad.append(theano.shared(value=eps, borrow=True))
+
+        updates = []
+        for name, param, grad, accum_grad in zip(params_to_get_grad_names, params_to_get_grad, grads, accumulated_grad):
+            if name == 'w_x':
+                #this will return the whole accum_grad structure incremented in the specified idxs
+                accum = T.inc_subtensor(accum_grad[w2v_idxs],T.sqr(grad))
+                #this will return the whole w1 structure decremented according to the idxs vector.
+                update = T.inc_subtensor(param, - learning_rate * grad/(T.sqrt(accum[w2v_idxs])+10**-5))
+                #update whole structure with whole structure
+                updates.append((self.params['w1_w2v'],update))
+                #update whole structure with whole structure
+                updates.append((accum_grad,accum))
+            elif name == 'w_pos_x':
+                #this will return the whole accum_grad structure incremented in the specified idxs
+                accum = T.inc_subtensor(accum_grad[pos_idxs],T.sqr(grad))
+                #this will return the whole w1 structure decremented according to the idxs vector.
+                update = T.inc_subtensor(param, - learning_rate * grad/(T.sqrt(accum[pos_idxs])+10**-5))
+                #update whole structure with whole structure
+                updates.append((self.params['w1_pos'],update))
+                #update whole structure with whole structure
+                updates.append((accum_grad,accum))
+            elif name == 'w_ner_x':
+                #this will return the whole accum_grad structure incremented in the specified idxs
+                accum = T.inc_subtensor(accum_grad[ner_idxs],T.sqr(grad))
+                #this will return the whole w1 structure decremented according to the idxs vector.
+                update = T.inc_subtensor(param, - learning_rate * grad/(T.sqrt(accum[ner_idxs])+10**-5))
+                #update whole structure with whole structure
+                updates.append((self.params['w1_ner'],update))
+                #update whole structure with whole structure
+                updates.append((accum_grad,accum))
+            elif name == 'w_x_directly':
+                #this will return the whole accum_grad structure incremented in the specified idxs
+                accum = T.inc_subtensor(accum_grad[w2v_idxs],T.sqr(grad))
+                #this will return the whole w1 structure decremented according to the idxs vector.
+                update = T.inc_subtensor(param, - learning_rate * grad/(T.sqrt(accum[w2v_idxs])+10**-5))
+                #update whole structure with whole structure
+                updates.append((self.params['w1'],update))
+                #update whole structure with whole structure
+                updates.append((accum_grad,accum))
+            elif name == 'w_x_c_nmp':
+                #this will return the whole accum_grad structure incremented in the specified idxs
+                accum = T.inc_subtensor(accum_grad[w2v_idxs],T.sqr(grad))
+                #this will return the whole w1 structure decremented according to the idxs vector.
+                update = T.inc_subtensor(param, - learning_rate * grad/(T.sqrt(accum[w2v_idxs])+10**-5))
+                #update whole structure with whole structure
+                updates.append((self.params['w1_c_nmp'],update))
+                #update whole structure with whole structure
+                updates.append((accum_grad,accum))
+            elif name == 'w_sent_nr_x':
+                #this will return the whole accum_grad structure incremented in the specified idxs
+                accum = T.inc_subtensor(accum_grad[sent_nr_id],T.sqr(grad))
+                #this will return the whole w1 structure decremented according to the idxs vector.
+                update = T.inc_subtensor(param, - learning_rate * grad/(T.sqrt(accum[sent_nr_id])+10**-5))
+                #update whole structure with whole structure
+                updates.append((self.params['w1_sent_nr'],update))
+                #update whole structure with whole structure
+                updates.append((accum_grad,accum))
+            elif name == 'w_tense_x':
+                #this will return the whole accum_grad structure incremented in the specified idxs
+                accum = T.inc_subtensor(accum_grad[tense_id],T.sqr(grad))
+                #this will return the whole w1 structure decremented according to the idxs vector.
+                update = T.inc_subtensor(param, - learning_rate * grad/(T.sqrt(accum[tense_id])+10**-5))
+                #update whole structure with whole structure
+                updates.append((self.params['w1_tense'],update))
+                #update whole structure with whole structure
+                updates.append((accum_grad,accum))
+            else:
+                accum = accum_grad + T.sqr(grad)
+                updates.append((param, param - learning_rate * grad/(T.sqrt(accum)+10**-5)))
+                updates.append((accum_grad, accum))
+
+        train_idx = T.scalar(name="train_idx", dtype=INT)
+        valid_idx = T.scalar(name="valid_idx", dtype=INT)
+
+        train_givens = dict()
+        valid_givens = dict()
+        if self.using_w2v_feature():
+            train_givens.update({
+                w2v_idxs: train_x[train_idx]
+            })
+            valid_givens.update({
+                w2v_idxs: valid_x[valid_idx]
+            })
+
+        if self.using_pos_feature():
+            train_givens.update({
+                pos_idxs: train_pos_x[train_idx]
+            })
+            valid_givens.update({
+                pos_idxs: valid_pos_x[valid_idx]
+            })
+
+        if self.using_ner_feature():
+            train_givens.update({
+                ner_idxs: train_ner_x[train_idx]
+            })
+            valid_givens.update({
+                ner_idxs: valid_ner_x[valid_idx]
+            })
+
+        if self.using_sent_nr_feature():
+            train_givens.update({
+                sent_nr_id: train_sent_nr_x[train_idx]
+            })
+            valid_givens.update({
+                sent_nr_id: valid_sent_nr_x[valid_idx]
+            })
+
+        if self.using_tense_feature():
+            train_givens.update({
+                tense_id: train_tense_x[train_idx]
+            })
+            valid_givens.update({
+                tense_id: valid_tense_x[valid_idx]
+            })
+
+        train = theano.function(inputs=[train_idx, y],
+                                outputs=[cost, errors],
+                                updates=updates,
+                                givens=train_givens)
+
+        train_get_cross_entropy = theano.function(inputs=[train_idx, y],
+                                            outputs=mean_cross_entropy,
+                                            updates=[],
+                                            givens=train_givens)
+
+        valid_get_cross_entropy = theano.function(inputs=[valid_idx, y],
+                                            outputs=mean_cross_entropy,
+                                            updates=[],
+                                            givens=valid_givens)
+
+        train_predict = theano.function(inputs=[valid_idx, y],
+                                        outputs=[cost, errors, y_predictions],
+                                        updates=[],
+                                        on_unused_input='ignore',
+                                        givens=valid_givens)
+
+        if self.regularization:
+            train_l2_penalty = theano.function(inputs=[],
+                                               outputs=[W1_tense_sum, W1_sent_nr_sum, W1_ner_sum, W1_pos_sum, W1_w2v_sum,
+                                                        W1_c_nmp_sum, W1_sum, L2_w2v_c_mp_filters, L2_w2v_c_nmp_filters,
+                                                        L2_pos_c_mp_filters, L2_ner_c_mp_filters, L2_w3, L2_w4],
+                                               givens=[])
+
+        valid_flat_true = self.y_valid
+
+        # plotting purposes
+        train_costs_list = []
+        train_errors_list = []
+        valid_costs_list = []
+        valid_errors_list = []
+        precision_list = []
+        recall_list = []
+        f1_score_list = []
+        epoch_l2_w2v_nc_nmp_weight_list = []
+        epoch_l2_w2v_c_mp_filters_list = []
+        epoch_l2_w2v_c_mp_weight_list = []
+        epoch_l2_w2v_c_nmp_filters_list = []
+        epoch_l2_w2v_c_nmp_weight_list = []
+        epoch_l2_pos_filters_list = []
+        epoch_l2_pos_weight_list = []
+        epoch_l2_ner_filters_list = []
+        epoch_l2_ner_weight_list = []
+        epoch_l2_sent_nr_weight_list = []
+        epoch_l2_tense_weight_list = []
+        epoch_l2_w3_list = []
+        epoch_l2_w4_list = []
+        train_cross_entropy_list = []
+        valid_cross_entropy_list = []
+
+        last_valid_errors = np.inf
+
+        for epoch_index in range(max_epochs):
+            start = time.time()
+            train_cost = 0
+            train_errors = 0
+            epoch_l2_w2v_nc_nmp_weight = 0
+            epoch_l2_w2v_c_nmp_filters = 0
+            epoch_l2_w2v_c_mp_filters = 0
+            epoch_l2_w2v_c_mp_weight = 0
+            epoch_l2_w2v_c_nmp_weight = 0
+            epoch_l2_pos_filters = 0
+            epoch_l2_pos_weight = 0
+            epoch_l2_ner_filters = 0
+            epoch_l2_ner_weight = 0
+            epoch_l2_sent_nr_weight = 0
+            epoch_l2_tense_weight = 0
+            epoch_l2_w3 = 0
+            epoch_l2_w4 = 0
+            train_cross_entropy = 0
+            for i in np.random.permutation(self.n_samples):
+                # error = train(self.x_train, self.y_train)
+                cost_output, errors_output = train(i, [train_y.get_value()[i]])
+                train_cost += cost_output
+                train_errors += errors_output
+                train_cross_entropy += train_get_cross_entropy(i, [train_y.get_value()[i]])
+
+            if self.regularization:
+                w1_tense_sum, w1_sent_nr_sum, w1_ner_sum, w1_pos_sum, w1_w2v_sum, w1_c_nmp_sum, w1_sum, l2_w2v_c_mp_filters,\
+                l2_w2v_c_nmp_filters, l2_pos_c_mp_filters, l2_ner_c_mp_filters, l2_w3, l2_w4 = train_l2_penalty()
+
+                epoch_l2_w2v_nc_nmp_weight += w1_sum
+                epoch_l2_w2v_c_mp_filters += l2_w2v_c_mp_filters
+                epoch_l2_w2v_c_mp_weight += w1_w2v_sum
+                epoch_l2_w2v_c_nmp_filters += l2_w2v_c_nmp_filters
+                epoch_l2_w2v_c_nmp_weight += w1_c_nmp_sum
+                epoch_l2_pos_filters += l2_pos_c_mp_filters
+                epoch_l2_pos_weight += w1_pos_sum
+                epoch_l2_ner_filters += l2_ner_c_mp_filters
+                epoch_l2_ner_weight += w1_ner_sum
+                epoch_l2_sent_nr_weight += w1_sent_nr_sum
+                epoch_l2_tense_weight += w1_tense_sum
+                epoch_l2_w3 += l2_w3
+                epoch_l2_w4 += l2_w4
+
+                # self.predict(on_validation_set=True, compute_cost_error=True)
+
+            valid_errors = 0
+            valid_cost = 0
+            valid_predictions = []
+            valid_cross_entropy = 0
+            start1 = time.time()
+            for i, y_sample in enumerate(self.y_valid):
+                # cost_output = 0 #TODO: in the forest prediction, computing the cost yield and error (out of bounds for 1st misclassification).
+                cost_output, errors_output, pred = train_predict(i, [y_sample])
+                valid_cost += cost_output
+                valid_errors += errors_output
+                valid_predictions.append(np.asscalar(pred))
+                valid_cross_entropy += valid_get_cross_entropy(i, [y_sample])
+
+            print time.time()-start1
+            train_costs_list.append(train_cost)
+            train_errors_list.append(train_errors)
+            valid_costs_list.append(valid_cost)
+            valid_errors_list.append(valid_errors)
+
+            train_cross_entropy_list.append(train_cross_entropy)
+            valid_cross_entropy_list.append(valid_cross_entropy)
+
+            epoch_l2_w2v_nc_nmp_weight_list.append(epoch_l2_w2v_nc_nmp_weight)
+            epoch_l2_w2v_c_mp_filters_list.append(epoch_l2_w2v_c_mp_filters)
+            epoch_l2_w2v_c_mp_weight_list.append(epoch_l2_w2v_c_mp_weight)
+            epoch_l2_w2v_c_nmp_filters_list.append(epoch_l2_w2v_c_nmp_filters)
+            epoch_l2_w2v_c_nmp_weight_list.append(epoch_l2_w2v_c_nmp_weight)
+            epoch_l2_pos_filters_list.append(epoch_l2_pos_filters)
+            epoch_l2_pos_weight_list.append(epoch_l2_pos_weight)
+            epoch_l2_ner_filters_list.append(epoch_l2_ner_filters)
+            epoch_l2_ner_weight_list.append(epoch_l2_ner_weight)
+            epoch_l2_sent_nr_weight_list.append(epoch_l2_sent_nr_weight)
+            epoch_l2_tense_weight_list.append(epoch_l2_tense_weight)
+            epoch_l2_w3_list.append(epoch_l2_w3)
+            epoch_l2_w4_list.append(epoch_l2_w4)
+
+            results = Metrics.compute_all_metrics(y_true=valid_flat_true, y_pred=valid_predictions, average='macro')
+            f1_score = results['f1_score']
+            precision = results['precision']
+            recall = results['recall']
+            precision_list.append(precision)
+            recall_list.append(recall)
+            f1_score_list.append(f1_score)
+
+            end = time.time()
+            logger.info('Epoch %d Train_cost: %f Train_errors: %d Valid_cost: %f Valid_errors: %d F1-score: %f Took: %f'
+                        % (epoch_index+1, train_cost, train_errors, valid_cost, valid_errors, f1_score, end-start))
+
+            if lr_decay and (valid_errors > last_valid_errors):
+                logger.info('Changing learning rate from %f to %f' % (learning_rate, .5*learning_rate))
+                learning_rate *= .5
+
+            last_valid_errors = valid_errors
+
+        if save_params:
+            logger.info('Saving parameters to File system')
+            self.save_params()
+
+        if plot:
+            actual_time = str(time.time())
+            self.plot_training_cost_and_error(train_costs_list, train_errors_list, valid_costs_list,
+                                              valid_errors_list, actual_time)
+            self.plot_scores(precision_list, recall_list, f1_score_list, actual_time)
+
+            plot_data_dict = {
+                'w2v_emb': epoch_l2_w2v_nc_nmp_weight_list,
+                'w2v_c_mp_filters': epoch_l2_w2v_c_mp_filters_list,
+                'w2v_c_mp_emb': epoch_l2_w2v_c_mp_weight_list,
+                'w2v_c_nmp_filters': epoch_l2_w2v_c_nmp_filters_list,
+                'w2v_c_nmp_emb': epoch_l2_w2v_c_nmp_weight_list,
+                'pos_c_mp_filters': epoch_l2_pos_filters_list,
+                'pos_c_mp_emb': epoch_l2_pos_weight_list,
+                'ner_c_mp_filters': epoch_l2_ner_filters_list,
+                'ner_c_mp_emb': epoch_l2_ner_weight_list,
+                'sent_nr_nc_nmp_emb': epoch_l2_sent_nr_weight_list,
+                'tense_nc_nmp_emb': epoch_l2_tense_weight_list,
+                'w3': epoch_l2_w3_list,
+                'w4': epoch_l2_w4_list
             }
             self.plot_penalties_general(plot_data_dict, actual_time=actual_time)
 
@@ -1647,6 +2304,163 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
             L2 = L2_w2v_nc_nmp_weight + L2_w2v_c_mp_filters + L2_w_x + L2_w2v_c_nmp_filters + \
                  L2_w2v_c_nmp_weight + L2_pos_c_mp_filters + L2_w_pos_x + L2_ner_c_mp_filters + \
                  L2_w_ner_x + L2_w_sent_nr_x + L2_w_tense_x + L2_w3
+
+            cost = T.mean(T.nnet.categorical_crossentropy(out, y)) + self.alpha_L2_reg * L2
+
+            perform_prediction = theano.function(inputs=[y],
+                                                 outputs=[cost, errors, y_predictions],
+                                                 on_unused_input='ignore',
+                                                 givens=givens)
+
+            out_cost, out_errors, out_predictions = perform_prediction(y_test)
+            results['errors'] = out_errors
+            results['cost'] = out_cost
+        else:
+            perform_prediction = theano.function(inputs=[],
+                                                 outputs=y_predictions,
+                                                 on_unused_input='ignore',
+                                                 givens=givens)
+
+            out_predictions = perform_prediction()
+
+        results['flat_predictions'] = out_predictions
+        results['flat_trues'] = y_test
+
+        return results
+
+    def predict_two_layers(self, on_training_set=False, on_validation_set=False, on_testing_set=False, compute_cost_error=False, **kwargs):
+
+        results = defaultdict(None)
+
+        if on_training_set:
+            # predict on training set
+            x_test = self.x_train.astype(dtype=INT)
+
+            if self.using_pos_feature():
+                x_pos_test = self.train_pos_feats.astype(dtype=INT)
+
+            if self.using_ner_feature():
+                x_ner_test = self.train_ner_feats.astype(dtype=INT)
+
+            if self.using_sent_nr_feature():
+                x_sent_nr_test = self.train_sent_nr_feats.astype(dtype=INT)
+
+            if self.using_tense_feature():
+                x_tense_test = self.train_tense_feats.astype(dtype=INT)
+
+            y_test = self.y_train.astype(dtype=INT)
+
+        elif on_validation_set:
+            # predict on validation set
+            x_test = self.x_valid.astype(dtype=INT)
+            if self.using_pos_feature():
+                x_pos_test = self.valid_pos_feats.astype(dtype=INT)
+
+            if self.using_ner_feature():
+                x_ner_test = self.valid_ner_feats.astype(dtype=INT)
+
+            if self.using_sent_nr_feature():
+                x_sent_nr_test = self.valid_sent_nr_feats.astype(dtype=INT)
+
+            if self.using_tense_feature():
+                x_tense_test = self.valid_tense_feats.astype(dtype=INT)
+
+            y_test = self.y_valid.astype(dtype=INT)
+        elif on_testing_set:
+            # predict on test set
+            x_test = self.x_test.astype(dtype=INT)
+
+            if self.using_pos_feature():
+                x_pos_test = self.test_pos_feats.astype(dtype=INT)
+
+            if self.using_ner_feature():
+                x_ner_test = self.test_ner_feats.astype(dtype=INT)
+
+            if self.using_sent_nr_feature():
+                x_sent_nr_test = self.test_sent_nr_feats.astype(dtype=INT)
+
+            if self.using_tense_feature():
+                x_tense_test = self.test_tense_feats.astype(dtype=INT)
+
+            y_test = self.y_test
+
+        # test_x = theano.shared(value=self.x_valid.astype(dtype=INT), name='test_x', borrow=True)
+        # test_y = theano.shared(value=self.y_valid.astype(dtype=INT), name='test_y', borrow=True)
+
+        y = T.vector(name='test_y', dtype=INT)
+
+        w2v_idxs = T.matrix(name="test_w2v_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
+        pos_idxs = T.matrix(name="test_pos_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
+        ner_idxs = T.matrix(name="test_ner_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
+        sent_nr_idxs = T.vector(name="test_sent_nr_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
+        tense_idxs = T.vector(name="test_tense_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
+
+        if self.using_w2v_convolution_maxpool_feature():
+            self.w_x = self.params['w1_w2v'][w2v_idxs]
+
+        if self.using_w2v_convolution_no_maxpool_feature():
+            self.w_x_c_nmp = self.params['w1_c_nmp'][w2v_idxs]
+
+        if self.using_w2v_no_convolution_no_maxpool_feature():
+            self.w_x_directly = self.params['w1'][w2v_idxs]
+
+        if self.using_pos_convolution_maxpool_feature():
+            self.w_pos_x = self.params['w1_pos'][pos_idxs]
+
+        if self.using_ner_convolution_maxpool_feature():
+            self.w_ner_x = self.params['w1_ner'][ner_idxs]
+
+        if self.using_sent_nr_no_convolution_no_maxpool_feature():
+            self.w_sent_nr_x = self.params['w1_sent_nr'][sent_nr_idxs]
+
+        if self.using_tense_no_convolution_no_maxpool_feature():
+            self.w_tense_x = self.params['w1_tense'][tense_idxs]
+
+        givens = dict()
+        if self.using_w2v_feature():
+            givens.update({
+                w2v_idxs: x_test
+            })
+
+        if self.using_pos_feature():
+            givens.update({
+                pos_idxs: x_pos_test
+            })
+
+        if self.using_ner_feature():
+            givens.update({
+                ner_idxs: x_ner_test
+            })
+
+        if self.using_sent_nr_feature():
+            givens.update({
+                sent_nr_idxs: x_sent_nr_test
+            })
+
+        if self.using_tense_feature():
+            givens.update({
+                tense_idxs: x_tense_test
+            })
+
+
+        #TODO: choose
+        # out = self.perform_forward_pass_dense_step(w2v_conc, pos_conc)
+        out = self.sgd_forward_pass_two_layers(tensor_dim=4)
+
+        y_predictions = T.argmax(out, axis=1)
+
+        if compute_cost_error:
+            errors = T.sum(T.neq(y, y_predictions))
+
+            L2_w2v_nc_nmp_weight, L2_w2v_c_mp_filters, L2_w_x, L2_w2v_c_nmp_filters, \
+            L2_w2v_c_nmp_weight, L2_pos_c_mp_filters, L2_w_pos_x, L2_ner_c_mp_filters, L2_w_ner_x, \
+            L2_w_sent_nr_x, L2_w_tense_x, L2_w3 = self.compute_regularization_cost()
+
+            L2_w4 = T.sum(self.params['w4'] ** 2)
+
+            L2 = L2_w2v_nc_nmp_weight + L2_w2v_c_mp_filters + L2_w_x + L2_w2v_c_nmp_filters + \
+                 L2_w2v_c_nmp_weight + L2_pos_c_mp_filters + L2_w_pos_x + L2_ner_c_mp_filters + \
+                 L2_w_ner_x + L2_w_sent_nr_x + L2_w_tense_x + L2_w3 + L2_w4
 
             cost = T.mean(T.nnet.categorical_crossentropy(out, y)) + self.alpha_L2_reg * L2
 
