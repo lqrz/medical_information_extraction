@@ -540,13 +540,8 @@ class A_neural_network():
     @classmethod
     def initialize_w_pos(cls, word2index):
         """
-        this method is used by all neural net structures. It initializes the W1 matrix with the pretrained embeddings
-        from word2vec.
-
-        :param w2v_dims:
-        :param w2v_vectors:
-        :param w2v_model:
-        :return:
+        this method is used by all neural net structures. It initializes a matrix with the POS probabilistic
+        representation.
         """
         unique_words = word2index.keys()
         n_unique_words = len(unique_words)
@@ -555,6 +550,23 @@ class A_neural_network():
         w = utils.NeuralNetwork.initialize_weights(n_in=n_unique_words, n_out=pos_dims, function='tanh')
 
         for word, rep in pos_word_representations.iteritems():
+            w[word2index[word]] = rep
+
+        return w
+
+    @classmethod
+    def initialize_w_ner(cls, word2index):
+        """
+        this method is used by all neural net structures. It initializes a matrix with the NER probabilistic
+        representation.
+        """
+        unique_words = word2index.keys()
+        n_unique_words = len(unique_words)
+        ner_word_representations = features_distributions.training_word_ner_representations()
+        ner_dims = ner_word_representations.values()[0].__len__()
+        w = utils.NeuralNetwork.initialize_weights(n_in=n_unique_words, n_out=ner_dims, function='tanh')
+
+        for word, rep in ner_word_representations.iteritems():
             w[word2index[word]] = rep
 
         return w

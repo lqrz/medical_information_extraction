@@ -83,6 +83,7 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
                  tense_probs=None,
                  region_sizes=None,
                  pos_embeddings=None,
+                 ner_embeddings=None,
                  **kwargs):
 
         super(Multi_Feature_Type_Hidden_Layer_Context_Window_Net, self).__init__(**kwargs)
@@ -142,9 +143,14 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
                 ner_probs = features_indexes[self.CRF_POSITIONS['ner']][2]
 
+                if ner_embeddings is not None:
+                    # use these embeddings as initialisers
+                    self.ner_embeddings = ner_embeddings
+                    self.n_ner_emb = ner_embeddings.shape[1]
+
                 # TODO: choose one.
-                self.n_ner_emb = np.max(train_ner_feats) + 1  # encoding for the POS tags
-                self.n_ner_emb = 40  # encoding for the NER tags
+                # self.n_ner_emb = np.max(train_ner_feats) + 1  # encoding for the POS tags
+                # self.n_ner_emb = 40  # encoding for the NER tags
 
             except KeyError:
                 train_ner_feats = None
@@ -796,9 +802,16 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
             # w1_ner = theano.shared(value=utils.NeuralNetwork.initialize_weights(
             #     n_in=np.max(self.train_ner_feats)+1, n_out=self.n_ner_emb, function='tanh').astype(dtype=theano.config.floatX),
             #                        name='w1_ner', borrow=True)
-            w1_ner = theano.shared(
-                value=np.eye(np.max(self.train_ner_feats) + 1, self.n_ner_emb).astype(dtype=theano.config.floatX),
-                name='w1_ner', borrow=True)
+
+            # TODO: one-hot, random, probabilistic ?
+            if self.ner_embeddings is not None:
+                w1_pos = theano.shared(value=np.matrix(self.ner_embeddings, dtype=theano.config.floatX), name='w1_ner',
+                                       borrow=True)
+                self.n_ner_emb = self.ner_embeddings.shape[1]
+            else:
+                w1_ner = theano.shared(
+                    value=np.eye(np.max(self.train_ner_feats) + 1, self.n_ner_emb).astype(dtype=theano.config.floatX),
+                    name='w1_ner', borrow=True)
 
             # create NER filters
             ner_filters = self.create_filters(filter_width=self.ner_filter_width, region_sizes=self.region_sizes,

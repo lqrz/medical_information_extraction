@@ -422,6 +422,7 @@ def use_testing_dataset(nn_class,
             get_aggregated_tags(y_train, y_valid, tag_mapping, index2label)
 
     pos_embeddings = nn_class.initialize_w_pos(word2index)
+    ner_embeddings = nn_class.initialize_w_ner(word2index)
 
     n_out = len(label2index.keys())
 

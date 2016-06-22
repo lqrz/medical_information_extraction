@@ -109,12 +109,30 @@ def training_word_pos_representations():
     pos2index = dict(zip(set(pos_tags), range(set(pos_tags).__len__())))
     n_pos_tags = set(pos_tags).__len__()
     unique_words = set(chain(*chain(*training_words.values())))
-    n_unique_words = unique_words.__len__()
 
     for word in unique_words:
         rep = [0.] * n_pos_tags
         for pos_tag, prob in [(p,v) for (w,p),v in distribution.iteritems() if w==word]:
             rep[pos2index[pos_tag]] = prob
+
+        assert any(rep)
+        representations[word] = rep
+
+    return representations
+
+def training_word_ner_representations():
+    representations = dict()
+    distribution = training_word_ner_distribution()
+    training_data, _, training_words, _ = Dataset.get_clef_training_dataset()
+    ner_tags = [word_dict['features'][1] for word_dict in list(chain(*chain(*training_data.values())))]
+    ner2index = dict(zip(set(ner_tags), range(set(ner_tags).__len__())))
+    n_ner_tags = set(ner_tags).__len__()
+    unique_words = set(chain(*chain(*training_words.values())))
+
+    for word in unique_words:
+        rep = [0.] * n_ner_tags
+        for pos_tag, prob in [(p,v) for (w,p),v in distribution.iteritems() if w==word]:
+            rep[ner2index[pos_tag]] = prob
 
         assert any(rep)
         representations[word] = rep
