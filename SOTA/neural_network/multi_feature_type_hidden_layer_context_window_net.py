@@ -260,6 +260,15 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
         return True
 
+    def predict(self, n_hidden=None, **kwargs):
+
+        if n_hidden is not None:
+            function = self.sgd_forward_pass
+        else:
+            function = self.sgd_forward_pass_two_layers
+
+        return self._predict(forward_function=function, **kwargs)
+
     def perform_forward_pass_dense_step(self, features_hidden_state, ndim):
         """
         performs the last step in the nnet forward pass (the dense layer and softmax).
@@ -2443,7 +2452,8 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
         return conv_conc
 
-    def predict(self, on_training_set=False, on_validation_set=False, on_testing_set=False, compute_cost_error=False, **kwargs):
+    def _predict(self, forward_function, on_training_set=False, on_validation_set=False, on_testing_set=False,
+                compute_cost_error=False, **kwargs):
 
         results = defaultdict(None)
 
@@ -2503,7 +2513,7 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
         batch_size = T.constant(512, name='batch_size', dtype=INT)
 
-        out = self.sgd_forward_pass(tensor_dim=4)
+        out = forward_function(tensor_dim=4)
 
         y_predictions = T.argmax(out, axis=1)
 
@@ -2551,164 +2561,6 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
                 predictions.extend(out_predictions)
 
         results['flat_predictions'] = predictions
-        results['flat_trues'] = y_test
-
-        return results
-
-    def predict_two_layers(self, on_training_set=False, on_validation_set=False, on_testing_set=False, compute_cost_error=False, **kwargs):
-
-        results = defaultdict(None)
-
-        if on_training_set:
-            # predict on training set
-            x_test = self.x_train.astype(dtype=INT)
-
-            if self.using_pos_feature():
-                x_pos_test = self.train_pos_feats.astype(dtype=INT)
-
-            if self.using_ner_feature():
-                x_ner_test = self.train_ner_feats.astype(dtype=INT)
-
-            if self.using_sent_nr_feature():
-                x_sent_nr_test = self.train_sent_nr_feats.astype(dtype=INT)
-
-            if self.using_tense_feature():
-                x_tense_test = self.train_tense_feats.astype(dtype=INT)
-
-            y_test = self.y_train.astype(dtype=INT)
-
-        elif on_validation_set:
-            # predict on validation set
-            x_test = self.x_valid.astype(dtype=INT)
-            if self.using_pos_feature():
-                x_pos_test = self.valid_pos_feats.astype(dtype=INT)
-
-            if self.using_ner_feature():
-                x_ner_test = self.valid_ner_feats.astype(dtype=INT)
-
-            if self.using_sent_nr_feature():
-                x_sent_nr_test = self.valid_sent_nr_feats.astype(dtype=INT)
-
-            if self.using_tense_feature():
-                x_tense_test = self.valid_tense_feats.astype(dtype=INT)
-
-            y_test = self.y_valid.astype(dtype=INT)
-        elif on_testing_set:
-            # predict on test set
-            x_test = self.x_test.astype(dtype=INT)
-
-            if self.using_pos_feature():
-                x_pos_test = self.test_pos_feats.astype(dtype=INT)
-
-            if self.using_ner_feature():
-                x_ner_test = self.test_ner_feats.astype(dtype=INT)
-
-            if self.using_sent_nr_feature():
-                x_sent_nr_test = self.test_sent_nr_feats.astype(dtype=INT)
-
-            if self.using_tense_feature():
-                x_tense_test = self.test_tense_feats.astype(dtype=INT)
-
-            y_test = self.y_test
-
-        # test_x = theano.shared(value=self.x_valid.astype(dtype=INT), name='test_x', borrow=True)
-        # test_y = theano.shared(value=self.y_valid.astype(dtype=INT), name='test_y', borrow=True)
-
-        y = T.vector(name='test_y', dtype=INT)
-
-        w2v_idxs = T.matrix(name="test_w2v_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
-        pos_idxs = T.matrix(name="test_pos_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
-        ner_idxs = T.matrix(name="test_ner_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
-        sent_nr_idxs = T.vector(name="test_sent_nr_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
-        tense_idxs = T.vector(name="test_tense_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
-
-        if self.using_w2v_convolution_maxpool_feature():
-            self.w_x = self.params['w1_w2v'][w2v_idxs]
-
-        if self.using_w2v_convolution_no_maxpool_feature():
-            self.w_x_c_nmp = self.params['w1_c_nmp'][w2v_idxs]
-
-        if self.using_w2v_no_convolution_no_maxpool_feature():
-            self.w_x_directly = self.params['w1'][w2v_idxs]
-
-        if self.using_pos_convolution_maxpool_feature():
-            self.w_pos_x = self.params['w1_pos'][pos_idxs]
-
-        if self.using_ner_convolution_maxpool_feature():
-            self.w_ner_x = self.params['w1_ner'][ner_idxs]
-
-        if self.using_sent_nr_convolution_maxpool_feature():
-            self.w_sent_nr_x = self.params['w1_sent_nr'][sent_nr_idxs]
-
-        if self.using_tense_convolution_maxpool_feature():
-            self.w_tense_x = self.params['w1_tense'][tense_idxs]
-
-        givens = dict()
-        if self.using_w2v_feature():
-            givens.update({
-                w2v_idxs: x_test
-            })
-
-        if self.using_pos_feature():
-            givens.update({
-                pos_idxs: x_pos_test
-            })
-
-        if self.using_ner_feature():
-            givens.update({
-                ner_idxs: x_ner_test
-            })
-
-        if self.using_sent_nr_feature():
-            givens.update({
-                sent_nr_idxs: x_sent_nr_test
-            })
-
-        if self.using_tense_feature():
-            givens.update({
-                tense_idxs: x_tense_test
-            })
-
-
-        #TODO: choose
-        # out = self.perform_forward_pass_dense_step(w2v_conc, pos_conc)
-        out = self.sgd_forward_pass_two_layers(tensor_dim=4)
-
-        y_predictions = T.argmax(out, axis=1)
-
-        if compute_cost_error:
-            errors = T.sum(T.neq(y, y_predictions))
-
-            L2_w2v_nc_nmp_weight, L2_w2v_c_mp_filters, L2_w_x, L2_w2v_c_nmp_filters, \
-            L2_w2v_c_nmp_weight, L2_pos_c_mp_filters, L2_w_pos_x, L2_ner_c_mp_filters, L2_w_ner_x, \
-            L2_w_sent_nr_x, L2_w_sent_nr_filters, L2_w_tense_x, L2_w_tense_filters, L2_w3 = self.compute_regularization_cost()
-
-            L2_w4 = T.sum(self.params['w4'] ** 2)
-
-            L2 = L2_w2v_nc_nmp_weight + L2_w2v_c_mp_filters + L2_w_x + L2_w2v_c_nmp_filters + \
-                 L2_w2v_c_nmp_weight + L2_pos_c_mp_filters + L2_w_pos_x + L2_ner_c_mp_filters + \
-                 L2_w_ner_x + L2_w_sent_nr_x + L2_w_sent_nr_filters + L2_w_tense_x +L2_w_tense_filters + \
-                 L2_w3 + L2_w3 + L2_w4
-
-            cost = T.mean(T.nnet.categorical_crossentropy(out, y)) + self.alpha_L2_reg * L2
-
-            perform_prediction = theano.function(inputs=[y],
-                                                 outputs=[cost, errors, y_predictions],
-                                                 on_unused_input='ignore',
-                                                 givens=givens)
-
-            out_cost, out_errors, out_predictions = perform_prediction(y_test)
-            results['errors'] = out_errors
-            results['cost'] = out_cost
-        else:
-            perform_prediction = theano.function(inputs=[],
-                                                 outputs=y_predictions,
-                                                 on_unused_input='ignore',
-                                                 givens=givens)
-
-            out_predictions = perform_prediction()
-
-        results['flat_predictions'] = out_predictions
         results['flat_trues'] = y_test
 
         return results
