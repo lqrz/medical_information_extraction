@@ -471,7 +471,8 @@ def use_testing_dataset(nn_class,
         'static': args['static'],
         'na_tag': na_tag,
         'n_hidden': args['n_hidden'],
-        'pos_embeddings': pos_embeddings
+        'pos_embeddings': pos_embeddings,
+        'ner_embeddings': ner_embeddings
     }
 
     nn_trainer = nn_class(**params)

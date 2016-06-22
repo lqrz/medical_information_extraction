@@ -805,7 +805,7 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
             # TODO: one-hot, random, probabilistic ?
             if self.ner_embeddings is not None:
-                w1_pos = theano.shared(value=np.matrix(self.ner_embeddings, dtype=theano.config.floatX), name='w1_ner',
+                w1_ner = theano.shared(value=np.matrix(self.ner_embeddings, dtype=theano.config.floatX), name='w1_ner',
                                        borrow=True)
                 self.n_ner_emb = self.ner_embeddings.shape[1]
             else:
