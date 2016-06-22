@@ -82,6 +82,7 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
                  test_tense_feats=None,
                  tense_probs=None,
                  region_sizes=None,
+                 pos_embeddings=None,
                  **kwargs):
 
         super(Multi_Feature_Type_Hidden_Layer_Context_Window_Net, self).__init__(**kwargs)
@@ -113,9 +114,14 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
                 pos_probs = features_indexes[self.CRF_POSITIONS['pos']][2]
 
+                if pos_embeddings is not None:
+                    # use these embeddings as initialisers
+                    self.pos_embeddings = pos_embeddings
+                    self.n_pos_emb = pos_embeddings.shape[1]
+
                 # TODO: choose one.
-                self.n_pos_emb = np.max(train_pos_feats) + 1  # encoding for the POS tags
-                self.n_pos_emb = 40  # encoding for the POS tags
+                # self.n_pos_emb = np.max(train_pos_feats) + 1  # encoding for the POS tags
+                # self.n_pos_emb = 40  # encoding for the POS tags
 
             except KeyError:
                 train_pos_feats = None
@@ -602,6 +608,9 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         self.max_pool = max_pool
         self.static = static
 
+        # separate learning rate train from learning rate fine tune
+        learning_rate_train = learning_rate
+
         if lr_decay:
             logger.info('Applying learning rate step decay.')
 
@@ -750,10 +759,12 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         if self.using_pos_convolution_maxpool_feature():
             # create POS embeddings
             #TODO: one-hot, random, probabilistic ?
-            w1_pos = theano.shared(value=utils.NeuralNetwork.initialize_weights(
-                n_in=np.max(self.train_pos_feats)+1, n_out=self.n_pos_emb, function='tanh').astype(dtype=theano.config.floatX), name='w1_pos', borrow=True)
-
-            # w1_pos = theano.shared(value=np.eye(np.max(self.train_pos_feats)+1, self.n_pos_emb).astype(dtype=theano.config.floatX), name='w1_pos', borrow=True)
+            if self.pos_embeddings is not None:
+                w1_pos = theano.shared(value=np.matrix(self.pos_embeddings, dtype=theano.config.floatX), name='w1_pos', borrow=True)
+                self.n_pos_emb = self.pos_embeddings.shape[1]
+            else:
+                w1_pos = theano.shared(value=utils.NeuralNetwork.initialize_weights(
+                    n_in=np.max(self.train_pos_feats)+1, n_out=self.n_pos_emb, function='tanh').astype(dtype=theano.config.floatX), name='w1_pos', borrow=True)
 
             # w1_pos = theano.shared(value=np.matrix(self.pos_probs.values(), dtype=theano.config.floatX).reshape((-1,1)), name='w1_pos', borrow=True)
             # self.n_pos_emb = 1
@@ -922,7 +933,7 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
                 #this will return the whole accum_grad structure incremented in the specified idxs
                 accum = T.inc_subtensor(accum_grad[pos_idxs],T.sqr(grad))
                 #this will return the whole w1 structure decremented according to the idxs vector.
-                update = T.inc_subtensor(param, - learning_rate * grad/(T.sqrt(accum[pos_idxs])+10**-5))
+                update = T.inc_subtensor(param, - learning_rate_train * grad/(T.sqrt(accum[pos_idxs])+10**-5))
                 #update whole structure with whole structure
                 updates.append((self.params['w1_pos'],update))
                 #update whole structure with whole structure

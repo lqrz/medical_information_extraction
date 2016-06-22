@@ -421,6 +421,8 @@ def use_testing_dataset(nn_class,
         y_train, y_valid, label2index, index2label = \
             get_aggregated_tags(y_train, y_valid, tag_mapping, index2label)
 
+    pos_embeddings = nn_class.initialize_w_pos(word2index)
+
     n_out = len(label2index.keys())
 
     logger.info('Instantiating Neural network')
@@ -467,7 +469,8 @@ def use_testing_dataset(nn_class,
         'features_to_use': args['multi_features'],
         'static': args['static'],
         'na_tag': na_tag,
-        'n_hidden': args['n_hidden']
+        'n_hidden': args['n_hidden'],
+        'pos_embeddings': pos_embeddings
     }
 
     nn_trainer = nn_class(**params)

@@ -9,6 +9,7 @@ import copy
 from data.dataset import Dataset
 from utils import utils
 from utils import get_word_tenses
+from utils import features_distributions
 
 class A_neural_network():
 
@@ -535,6 +536,28 @@ class A_neural_network():
         pretrained_embeddings = utils.NeuralNetwork.replace_with_word_embeddings(w, unique_words, w2v_vectors=w2v_vectors, w2v_model=w2v_model)
 
         return pretrained_embeddings
+
+    @classmethod
+    def initialize_w_pos(cls, word2index):
+        """
+        this method is used by all neural net structures. It initializes the W1 matrix with the pretrained embeddings
+        from word2vec.
+
+        :param w2v_dims:
+        :param w2v_vectors:
+        :param w2v_model:
+        :return:
+        """
+        unique_words = word2index.keys()
+        n_unique_words = len(unique_words)
+        pos_word_representations = features_distributions.training_word_pos_representations()
+        pos_dims = pos_word_representations.values()[0].__len__()
+        w = utils.NeuralNetwork.initialize_weights(n_in=n_unique_words, n_out=pos_dims, function='tanh')
+
+        for word, rep in pos_word_representations.iteritems():
+            w[word2index[word]] = rep
+
+        return w
     
     def plot_training_cost_and_error(self, train_costs_list, train_errors_list, test_costs_list, test_errors_list, 
                                      actual_time):
