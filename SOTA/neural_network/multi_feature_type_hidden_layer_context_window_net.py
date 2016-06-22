@@ -2449,67 +2449,30 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
         if on_training_set:
             # predict on training set
-            x_test = self.x_train.astype(dtype=INT)
-
-            # if self.using_pos_feature():
-            #     x_pos_test = self.train_pos_feats.astype(dtype=INT)
-            #
-            # if self.using_ner_feature():
-            #     x_ner_test = self.train_ner_feats.astype(dtype=INT)
-            #
-            # if self.using_sent_nr_feature():
-            #     x_sent_nr_test = self.train_sent_nr_feats.astype(dtype=INT)
-            #
-            # if self.using_tense_feature():
-            #     x_tense_test = self.train_tense_feats.astype(dtype=INT)
-
+            x_test = x_test = theano.shared(value=self.x_train.astype(dtype=INT), name='x_test', borrow=True)
             y_test = self.y_train.astype(dtype=INT)
 
         elif on_validation_set:
             # predict on validation set
-            x_test = self.x_valid.astype(dtype=INT)
-
-            # if self.using_pos_feature():
-            #     x_pos_test = self.valid_pos_feats.astype(dtype=INT)
-            #
-            # if self.using_ner_feature():
-            #     x_ner_test = self.valid_ner_feats.astype(dtype=INT)
-            #
-            # if self.using_sent_nr_feature():
-            #     x_sent_nr_test = self.valid_sent_nr_feats.astype(dtype=INT)
-            #
-            # if self.using_tense_feature():
-            #     x_tense_test = self.valid_tense_feats.astype(dtype=INT)
-
+            x_test = x_test = theano.shared(value=self.x_valid.astype(dtype=INT), name='x_test', borrow=True)
             y_test = self.y_valid.astype(dtype=INT)
         elif on_testing_set:
             # predict on test set
-            x_test = self.x_test.astype(dtype=INT)
-
-            # if self.using_pos_feature():
-            #     x_pos_test = self.test_pos_feats.astype(dtype=INT)
-            #
-            # if self.using_ner_feature():
-            #     x_ner_test = self.test_ner_feats.astype(dtype=INT)
-            #
-            # if self.using_sent_nr_feature():
-            #     x_sent_nr_test = self.test_sent_nr_feats.astype(dtype=INT)
-            #
-            # if self.using_tense_feature():
-            #     x_tense_test = self.test_tense_feats.astype(dtype=INT)
-
+            x_test = x_test = theano.shared(value=self.x_test.astype(dtype=INT), name='x_test', borrow=True)
             y_test = self.y_test
+        else:
+            logger.error('Must specify a training set to predict on.')
+            exit(0)
 
-        # test_x = theano.shared(value=self.x_valid.astype(dtype=INT), name='test_x', borrow=True)
-        # test_y = theano.shared(value=self.y_valid.astype(dtype=INT), name='test_y', borrow=True)
+        y_test = theano.shared(value=y_test, name='y_test', borrow=True)
 
         y = T.vector(name='test_y', dtype=INT)
 
         w2v_idxs = T.matrix(name="test_w2v_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
-        pos_idxs = T.matrix(name="test_pos_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
-        ner_idxs = T.matrix(name="test_ner_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
-        sent_nr_idxs = T.matrix(name="test_sent_nr_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
-        tense_idxs = T.matrix(name="test_tense_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
+        # pos_idxs = T.matrix(name="test_pos_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
+        # ner_idxs = T.matrix(name="test_ner_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
+        # sent_nr_idxs = T.matrix(name="test_sent_nr_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
+        # tense_idxs = T.matrix(name="test_tense_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
 
         if self.using_w2v_convolution_maxpool_feature():
             self.w_x = self.params['w1_w2v'][w2v_idxs]
@@ -2521,50 +2484,25 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
             self.w_x_directly = self.params['w1'][w2v_idxs]
 
         if self.using_pos_convolution_maxpool_feature():
-            self.w_pos_x = self.params['w1_pos'][pos_idxs]
+            # self.w_pos_x = self.params['w1_pos'][pos_idxs]
+            self.w_pos_x = self.params['w1_pos'][w2v_idxs]
 
         if self.using_ner_convolution_maxpool_feature():
-            self.w_ner_x = self.params['w1_ner'][ner_idxs]
+            # self.w_ner_x = self.params['w1_ner'][ner_idxs]
+            self.w_ner_x = self.params['w1_ner'][w2v_idxs]
 
         if self.using_sent_nr_convolution_maxpool_feature():
-            self.w_sent_nr_x = self.params['w1_sent_nr'][sent_nr_idxs]
+            # self.w_sent_nr_x = self.params['w1_sent_nr'][sent_nr_idxs]
+            self.w_sent_nr_x = self.params['w1_sent_nr'][w2v_idxs]
 
         if self.using_tense_convolution_maxpool_feature():
-            self.w_tense_x = self.params['w1_tense'][tense_idxs]
+            # self.w_tense_x = self.params['w1_tense'][tense_idxs]
+            self.w_tense_x = self.params['w1_tense'][w2v_idxs]
 
-        givens = dict()
-        if self.using_w2v_feature():
-            givens.update({
-                w2v_idxs: x_test
-            })
+        batch_ix = T.scalar(name='batch_ix', dtype=INT)
 
-        if self.using_pos_feature():
-            givens.update({
-                # pos_idxs: x_pos_test
-                pos_idxs: x_test
-            })
+        batch_size = T.constant(512, name='batch_size', dtype=INT)
 
-        if self.using_ner_feature():
-            givens.update({
-                # ner_idxs: x_ner_test
-                ner_idxs: x_test
-            })
-
-        if self.using_sent_nr_feature():
-            givens.update({
-                # sent_nr_idxs: x_sent_nr_test
-                sent_nr_idxs: x_test
-            })
-
-        if self.using_tense_feature():
-            givens.update({
-                # tense_idxs: x_tense_test
-                tense_idxs: x_test
-            })
-
-
-        #TODO: choose
-        # out = self.perform_forward_pass_dense_step(w2v_conc, pos_conc)
         out = self.sgd_forward_pass(tensor_dim=4)
 
         y_predictions = T.argmax(out, axis=1)
@@ -2582,23 +2520,37 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
             cost = T.mean(T.nnet.categorical_crossentropy(out, y)) + self.alpha_L2_reg * L2
 
-            perform_prediction = theano.function(inputs=[y],
+            perform_prediction = theano.function(inputs=[batch_ix],
                                                  outputs=[cost, errors, y_predictions],
-                                                 on_unused_input='ignore',
-                                                 givens=givens)
+                                                 givens={
+                                                     w2v_idxs: x_test[batch_ix * batch_size: batch_size * (batch_ix + 1)],
+                                                     y: y_test[batch_ix * batch_size: batch_size * (batch_ix + 1)]
+                                                 })
 
-            out_cost, out_errors, out_predictions = perform_prediction(y_test)
-            results['errors'] = out_errors
-            results['cost'] = out_cost
+            errors = 0
+            cost = 0
+            predictions = []
+            for i in range(np.ceil(self.x_test.shape[0] / float(batch_size.eval())).astype(INT)):
+                out_cost, out_errors, out_predictions = perform_prediction(i)
+                errors += out_errors
+                cost += out_cost
+                predictions.extend(out_predictions)
+
+            results['errors'] = errors
+            results['cost'] = cost
         else:
-            perform_prediction = theano.function(inputs=[],
+            perform_prediction = theano.function(inputs=[batch_ix],
                                                  outputs=y_predictions,
-                                                 on_unused_input='ignore',
-                                                 givens=givens)
+                                                 givens={
+                                                     w2v_idxs: x_test[batch_ix * batch_size: batch_size * (batch_ix + 1)]
+                                                 })
 
-            out_predictions = perform_prediction()
+            predictions = []
+            for i in range(np.ceil(self.x_test.shape[0] / float(batch_size.eval())).astype(INT)):
+                out_predictions = perform_prediction(i)
+                predictions.extend(out_predictions)
 
-        results['flat_predictions'] = out_predictions
+        results['flat_predictions'] = predictions
         results['flat_trues'] = y_test
 
         return results
