@@ -423,6 +423,8 @@ def use_testing_dataset(nn_class,
 
     pos_embeddings = nn_class.initialize_w_pos(word2index)
     ner_embeddings = nn_class.initialize_w_ner(word2index)
+    sent_nr_embeddings = nn_class.initialize_w_sent_nr(word2index)
+    tense_embeddings = nn_class.initialize_w_tense(word2index)
 
     n_out = len(label2index.keys())
 
@@ -472,7 +474,9 @@ def use_testing_dataset(nn_class,
         'na_tag': na_tag,
         'n_hidden': args['n_hidden'],
         'pos_embeddings': pos_embeddings,
-        'ner_embeddings': ner_embeddings
+        'ner_embeddings': ner_embeddings,
+        'sent_nr_embeddings': sent_nr_embeddings,
+        'tense_embeddings': tense_embeddings
     }
 
     nn_trainer = nn_class(**params)

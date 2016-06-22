@@ -131,8 +131,46 @@ def training_word_ner_representations():
 
     for word in unique_words:
         rep = [0.] * n_ner_tags
-        for pos_tag, prob in [(p,v) for (w,p),v in distribution.iteritems() if w==word]:
-            rep[ner2index[pos_tag]] = prob
+        for ner_tag, prob in [(p,v) for (w,p),v in distribution.iteritems() if w==word]:
+            rep[ner2index[ner_tag]] = prob
+
+        assert any(rep)
+        representations[word] = rep
+
+    return representations
+
+def training_word_sent_nr_representations():
+    representations = dict()
+    distribution = training_word_sentence_nr_distribution()
+    training_data, _, training_words, _ = Dataset.get_clef_training_dataset()
+    sent_nr_tags = [nr for _, nr in distribution.keys()]
+    n_sent_nr_tags = set(sent_nr_tags).__len__()
+    unique_words = set(chain(*chain(*training_words.values())))
+
+    for word in unique_words:
+        rep = [0.] * n_sent_nr_tags
+        for sent_nr, prob in [(p,v) for (w,p),v in distribution.iteritems() if w==word]:
+            rep[sent_nr] = prob
+
+        assert any(rep)
+        representations[word] = rep
+
+    return representations
+
+def training_word_tense_representations():
+    representations = dict()
+    distribution = training_word_tenses_distribution()
+    training_data, _, training_words, _ = Dataset.get_clef_training_dataset()
+    tense_tags = [tense for _, tense in distribution.keys()]
+    n_tense_tags = set(tense_tags).__len__()
+    unique_words = set(chain(*chain(*training_words.values())))
+
+    tense2index = dict(zip(set(tense_tags), range(set(tense_tags).__len__())))
+
+    for word in unique_words:
+        rep = [0.] * n_tense_tags
+        for tense, prob in [(p,v) for (w,p),v in distribution.iteritems() if w==word]:
+            rep[tense2index[tense]] = prob
 
         assert any(rep)
         representations[word] = rep

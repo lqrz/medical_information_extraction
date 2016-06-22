@@ -50,8 +50,8 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         'w2v_c_m': {'name': 'w2v', 'convolve': True, 'max_pool': True, 'use_cw': True, 'nr_filters': None, 'filter_width': None, 'nr_region_sizes': None, 'crf_position': None},
         'pos_c_m': {'name': 'pos', 'convolve': True, 'max_pool': True, 'use_cw': True, 'nr_filters': None, 'filter_width': None, 'nr_region_sizes': None, 'crf_position': CRF_POSITIONS['pos']},
         'ner_c_m': {'name': 'ner', 'convolve': True, 'max_pool': True, 'use_cw': True, 'nr_filters': None, 'filter_width': None, 'nr_region_sizes': None, 'crf_position': CRF_POSITIONS['ner']},
-        'sent_nr_nc_nm': {'name': 'sent_nr', 'convolve': False, 'max_pool': False, 'use_cw': False, 'nr_filters': 0, 'filter_width': 0, 'nr_region_sizes': 0, 'crf_position': None},
-        'tense_nc_nm': {'name': 'tense', 'convolve': False, 'max_pool': False, 'use_cw': False, 'nr_filters': 0, 'filter_width': 0, 'nr_region_sizes': 0, 'crf_position': None}
+        'sent_nr_c_m': {'name': 'sent_nr', 'convolve': True, 'max_pool': True, 'use_cw': True, 'nr_filters': None, 'filter_width': None, 'nr_region_sizes': None, 'crf_position': None},
+        'tense_c_m': {'name': 'tense', 'convolve': True, 'max_pool': True, 'use_cw': True, 'nr_filters': None, 'filter_width': None, 'nr_region_sizes': None, 'crf_position': None}
     }
 
     @classmethod
@@ -84,6 +84,8 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
                  region_sizes=None,
                  pos_embeddings=None,
                  ner_embeddings=None,
+                 sent_nr_embeddings=None,
+                 tense_embeddings=None,
                  **kwargs):
 
         super(Multi_Feature_Type_Hidden_Layer_Context_Window_Net, self).__init__(**kwargs)
@@ -175,15 +177,25 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         self.train_tense_feats = np.array(train_tense_feats)
         self.valid_tense_feats = np.array(valid_tense_feats)
         self.test_tense_feats = np.array(test_tense_feats)
-        self.tense_probs = tense_probs
+
+        if sent_nr_embeddings is not None:
+            self.sent_nr_embeddings = sent_nr_embeddings
+            self.n_sent_nr_emb = sent_nr_embeddings.shape[1]
+
+            self.sent_nr_filter_width = self.n_sent_nr_emb
+
+        if tense_embeddings is not None:
+            self.tense_embeddings = tense_embeddings
+            self.n_tense_emb = tense_embeddings.shape[1]
+
+            self.tense_filter_width = self.n_tense_emb
+
+        # self.tense_probs = tense_probs
 
         self.alpha_L2_reg = None
         self.max_pool = None
 
         self.n_filters = n_filters  # number of filters per region size
-
-        self.n_sent_nr_emb = 40 #encoding for the sent_nr tags
-        self.n_tense_emb = 40 #encoding for the sent_nr tags
 
         self.region_sizes = region_sizes
 
@@ -368,21 +380,25 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
             hidden_state.append(ner_conv)
 
-        if self.using_sent_nr_no_convolution_no_maxpool_feature():
+        if self.using_sent_nr_convolution_maxpool_feature():
             if tensor_dim == 2:
-                sent_nr_vector = self.w_sent_nr_x.reshape(shape=(-1,))
+                sent_nr_conv = self.convolve_sent_nr_features(self.w_sent_nr_x, filter_width=self.sent_nr_filter_width)
             elif tensor_dim == 4:
-                sent_nr_vector = self.w_sent_nr_x.reshape(shape=(self.w_sent_nr_x.shape[0], -1))
+                w_sent_nr_x_4D = self.w_sent_nr_x.reshape(
+                    shape=(self.w_sent_nr_x.shape[0], 1, self.w_sent_nr_x.shape[1], self.w_sent_nr_x.shape[2]))
+                sent_nr_conv = self.perform_nnet_sent_nr_conv2d(w_sent_nr_x_4D)
 
-            hidden_state.append(sent_nr_vector)
+            hidden_state.append(sent_nr_conv)
 
-        if self.using_tense_no_convolution_no_maxpool_feature():
+        if self.using_tense_convolution_maxpool_feature():
             if tensor_dim == 2:
-                tense_vector = self.w_tense_x.reshape(shape=(-1,))
+                tense_conv = self.convolve_tense_features(self.w_tense_x, filter_width=self.tense_filter_width)
             elif tensor_dim == 4:
-                tense_vector = self.w_tense_x.reshape(shape=(self.w_tense_x.shape[0], -1))
+                w_tense_x_4D = self.w_tense_x.reshape(
+                    shape=(self.w_tense_x.shape[0], 1, self.w_tense_x.shape[1], self.w_tense_x.shape[2]))
+                tense_conv = self.perform_nnet_tense_conv2d(w_tense_x_4D)
 
-            hidden_state.append(tense_vector)
+            hidden_state.append(tense_conv)
 
         return hidden_state
 
@@ -483,6 +499,60 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
         return conv_concat
 
+    def convolve_sent_nr_features(self, w_sent_nr_x, filter_width):
+
+        sentence_sent_nr_shape = (self.n_window, self.n_sent_nr_emb)
+
+        convolutions = []
+
+        for rs in self.region_sizes:
+            filter_4_shape = (self.n_filters, rs, filter_width)
+
+            convolution = conv.conv2d(input=w_sent_nr_x,
+                                 filters=self.params['sent_nr_filter_'+str(rs)],
+                                 filter_shape=filter_4_shape,
+                                 image_shape=sentence_sent_nr_shape)
+
+            if self.max_pool:
+                max_conv = pool_2d(input=convolution, ds=(self.n_window-rs+1, 1), ignore_border=True, mode='max')
+                convolutions.append(max_conv)
+            else:
+                convolutions.append(convolution)
+
+        if self.max_pool:
+            conv_concat = self.concatenate(convolutions)[:, 0, 0]
+        else:
+            conv_concat = self.concatenate(convolutions, axis=1).reshape(shape=(-1,))
+
+        return conv_concat
+
+    def convolve_tense_features(self, w_tense_x, filter_width):
+
+        sentence_tense_shape = (self.n_window, self.n_tense_emb)
+
+        convolutions = []
+
+        for rs in self.region_sizes:
+            filter_4_shape = (self.n_filters, rs, filter_width)
+
+            convolution = conv.conv2d(input=w_tense_x,
+                                 filters=self.params['tense_filter_'+str(rs)],
+                                 filter_shape=filter_4_shape,
+                                 image_shape=sentence_tense_shape)
+
+            if self.max_pool:
+                max_conv = pool_2d(input=convolution, ds=(self.n_window-rs+1, 1), ignore_border=True, mode='max')
+                convolutions.append(max_conv)
+            else:
+                convolutions.append(convolution)
+
+        if self.max_pool:
+            conv_concat = self.concatenate(convolutions)[:, 0, 0]
+        else:
+            conv_concat = self.concatenate(convolutions, axis=1).reshape(shape=(-1,))
+
+        return conv_concat
+
     def determine_nr_filters(self, feature):
         nr_filters = self.__class__.FEATURE_MAPPING[feature]['nr_filters']
         if not nr_filters:
@@ -499,6 +569,12 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
                 filter_width = self.n_emb
             elif feature == 'pos':
                 filter_width = self.n_pos_emb
+            elif feature == 'ner':
+                filter_width = self.n_ner_emb
+            elif feature == 'sent_nr':
+                filter_width = self.n_sent_nr_emb
+            elif feature == 'tense':
+                filter_width = self.n_tense_emb
 
         assert filter_width is not None, 'Could not determine filter_width for feature: %s' % feature
 
@@ -593,14 +669,14 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
     def using_sent_nr_feature(self):
         return self.using_feature(feature='sent_nr', convolve=None, max_pool=None)
 
-    def using_sent_nr_no_convolution_no_maxpool_feature(self):
-        return self.using_feature(feature='sent_nr', convolve=False, max_pool=False)
+    def using_sent_nr_convolution_maxpool_feature(self):
+        return self.using_feature(feature='sent_nr', convolve=True, max_pool=True)
 
     def using_tense_feature(self):
         return self.using_feature(feature='tense', convolve=None, max_pool=None)
 
-    def using_tense_no_convolution_no_maxpool_feature(self):
-        return self.using_feature(feature='tense', convolve=False, max_pool=False)
+    def using_tense_convolution_maxpool_feature(self):
+        return self.using_feature(feature='tense', convolve=True, max_pool=True)
 
     def train_with_sgd(self, learning_rate,
                        max_epochs,
@@ -632,33 +708,36 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         ner_idxs = T.vector(name="ner_train_idxs",
                             dtype=INT)  # columns: context window size/lines: tokens in the sentence
 
-        sent_nr_id = T.scalar(name="sent_nr_id", dtype=INT)
+        sent_nr_idxs = T.vector(name="sent_nr_idxs", dtype=INT)
 
-        tense_id = T.scalar(name="tense_id", dtype=INT)
+        tense_idxs = T.vector(name="tense_idxs", dtype=INT)
 
         train_y = theano.shared(value=np.array(self.y_train, dtype=INT), name='train_y', borrow=True)
 
-        if self.using_w2v_feature():
-            train_x = theano.shared(value=np.array(self.x_train, dtype=INT), name='train_x', borrow=True)
-            valid_x = theano.shared(value=np.array(self.x_valid, dtype=INT), name='valid_x', borrow=True)
-
-        if self.using_pos_feature():
-            # shared variable with training POS features
-            train_pos_x = theano.shared(value=np.array(self.train_pos_feats, dtype=INT), name='train_pos_x', borrow=True)
-            valid_pos_x = theano.shared(value=np.array(self.valid_pos_feats, dtype=INT), name='valid_pos_x', borrow=True)
-
-        if self.using_ner_feature():
-            # shared variable with training POS features
-            train_ner_x = theano.shared(value=np.array(self.train_ner_feats, dtype=INT), name='train_ner_x', borrow=True)
-            valid_ner_x = theano.shared(value=np.array(self.valid_ner_feats, dtype=INT), name='valid_ner_x', borrow=True)
-
-        if self.using_sent_nr_feature():
-            train_sent_nr_x = theano.shared(value=np.array(self.train_sent_nr_feats, dtype=INT), name='train_sent_nr_x', borrow=True)
-            valid_sent_nr_x = theano.shared(value=np.array(self.valid_sent_nr_feats, dtype=INT), name='valid_sent_nr_x', borrow=True)
-
-        if self.using_tense_feature():
-            train_tense_x = theano.shared(value=self.train_tense_feats.astype(dtype=INT), name='train_tense_x', borrow=True)
-            valid_tense_x = theano.shared(value=self.valid_tense_feats.astype(dtype=INT), name='valid_tense_x', borrow=True)
+        train_x = theano.shared(value=np.array(self.x_train, dtype=INT), name='train_x', borrow=True)
+        valid_x = theano.shared(value=np.array(self.x_valid, dtype=INT), name='valid_x', borrow=True)
+        #
+        # if self.using_w2v_feature():
+        #     train_x = theano.shared(value=np.array(self.x_train, dtype=INT), name='train_x', borrow=True)
+        #     valid_x = theano.shared(value=np.array(self.x_valid, dtype=INT), name='valid_x', borrow=True)
+        #
+        # if self.using_pos_feature():
+        #     # shared variable with training POS features
+        #     train_pos_x = theano.shared(value=np.array(self.train_pos_feats, dtype=INT), name='train_pos_x', borrow=True)
+        #     valid_pos_x = theano.shared(value=np.array(self.valid_pos_feats, dtype=INT), name='valid_pos_x', borrow=True)
+        #
+        # if self.using_ner_feature():
+        #     # shared variable with training POS features
+        #     train_ner_x = theano.shared(value=np.array(self.train_ner_feats, dtype=INT), name='train_ner_x', borrow=True)
+        #     valid_ner_x = theano.shared(value=np.array(self.valid_ner_feats, dtype=INT), name='valid_ner_x', borrow=True)
+        #
+        # if self.using_sent_nr_feature():
+        #     train_sent_nr_x = theano.shared(value=np.array(self.train_sent_nr_feats, dtype=INT), name='train_sent_nr_x', borrow=True)
+        #     valid_sent_nr_x = theano.shared(value=np.array(self.valid_sent_nr_feats, dtype=INT), name='valid_sent_nr_x', borrow=True)
+        #
+        # if self.using_tense_feature():
+        #     train_tense_x = theano.shared(value=self.train_tense_feats.astype(dtype=INT), name='train_tense_x', borrow=True)
+        #     valid_tense_x = theano.shared(value=self.valid_tense_feats.astype(dtype=INT), name='valid_tense_x', borrow=True)
 
         # valid_x = theano.shared(value=np.array(self.x_valid, dtype=INT), name='valid_x', borrow=True)
 
@@ -834,16 +913,30 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
             self.w_ner_x = w_ner_x
 
-        if self.using_sent_nr_no_convolution_no_maxpool_feature():
-            w1_sent_nr = theano.shared(value=utils.NeuralNetwork.initialize_weights(
-                n_in=np.max(self.train_sent_nr_feats)+1, n_out=self.n_sent_nr_emb, function='tanh').astype(dtype=theano.config.floatX),
-                                   name='w1_sent_nr', borrow=True)
+        if self.using_sent_nr_convolution_maxpool_feature():
+
+            if self.sent_nr_embeddings is not None:
+                w1_sent_nr = theano.shared(value=np.matrix(self.sent_nr_embeddings, dtype=theano.config.floatX), name='w1_sent_nr', borrow=True)
+            else:
+                w1_sent_nr = theano.shared(value=utils.NeuralNetwork.initialize_weights(
+                    n_in=np.max(self.train_sent_nr_feats)+1, n_out=self.n_sent_nr_emb, function='tanh').astype(dtype=theano.config.floatX),
+                                       name='w1_sent_nr', borrow=True)
+
+            # create NER filters
+            sent_nr_filters = self.create_filters(filter_width=self.sent_nr_filter_width,
+                                                  region_sizes=self.region_sizes, n_filters=self.n_filters)
+
+            sent_nr_filters_names = map(lambda x: 'sent_nr_%s' % x.name, sent_nr_filters)
 
             # index embeddings
-            w_sent_nr_x = w1_sent_nr[sent_nr_id]
+            w_sent_nr_x = w1_sent_nr[sent_nr_idxs]
 
             # add structures to self.params
             self.params['w1_sent_nr'] = w1_sent_nr
+            self.params.update(dict(zip(sent_nr_filters_names, sent_nr_filters)))
+            params_to_get_l2.extend(sent_nr_filters_names)
+            params_to_get_grad.extend(sent_nr_filters)
+            params_to_get_grad_names.extend(sent_nr_filters_names)
 
             if not self.static:
                 # learn word_embeddings
@@ -853,16 +946,30 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
             self.w_sent_nr_x = w_sent_nr_x
 
-        if self.using_tense_no_convolution_no_maxpool_feature():
-            w1_tense = theano.shared(value=utils.NeuralNetwork.initialize_weights(
-                n_in=np.max(self.train_tense_feats)+1, n_out=self.n_tense_emb, function='tanh').astype(dtype=theano.config.floatX),
-                                   name='w1_tense', borrow=True)
+        if self.using_tense_convolution_maxpool_feature():
+            if self.tense_embeddings is not None:
+                w1_tense = theano.shared(value=np.matrix(self.tense_embeddings, dtype=theano.config.floatX),
+                                         name='w1_tense', borrow=True)
+            else:
+                w1_tense = theano.shared(value=utils.NeuralNetwork.initialize_weights(
+                    n_in=np.max(self.train_tense_feats)+1, n_out=self.n_tense_emb, function='tanh').astype(dtype=theano.config.floatX),
+                                       name='w1_tense', borrow=True)
+
+            # create NER filters
+            tense_filters = self.create_filters(filter_width=self.tense_filter_width,
+                                                region_sizes=self.region_sizes, n_filters=self.n_filters)
+
+            tense_filters_names = map(lambda x: 'tense_%s' % x.name, tense_filters)
 
             # index embeddings
-            w_tense_x = w1_tense[tense_id]
+            w_tense_x = w1_tense[tense_idxs]
 
             # add structures to self.params
             self.params['w1_tense'] = w1_tense
+            self.params.update(dict(zip(tense_filters_names, tense_filters)))
+            params_to_get_l2.extend(tense_filters_names)
+            params_to_get_grad.extend(tense_filters)
+            params_to_get_grad_names.extend(tense_filters_names)
 
             if not self.static:
                 # learn word_embeddings
@@ -880,11 +987,11 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
             L2_w2v_nc_nmp_weight, L2_w2v_c_mp_filters, L2_w_x, L2_w2v_c_nmp_filters, \
             L2_w2v_c_nmp_weight, L2_pos_c_mp_filters, L2_w_pos_x, L2_ner_c_mp_filters, L2_w_ner_x, \
-            L2_w_sent_nr_x, L2_w_tense_x, L2_w3 = self.compute_regularization_cost()
+            L2_w_sent_nr_x, L2_w_sent_nr_filters, L2_w_tense_x, L2_w_tense_filters, L2_w3 = self.compute_regularization_cost()
 
             L2 = L2_w2v_nc_nmp_weight + L2_w2v_c_mp_filters + L2_w_x + L2_w2v_c_nmp_filters + \
                  L2_w2v_c_nmp_weight + L2_pos_c_mp_filters + L2_w_pos_x + L2_ner_c_mp_filters + \
-                 L2_w_ner_x + L2_w_sent_nr_x + L2_w_tense_x + L2_w3
+                 L2_w_ner_x + L2_w_sent_nr_x + L2_w_sent_nr_filters + L2_w_tense_x + L2_w_tense_filters + L2_w3
 
         W1_tense_sum, W1_sent_nr_sum, W1_ner_sum, W1_pos_sum, W1_w2v_sum, W1_c_nmp_sum, W1_sum = self.compute_weight_evolution()
 
@@ -980,18 +1087,18 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
                 updates.append((accum_grad,accum))
             elif name == 'w_sent_nr_x':
                 #this will return the whole accum_grad structure incremented in the specified idxs
-                accum = T.inc_subtensor(accum_grad[sent_nr_id],T.sqr(grad))
+                accum = T.inc_subtensor(accum_grad[sent_nr_idxs],T.sqr(grad))
                 #this will return the whole w1 structure decremented according to the idxs vector.
-                update = T.inc_subtensor(param, - learning_rate * grad/(T.sqrt(accum[sent_nr_id])+10**-5))
+                update = T.inc_subtensor(param, - learning_rate * grad/(T.sqrt(accum[sent_nr_idxs])+10**-5))
                 #update whole structure with whole structure
                 updates.append((self.params['w1_sent_nr'],update))
                 #update whole structure with whole structure
                 updates.append((accum_grad,accum))
             elif name == 'w_tense_x':
                 #this will return the whole accum_grad structure incremented in the specified idxs
-                accum = T.inc_subtensor(accum_grad[tense_id],T.sqr(grad))
+                accum = T.inc_subtensor(accum_grad[tense_idxs],T.sqr(grad))
                 #this will return the whole w1 structure decremented according to the idxs vector.
-                update = T.inc_subtensor(param, - learning_rate * grad/(T.sqrt(accum[tense_id])+10**-5))
+                update = T.inc_subtensor(param, - learning_rate * grad/(T.sqrt(accum[tense_idxs])+10**-5))
                 #update whole structure with whole structure
                 updates.append((self.params['w1_tense'],update))
                 #update whole structure with whole structure
@@ -1016,34 +1123,42 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
         if self.using_pos_feature():
             train_givens.update({
-                pos_idxs: train_pos_x[train_idx]
+                # pos_idxs: train_pos_x[train_idx]
+                pos_idxs: train_x[train_idx]
             })
             valid_givens.update({
-                pos_idxs: valid_pos_x[valid_idx]
+                # pos_idxs: valid_pos_x[valid_idx]
+                pos_idxs: valid_x[valid_idx]
             })
 
         if self.using_ner_feature():
             train_givens.update({
-                ner_idxs: train_ner_x[train_idx]
+                # ner_idxs: train_ner_x[train_idx]
+                ner_idxs: train_x[train_idx]
             })
             valid_givens.update({
-                ner_idxs: valid_ner_x[valid_idx]
+                # ner_idxs: valid_ner_x[valid_idx]
+                ner_idxs: valid_x[valid_idx]
             })
 
         if self.using_sent_nr_feature():
             train_givens.update({
-                sent_nr_id: train_sent_nr_x[train_idx]
+                # sent_nr_idxs: train_sent_nr_x[train_idx]
+                sent_nr_idxs: train_x[train_idx]
             })
             valid_givens.update({
-                sent_nr_id: valid_sent_nr_x[valid_idx]
+                # sent_nr_idxs: valid_sent_nr_x[valid_idx]
+                sent_nr_idxs: valid_x[valid_idx]
             })
 
         if self.using_tense_feature():
             train_givens.update({
-                tense_id: train_tense_x[train_idx]
+                # tense_idxs: train_tense_x[train_idx]
+                tense_idxs: train_x[train_idx]
             })
             valid_givens.update({
-                tense_id: valid_tense_x[valid_idx]
+                # tense_idxs: valid_tense_x[valid_idx]
+                tense_idxs: valid_x[valid_idx]
             })
 
         train = theano.function(inputs=[train_idx, y],
@@ -1071,7 +1186,8 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
             train_l2_penalty = theano.function(inputs=[],
                                                outputs=[W1_tense_sum, W1_sent_nr_sum, W1_ner_sum, W1_pos_sum, W1_w2v_sum,
                                                         W1_c_nmp_sum, W1_sum, L2_w2v_c_mp_filters, L2_w2v_c_nmp_filters,
-                                                        L2_pos_c_mp_filters, L2_ner_c_mp_filters, L2_w3],
+                                                        L2_pos_c_mp_filters, L2_ner_c_mp_filters, L2_w_sent_nr_filters,
+                                                        L2_w_tense_filters, L2_w3],
                                                givens=[])
 
         valid_flat_true = self.y_valid
@@ -1094,7 +1210,9 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         epoch_l2_ner_filters_list = []
         epoch_l2_ner_weight_list = []
         epoch_l2_sent_nr_weight_list = []
+        epoch_l2_sent_nr_filters_list = []
         epoch_l2_tense_weight_list = []
+        epoch_l2_tense_filters_list = []
         epoch_l2_w3_list = []
         train_cross_entropy_list = []
         valid_cross_entropy_list = []
@@ -1115,7 +1233,9 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
             epoch_l2_ner_filters = 0
             epoch_l2_ner_weight = 0
             epoch_l2_sent_nr_weight = 0
+            epoch_l2_sent_nr_filters = 0
             epoch_l2_tense_weight = 0
+            epoch_l2_tense_filters = 0
             epoch_l2_w3 = 0
             train_cross_entropy = 0
             for i in np.random.permutation(self.n_samples):
@@ -1127,7 +1247,8 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
             if self.regularization:
                 w1_tense_sum, w1_sent_nr_sum, w1_ner_sum, w1_pos_sum, w1_w2v_sum, w1_c_nmp_sum, w1_sum, l2_w2v_c_mp_filters,\
-                l2_w2v_c_nmp_filters, l2_pos_c_mp_filters, l2_ner_c_mp_filters, l2_w3 = train_l2_penalty()
+                l2_w2v_c_nmp_filters, l2_pos_c_mp_filters, l2_ner_c_mp_filters, l2_sent_nr_c_m_filters,\
+                l2_tense_c_m_filters, l2_w3 = train_l2_penalty()
 
                 epoch_l2_w2v_nc_nmp_weight += w1_sum
                 epoch_l2_w2v_c_mp_filters += l2_w2v_c_mp_filters
@@ -1139,7 +1260,9 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
                 epoch_l2_ner_filters += l2_ner_c_mp_filters
                 epoch_l2_ner_weight += w1_ner_sum
                 epoch_l2_sent_nr_weight += w1_sent_nr_sum
+                epoch_l2_sent_nr_filters += l2_sent_nr_c_m_filters
                 epoch_l2_tense_weight += w1_tense_sum
+                epoch_l2_tense_filters += l2_tense_c_m_filters
                 epoch_l2_w3 += l2_w3
 
                 # self.predict(on_validation_set=True, compute_cost_error=True)
@@ -1176,7 +1299,9 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
             epoch_l2_ner_filters_list.append(epoch_l2_ner_filters)
             epoch_l2_ner_weight_list.append(epoch_l2_ner_weight)
             epoch_l2_sent_nr_weight_list.append(epoch_l2_sent_nr_weight)
+            epoch_l2_sent_nr_filters_list.append(epoch_l2_sent_nr_filters)
             epoch_l2_tense_weight_list.append(epoch_l2_tense_weight)
+            epoch_l2_tense_filters_list.append(epoch_l2_tense_filters)
             epoch_l2_w3_list.append(epoch_l2_w3)
 
             results = Metrics.compute_all_metrics(y_true=valid_flat_true, y_pred=valid_predictions, average='macro')
@@ -1217,8 +1342,10 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
                 'pos_c_mp_emb': epoch_l2_pos_weight_list,
                 'ner_c_mp_filters': epoch_l2_ner_filters_list,
                 'ner_c_mp_emb': epoch_l2_ner_weight_list,
-                'sent_nr_nc_nmp_emb': epoch_l2_sent_nr_weight_list,
-                'tense_nc_nmp_emb': epoch_l2_tense_weight_list,
+                'sent_nr_c_mp_emb': epoch_l2_sent_nr_weight_list,
+                'sent_nr_c_mp_filters': epoch_l2_sent_nr_filters_list,
+                'tense_c_mp_emb': epoch_l2_tense_weight_list,
+                'tense_c_mp_filters': epoch_l2_tense_filters_list,
                 'w3': epoch_l2_w3_list
             }
             self.plot_penalties_general(plot_data_dict, actual_time=actual_time)
@@ -1456,7 +1583,7 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
             self.w_ner_x = w_ner_x
 
-        if self.using_sent_nr_no_convolution_no_maxpool_feature():
+        if self.using_sent_nr_convolution_maxpool_feature():
             w1_sent_nr = theano.shared(value=utils.NeuralNetwork.initialize_weights(
                 n_in=np.max(self.train_sent_nr_feats)+1, n_out=self.n_sent_nr_emb, function='tanh').astype(dtype=theano.config.floatX),
                                    name='w1_sent_nr', borrow=True)
@@ -1475,7 +1602,7 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
             self.w_sent_nr_x = w_sent_nr_x
 
-        if self.using_tense_no_convolution_no_maxpool_feature():
+        if self.using_tense_convolution_maxpool_feature():
             w1_tense = theano.shared(value=utils.NeuralNetwork.initialize_weights(
                 n_in=np.max(self.train_tense_feats)+1, n_out=self.n_tense_emb, function='tanh').astype(dtype=theano.config.floatX),
                                    name='w1_tense', borrow=True)
@@ -1502,13 +1629,14 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
             L2_w2v_nc_nmp_weight, L2_w2v_c_mp_filters, L2_w_x, L2_w2v_c_nmp_filters, \
             L2_w2v_c_nmp_weight, L2_pos_c_mp_filters, L2_w_pos_x, L2_ner_c_mp_filters, L2_w_ner_x, \
-            L2_w_sent_nr_x, L2_w_tense_x, L2_w3 = self.compute_regularization_cost()
+            L2_w_sent_nr_x, L2_w_sent_nr_filters, L2_w_tense_x, L2_w_tense_filters, L2_w3 = self.compute_regularization_cost()
 
             L2_w4 = T.sum(self.params['w4'] ** 2)
 
             L2 = L2_w2v_nc_nmp_weight + L2_w2v_c_mp_filters + L2_w_x + L2_w2v_c_nmp_filters + \
                  L2_w2v_c_nmp_weight + L2_pos_c_mp_filters + L2_w_pos_x + L2_ner_c_mp_filters + \
-                 L2_w_ner_x + L2_w_sent_nr_x + L2_w_tense_x + L2_w3 + L2_w4
+                 L2_w_ner_x + L2_w_sent_nr_x + L2_w_sent_nr_filters + L2_w_tense_x + L2_w_tense_filters + \
+                 L2_w3 + L2_w3 + L2_w4
 
         W1_tense_sum, W1_sent_nr_sum, W1_ner_sum, W1_pos_sum, W1_w2v_sum, W1_c_nmp_sum, W1_sum = self.compute_weight_evolution()
 
@@ -1845,8 +1973,8 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
                 'pos_c_mp_emb': epoch_l2_pos_weight_list,
                 'ner_c_mp_filters': epoch_l2_ner_filters_list,
                 'ner_c_mp_emb': epoch_l2_ner_weight_list,
-                'sent_nr_nc_nmp_emb': epoch_l2_sent_nr_weight_list,
-                'tense_nc_nmp_emb': epoch_l2_tense_weight_list,
+                'sent_nr_c_mp_emb': epoch_l2_sent_nr_weight_list,
+                'tense_c_mp_emb': epoch_l2_tense_weight_list,
                 'w3': epoch_l2_w3_list,
                 'w4': epoch_l2_w4_list
             }
@@ -1865,9 +1993,9 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         w1_c_nmp_sum = T.constant(0., dtype=theano.config.floatX)
         w1_sum = T.constant(0., dtype=theano.config.floatX)
 
-        if self.using_tense_no_convolution_no_maxpool_feature():
+        if self.using_tense_convolution_maxpool_feature():
             w1_tense_sum = T.sum(self.params['w1_tense'] ** 2)
-        if self.using_sent_nr_no_convolution_no_maxpool_feature():
+        if self.using_sent_nr_convolution_maxpool_feature():
             w1_sent_nr_sum = T.sum(self.params['w1_sent_nr'] ** 2)
         if self.using_ner_convolution_maxpool_feature():
             w1_ner_sum = T.sum(self.params['w1_ner'] ** 2)
@@ -1904,29 +2032,53 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         L2_ner_c_mp_filters = self.L2_ner_convolution_maxpool_filters()
         L2_ner_c_mp_weight = self.L2_ner_convolution_maxpool_weight()
 
-        # L2 on sent_nr no-convolution no-maxpool
-        L2_sent_nr_nc_nmp_weight = self.L2_sent_nr_noconvolution_nomaxpool()
+        # L2 on sent_nr convolution maxpool
+        L2_sent_nr_c_m_filters = self.L2_sent_nr_convolution_maxpool_filters()
+        L2_sent_nr_c_m_weight = self.L2_sent_nr_convolution_maxpool()
 
-        L2_tense_nc_nm_weight = self.L2_tense_noconvolution_nomaxpool()
+        L2_tense_c_m_filters = self.L2_tense_convolution_maxpool_filters()
+        L2_tense_c_m_weight = self.L2_tense_convolution_maxpool()
 
         L2_w3 = T.sum(self.params['w3'] ** 2)
 
         return L2_w2v_nc_nmp_weight, L2_w2v_c_mp_filters, L2_w2v_c_mp_weight, L2_w2v_c_nmp_filters, \
                L2_w2v_c_nmp_weight, L2_pos_c_mp_filters, L2_pos_c_mp_weight, L2_ner_c_mp_filters, L2_ner_c_mp_weight, \
-               L2_sent_nr_nc_nmp_weight, L2_tense_nc_nm_weight, L2_w3
+               L2_sent_nr_c_m_weight, L2_sent_nr_c_m_filters, L2_tense_c_m_weight, L2_tense_c_m_filters, L2_w3
 
-    def L2_tense_noconvolution_nomaxpool(self):
+    def L2_tense_convolution_maxpool(self):
         tense_emb = []
 
-        if self.using_tense_no_convolution_no_maxpool_feature() and not self.static:
+        if self.using_tense_convolution_maxpool_feature() and not self.static:
             tense_emb.append(T.sum(self.w_tense_x ** 2))
 
         return T.sum(tense_emb, dtype=theano.config.floatX)
 
-    def L2_sent_nr_noconvolution_nomaxpool(self):
+    def L2_tense_convolution_maxpool_filters(self):
+        filter_penalties = []
+
+        if self.using_tense_convolution_maxpool_feature():
+
+            filter_names = [pn for pn in self.params_to_get_l2 if pn.startswith('tense_filter')]
+            for filter_name in filter_names:
+                filter_penalties.append(T.sum(self.params[filter_name] ** 2))
+
+        return T.sum(filter_penalties, dtype=theano.config.floatX)
+
+    def L2_sent_nr_convolution_maxpool_filters(self):
+        filter_penalties = []
+
+        if self.using_sent_nr_convolution_maxpool_feature():
+
+            filter_names = [pn for pn in self.params_to_get_l2 if pn.startswith('sent_nr_filter')]
+            for filter_name in filter_names:
+                filter_penalties.append(T.sum(self.params[filter_name] ** 2))
+
+        return T.sum(filter_penalties, dtype=theano.config.floatX)
+
+    def L2_sent_nr_convolution_maxpool(self):
         sent_nr_emb = []
 
-        if self.using_sent_nr_no_convolution_no_maxpool_feature() and not self.static:
+        if self.using_sent_nr_convolution_maxpool_feature() and not self.static:
             sent_nr_emb.append(T.sum(self.w_sent_nr_x ** 2))
 
         return T.sum(sent_nr_emb, dtype=theano.config.floatX)
@@ -2205,6 +2357,54 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
         return conv_conc
 
+    def perform_nnet_sent_nr_conv2d(self, w_sent_nr_x_4D):
+        convolutions = []
+
+        for rs in self.region_sizes:
+            filter = self.params['sent_nr_filter_'+str(rs)]
+
+            filter_4D = filter.reshape(
+                shape=(filter.shape[0], 1, filter.shape[1], filter.shape[2]))
+
+            sent_nr_convolution = T.nnet.conv2d(input=w_sent_nr_x_4D, filters=filter_4D)
+
+            if self.max_pool:
+                max_convolution = pool_2d(input=sent_nr_convolution, ds=(self.n_window-rs+1, 1), ignore_border=True, mode='max')
+                convolutions.append(max_convolution)
+            else:
+                convolutions.append(sent_nr_convolution)
+
+        if self.max_pool:
+            conv_conc = self.concatenate(convolutions, axis=1)[:, :, 0, 0]
+        else:
+            conv_conc = self.concatenate(convolutions, axis=2)[:,:,:,0].reshape(shape=(w_sent_nr_x_4D.shape[0], -1))
+
+        return conv_conc
+
+    def perform_nnet_tense_conv2d(self, w_tense_x_4D):
+        convolutions = []
+
+        for rs in self.region_sizes:
+            filter = self.params['tense_filter_'+str(rs)]
+
+            filter_4D = filter.reshape(
+                shape=(filter.shape[0], 1, filter.shape[1], filter.shape[2]))
+
+            tense_convolution = T.nnet.conv2d(input=w_tense_x_4D, filters=filter_4D)
+
+            if self.max_pool:
+                max_convolution = pool_2d(input=tense_convolution, ds=(self.n_window-rs+1, 1), ignore_border=True, mode='max')
+                convolutions.append(max_convolution)
+            else:
+                convolutions.append(tense_convolution)
+
+        if self.max_pool:
+            conv_conc = self.concatenate(convolutions, axis=1)[:, :, 0, 0]
+        else:
+            conv_conc = self.concatenate(convolutions, axis=2)[:,:,:,0].reshape(shape=(w_tense_x_4D.shape[0], -1))
+
+        return conv_conc
+
     def predict(self, on_training_set=False, on_validation_set=False, on_testing_set=False, compute_cost_error=False, **kwargs):
 
         results = defaultdict(None)
@@ -2213,51 +2413,52 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
             # predict on training set
             x_test = self.x_train.astype(dtype=INT)
 
-            if self.using_pos_feature():
-                x_pos_test = self.train_pos_feats.astype(dtype=INT)
-
-            if self.using_ner_feature():
-                x_ner_test = self.train_ner_feats.astype(dtype=INT)
-
-            if self.using_sent_nr_feature():
-                x_sent_nr_test = self.train_sent_nr_feats.astype(dtype=INT)
-
-            if self.using_tense_feature():
-                x_tense_test = self.train_tense_feats.astype(dtype=INT)
+            # if self.using_pos_feature():
+            #     x_pos_test = self.train_pos_feats.astype(dtype=INT)
+            #
+            # if self.using_ner_feature():
+            #     x_ner_test = self.train_ner_feats.astype(dtype=INT)
+            #
+            # if self.using_sent_nr_feature():
+            #     x_sent_nr_test = self.train_sent_nr_feats.astype(dtype=INT)
+            #
+            # if self.using_tense_feature():
+            #     x_tense_test = self.train_tense_feats.astype(dtype=INT)
 
             y_test = self.y_train.astype(dtype=INT)
 
         elif on_validation_set:
             # predict on validation set
             x_test = self.x_valid.astype(dtype=INT)
-            if self.using_pos_feature():
-                x_pos_test = self.valid_pos_feats.astype(dtype=INT)
 
-            if self.using_ner_feature():
-                x_ner_test = self.valid_ner_feats.astype(dtype=INT)
-
-            if self.using_sent_nr_feature():
-                x_sent_nr_test = self.valid_sent_nr_feats.astype(dtype=INT)
-
-            if self.using_tense_feature():
-                x_tense_test = self.valid_tense_feats.astype(dtype=INT)
+            # if self.using_pos_feature():
+            #     x_pos_test = self.valid_pos_feats.astype(dtype=INT)
+            #
+            # if self.using_ner_feature():
+            #     x_ner_test = self.valid_ner_feats.astype(dtype=INT)
+            #
+            # if self.using_sent_nr_feature():
+            #     x_sent_nr_test = self.valid_sent_nr_feats.astype(dtype=INT)
+            #
+            # if self.using_tense_feature():
+            #     x_tense_test = self.valid_tense_feats.astype(dtype=INT)
 
             y_test = self.y_valid.astype(dtype=INT)
         elif on_testing_set:
             # predict on test set
             x_test = self.x_test.astype(dtype=INT)
 
-            if self.using_pos_feature():
-                x_pos_test = self.test_pos_feats.astype(dtype=INT)
-
-            if self.using_ner_feature():
-                x_ner_test = self.test_ner_feats.astype(dtype=INT)
-
-            if self.using_sent_nr_feature():
-                x_sent_nr_test = self.test_sent_nr_feats.astype(dtype=INT)
-
-            if self.using_tense_feature():
-                x_tense_test = self.test_tense_feats.astype(dtype=INT)
+            # if self.using_pos_feature():
+            #     x_pos_test = self.test_pos_feats.astype(dtype=INT)
+            #
+            # if self.using_ner_feature():
+            #     x_ner_test = self.test_ner_feats.astype(dtype=INT)
+            #
+            # if self.using_sent_nr_feature():
+            #     x_sent_nr_test = self.test_sent_nr_feats.astype(dtype=INT)
+            #
+            # if self.using_tense_feature():
+            #     x_tense_test = self.test_tense_feats.astype(dtype=INT)
 
             y_test = self.y_test
 
@@ -2269,8 +2470,8 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         w2v_idxs = T.matrix(name="test_w2v_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
         pos_idxs = T.matrix(name="test_pos_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
         ner_idxs = T.matrix(name="test_ner_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
-        sent_nr_idxs = T.vector(name="test_sent_nr_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
-        tense_idxs = T.vector(name="test_tense_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
+        sent_nr_idxs = T.matrix(name="test_sent_nr_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
+        tense_idxs = T.matrix(name="test_tense_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
 
         if self.using_w2v_convolution_maxpool_feature():
             self.w_x = self.params['w1_w2v'][w2v_idxs]
@@ -2287,10 +2488,10 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         if self.using_ner_convolution_maxpool_feature():
             self.w_ner_x = self.params['w1_ner'][ner_idxs]
 
-        if self.using_sent_nr_no_convolution_no_maxpool_feature():
+        if self.using_sent_nr_convolution_maxpool_feature():
             self.w_sent_nr_x = self.params['w1_sent_nr'][sent_nr_idxs]
 
-        if self.using_tense_no_convolution_no_maxpool_feature():
+        if self.using_tense_convolution_maxpool_feature():
             self.w_tense_x = self.params['w1_tense'][tense_idxs]
 
         givens = dict()
@@ -2301,22 +2502,26 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
         if self.using_pos_feature():
             givens.update({
-                pos_idxs: x_pos_test
+                # pos_idxs: x_pos_test
+                pos_idxs: x_test
             })
 
         if self.using_ner_feature():
             givens.update({
-                ner_idxs: x_ner_test
+                # ner_idxs: x_ner_test
+                ner_idxs: x_test
             })
 
         if self.using_sent_nr_feature():
             givens.update({
-                sent_nr_idxs: x_sent_nr_test
+                # sent_nr_idxs: x_sent_nr_test
+                sent_nr_idxs: x_test
             })
 
         if self.using_tense_feature():
             givens.update({
-                tense_idxs: x_tense_test
+                # tense_idxs: x_tense_test
+                tense_idxs: x_test
             })
 
 
@@ -2331,11 +2536,11 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
             L2_w2v_nc_nmp_weight, L2_w2v_c_mp_filters, L2_w_x, L2_w2v_c_nmp_filters, \
             L2_w2v_c_nmp_weight, L2_pos_c_mp_filters, L2_w_pos_x, L2_ner_c_mp_filters, L2_w_ner_x, \
-            L2_w_sent_nr_x, L2_w_tense_x, L2_w3 = self.compute_regularization_cost()
+            L2_w_sent_nr_x, L2_w_sent_nr_filters, L2_w_tense_x, L2_w_tense_filters, L2_w3 = self.compute_regularization_cost()
 
             L2 = L2_w2v_nc_nmp_weight + L2_w2v_c_mp_filters + L2_w_x + L2_w2v_c_nmp_filters + \
                  L2_w2v_c_nmp_weight + L2_pos_c_mp_filters + L2_w_pos_x + L2_ner_c_mp_filters + \
-                 L2_w_ner_x + L2_w_sent_nr_x + L2_w_tense_x + L2_w3
+                 L2_w_ner_x + L2_w_sent_nr_x + L2_w_sent_nr_filters + L2_w_tense_x + L2_w_tense_filters + L2_w3
 
             cost = T.mean(T.nnet.categorical_crossentropy(out, y)) + self.alpha_L2_reg * L2
 
@@ -2442,10 +2647,10 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
         if self.using_ner_convolution_maxpool_feature():
             self.w_ner_x = self.params['w1_ner'][ner_idxs]
 
-        if self.using_sent_nr_no_convolution_no_maxpool_feature():
+        if self.using_sent_nr_convolution_maxpool_feature():
             self.w_sent_nr_x = self.params['w1_sent_nr'][sent_nr_idxs]
 
-        if self.using_tense_no_convolution_no_maxpool_feature():
+        if self.using_tense_convolution_maxpool_feature():
             self.w_tense_x = self.params['w1_tense'][tense_idxs]
 
         givens = dict()
@@ -2486,13 +2691,14 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
             L2_w2v_nc_nmp_weight, L2_w2v_c_mp_filters, L2_w_x, L2_w2v_c_nmp_filters, \
             L2_w2v_c_nmp_weight, L2_pos_c_mp_filters, L2_w_pos_x, L2_ner_c_mp_filters, L2_w_ner_x, \
-            L2_w_sent_nr_x, L2_w_tense_x, L2_w3 = self.compute_regularization_cost()
+            L2_w_sent_nr_x, L2_w_sent_nr_filters, L2_w_tense_x, L2_w_tense_filters, L2_w3 = self.compute_regularization_cost()
 
             L2_w4 = T.sum(self.params['w4'] ** 2)
 
             L2 = L2_w2v_nc_nmp_weight + L2_w2v_c_mp_filters + L2_w_x + L2_w2v_c_nmp_filters + \
                  L2_w2v_c_nmp_weight + L2_pos_c_mp_filters + L2_w_pos_x + L2_ner_c_mp_filters + \
-                 L2_w_ner_x + L2_w_sent_nr_x + L2_w_tense_x + L2_w3 + L2_w4
+                 L2_w_ner_x + L2_w_sent_nr_x + L2_w_sent_nr_filters + L2_w_tense_x +L2_w_tense_filters + \
+                 L2_w3 + L2_w3 + L2_w4
 
             cost = T.mean(T.nnet.categorical_crossentropy(out, y)) + self.alpha_L2_reg * L2
 

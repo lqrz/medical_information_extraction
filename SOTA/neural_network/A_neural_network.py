@@ -570,6 +570,40 @@ class A_neural_network():
             w[word2index[word]] = rep
 
         return w
+
+    @classmethod
+    def initialize_w_sent_nr(cls, word2index):
+        """
+        this method is used by all neural net structures. It initializes a matrix with the NER probabilistic
+        representation.
+        """
+        unique_words = word2index.keys()
+        n_unique_words = len(unique_words)
+        sent_nr_word_representations = features_distributions.training_word_sent_nr_representations()
+        sent_nr_dims = sent_nr_word_representations.values()[0].__len__()
+        w = utils.NeuralNetwork.initialize_weights(n_in=n_unique_words, n_out=sent_nr_dims, function='tanh')
+
+        for word, rep in sent_nr_word_representations.iteritems():
+            w[word2index[word]] = rep
+
+        return w
+
+    @classmethod
+    def initialize_w_tense(cls, word2index):
+        """
+        this method is used by all neural net structures. It initializes a matrix with the NER probabilistic
+        representation.
+        """
+        unique_words = word2index.keys()
+        n_unique_words = len(unique_words)
+        tense_word_representations = features_distributions.training_word_tense_representations()
+        tense_dims = tense_word_representations.values()[0].__len__()
+        w = utils.NeuralNetwork.initialize_weights(n_in=n_unique_words, n_out=tense_dims, function='tanh')
+
+        for word, rep in tense_word_representations.iteritems():
+            w[word2index[word]] = rep
+
+        return w
     
     def plot_training_cost_and_error(self, train_costs_list, train_errors_list, test_costs_list, test_errors_list, 
                                      actual_time):

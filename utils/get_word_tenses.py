@@ -10,7 +10,6 @@ pos_tense_mapping = {
     'VBP': 'present',
     'VBZ': 'present',
     '#NA': 'NA',
-    'MD': 'modal',   # e.g "will"
     '#FUTURE': 'future'
 }
 
@@ -22,10 +21,10 @@ def determine_pos(previous_pos, word_dict, governor_word_dict, sent_dicts, i):
         if previous_pos == 'VBZ':
             # then this refers to present perfect
             return 'VBZ'
-        elif pos_tag == 'MD' and word_dict['word'] == 'will':
-            return '#FUTURE'
         else:
             return pos_tag
+    elif pos_tag == 'MD' and word_dict['word'] == 'will':
+        return '#FUTURE'
     else:
         if governor_word_dict:
             # continue with the governor
@@ -60,6 +59,8 @@ def get_dataset_sentence_tenses(dataset_dicts):
             sent_tense[j] = ['present'] * sent_dicts.__len__()
         elif verb_pos_in_sentence.__len__() == 1:
             sent_tense[j] = [pos_tense_mapping[verb_pos_in_sentence[0]]] * sent_dicts.__len__()
+            if verb_pos_in_sentence[0] == 'MD':
+                print 'debug'
         else:
             # if there is more than one, determine each assignment.
             previous_pos = None
@@ -76,6 +77,8 @@ def get_dataset_sentence_tenses(dataset_dicts):
 
                 pos_tag = determine_pos(previous_pos, word_dict, governor_dict, sent_dicts, i)
                 tense = pos_tense_mapping[pos_tag]
+                if pos_tag == 'MD':
+                    print 'debug'
                 word_tense.append(tense)
                 previous_pos = tense
             sent_tense[j] = word_tense
