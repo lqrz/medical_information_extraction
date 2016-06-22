@@ -2474,8 +2474,6 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
             logger.error('Must specify a training set to predict on.')
             exit(0)
 
-        y_test = theano.shared(value=y_test, name='y_test', borrow=True)
-
         y = T.vector(name='test_y', dtype=INT)
 
         w2v_idxs = T.matrix(name="test_w2v_idxs", dtype=INT) # columns: context window size/lines: tokens in the sentence
@@ -2540,7 +2538,7 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
             errors = 0
             cost = 0
             predictions = []
-            for i in range(np.ceil(self.x_test.shape[0] / float(batch_size.eval())).astype(INT)):
+            for i in range(np.ceil(x_test.shape[0].eval() / float(batch_size.eval())).astype(INT)):
                 out_cost, out_errors, out_predictions = perform_prediction(i)
                 errors += out_errors
                 cost += out_cost
@@ -2556,12 +2554,14 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
                                                  })
 
             predictions = []
-            for i in range(np.ceil(self.x_test.shape[0] / float(batch_size.eval())).astype(INT)):
+            for i in range(np.ceil(x_test.shape[0].eval() / float(batch_size.eval())).astype(INT)):
                 out_predictions = perform_prediction(i)
                 predictions.extend(out_predictions)
 
         results['flat_predictions'] = predictions
         results['flat_trues'] = y_test
+
+        assert predictions.__len__() == y_test.__len__()
 
         return results
 
