@@ -1,6 +1,4 @@
 __author__ = 'root'
-import gensim
-import theano.tensor as T
 import numpy as np
 import time
 import pandas
@@ -14,6 +12,7 @@ class Word2Vec:
 
     @staticmethod
     def load_w2v(model_filename):
+        import gensim
         return gensim.models.Word2Vec.load_word2vec_format(model_filename, binary=True)
 
 
@@ -70,7 +69,6 @@ class NeuralNetwork:
                 the concatenated tensor expression.
         """
 
-        import theano
         import theano.tensor as tensor
 
         concat_size = sum(tt.shape[axis] for tt in tensor_list)
@@ -112,10 +110,12 @@ class NeuralNetwork:
 
     @staticmethod
     def tanh_activation_function(x):
+        import theano.tensor as T
         return T.tanh(x)
 
     @staticmethod
     def softmax_activation_function(x):
+        import theano.tensor as T
         return T.nnet.softmax(x)
 
     @staticmethod
