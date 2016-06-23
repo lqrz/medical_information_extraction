@@ -262,7 +262,7 @@ class Multi_Feature_Type_Hidden_Layer_Context_Window_Net(A_neural_network):
 
     def predict(self, n_hidden=None, **kwargs):
 
-        if n_hidden is not None:
+        if n_hidden is None:
             function = self.sgd_forward_pass
         else:
             function = self.sgd_forward_pass_two_layers
