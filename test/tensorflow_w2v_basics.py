@@ -98,10 +98,10 @@ def generate_batch(batch_size, num_skips, skip_window):
     return batch, labels
 
 
-batch, labels = generate_batch(batch_size=8, num_skips=2, skip_window=1)
-for i in range(8):
-    print(batch[i], reverse_dictionary[batch[i]],
-          '->', labels[i, 0], reverse_dictionary[labels[i, 0]])
+# batch, labels = generate_batch(batch_size=8, num_skips=2, skip_window=1)
+# for i in range(8):
+#     print(batch[i], reverse_dictionary[batch[i]],
+#           '->', labels[i, 0], reverse_dictionary[labels[i, 0]])
 
 # Step 4: Build and train a skip-gram model.
 
@@ -162,7 +162,7 @@ with graph.as_default():
     init = tf.initialize_all_variables()
 
 # Step 5: Begin training.
-num_steps = 30000
+num_steps = 100001
 
 with tf.Session(graph=graph) as session:
     # We must initialize all variables before we use them.
@@ -184,7 +184,7 @@ with tf.Session(graph=graph) as session:
             if step > 0:
                 average_loss /= 2000
             # The average loss is an estimate of the loss over the last 2000 batches.
-            print("Average loss at step ", step, ": ", average_loss, " emb_sum: ", emb_sum)
+            print("Average loss at step %d: %f emb_sum: %f data_ix: %d" % (step, average_loss, emb_sum, data_index % len(data)))
             average_loss = 0
 
             # Note that this is expensive (~20% slowdown if computed every 500 steps)
