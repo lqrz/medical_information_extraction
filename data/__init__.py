@@ -2,6 +2,7 @@ __author__ = 'root'
 
 import pkg_resources
 import cPickle
+import os
 
 def get_resource(file_name):
     # file_name could be a file or an entire directory
@@ -16,6 +17,13 @@ def get_wikipedia_file(file_name):
 
 def get_w2v_training_data_vectors(file_name):
     return pkg_resources.resource_filename('data', 'word2vec/'+file_name)
+
+def load_w2v_vectors(filename):
+    path = get_w2v_training_data_vectors(filename)
+    if os.path.exists(path):
+        return cPickle.load(open(path, 'rb'))
+    else:
+        raise Exception
 
 def get_w2v_directory(file_name):
     return pkg_resources.resource_filename('data', 'word2vec/%s' % file_name)
