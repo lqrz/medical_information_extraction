@@ -105,7 +105,7 @@ class Neural_net(A_neural_network):
             # word embeddings matrix and bias. Always needed
             self.w1 = tf.Variable(initial_value=self.pretrained_embeddings, dtype=tf.float32, trainable=not static,
                                   name='w1')
-            self.b1 = tf.Variable(tf.zeros([self.n_emb * self.n_window]), name='b1')
+            self.b1 = tf.Variable(tf.zeros([self.n_emb * self.n_window]), dtype=tf.float32, name='b1')
 
             self.regularizables.append(self.w1)
 
@@ -116,7 +116,7 @@ class Neural_net(A_neural_network):
                                                                    function='softmax'),
                     dtype=tf.float32, name='w2')
 
-                self.b2 = tf.Variable(tf.zeros([self.n_out]), name='b2')
+                self.b2 = tf.Variable(tf.zeros([self.n_out]), dtype=tf.float32, name='b2')
 
                 self.regularizables.append(self.w2)
 
@@ -131,8 +131,9 @@ class Neural_net(A_neural_network):
 
                 self.w3 = tf.Variable(
                     initial_value=NeuralNetwork.initialize_weights(self.n_hidden, n_out=self.n_out,
-                                                                   function='softmax'), name='w3')
-                self.b3 = tf.Variable(tf.zeros([self.n_out]), name='b3')
+                                                                   function='softmax'),
+                    dtype=tf.float32, name='w3')
+                self.b3 = tf.Variable(tf.zeros([self.n_out]), dtype=tf.float32, name='b3')
 
                 self.regularizables.append(self.w2)
                 self.regularizables.append(self.w3)
