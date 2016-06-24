@@ -527,7 +527,7 @@ def use_testing_dataset(nn_class,
     try:
         # the CNN might not use this feature, and thus, not have a W1 weight
         cPickle.dump(nn_trainer.params['w1'].get_value(), open(get_output_path('trained_vectors.p'), 'wb'))
-    except KeyError or AttributeError:
+    except (KeyError, AttributeError):
         pass
     cPickle.dump(word2index, open(get_output_path('word2index.p'), 'wb'))
 
