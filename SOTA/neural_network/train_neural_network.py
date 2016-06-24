@@ -16,13 +16,6 @@ import pandas as pd
 from utils.metrics import Metrics
 from data import get_w2v_training_data_vectors
 from data import get_w2v_model
-from last_tag_neural_network import Last_tag_neural_network_trainer
-from recurrent_net import Recurrent_net
-from single_Layer_Context_Window_Net import Single_Layer_Context_Window_Net
-from recurrent_Context_Window_net import Recurrent_Context_Window_net
-from hidden_Layer_Context_Window_Net import Hidden_Layer_Context_Window_Net
-from vector_Tag_Contex_Window_Net import Vector_Tag_Contex_Window_Net
-from two_hidden_Layer_Context_Window_Net import Two_Hidden_Layer_Context_Window_Net
 from trained_models import get_vector_tag_path
 from trained_models import get_last_tag_path
 from trained_models import get_rnn_path
@@ -38,10 +31,9 @@ from data import get_classification_report_labels
 from data import get_hierarchical_mapping
 from data import get_aggregated_classification_report_labels
 from utils.get_word_tenses import get_training_set_tenses, get_validation_set_tenses, get_testing_set_tenses
-from multi_feature_type_hidden_layer_context_window_net import Multi_Feature_Type_Hidden_Layer_Context_Window_Net
-# from multi_feature_type_old import Multi_Feature_Type_Hidden_Layer_Context_Window_Net
 from utils.utils import Others
 from utils.utils import NeuralNetwork
+from SOTA.neural_network.A_neural_network import A_neural_network
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -52,7 +44,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description='Neural net trainer')
     parser.add_argument('--net', type=str, action='store', required=True,
                         choices=['single_cw','hidden_cw','vector_tag','last_tag','rnn', 'cw_rnn', 'multi_hidden_cw',
-                                 'two_hidden_cw'],
+                                 'two_hidden_cw', 'tf_hidden_cw'],
                         help='NNet type')
     parser.add_argument('--window', type=int, action='store', required=True,
                         help='Context window size. 1 for RNN')
@@ -84,7 +76,7 @@ def parse_arguments():
     group_cnn.add_argument('--maxpool', action='store_true', default=False)
     group_cnn.add_argument('--regionsizes', action='store', type=int, nargs='*')
     group_cnn.add_argument('--multifeats', action='store', type=str, nargs='*', default=[],
-                           choices=Multi_Feature_Type_Hidden_Layer_Context_Window_Net.FEATURE_MAPPING.keys())
+                           choices=A_neural_network.FEATURE_MAPPING.keys())
 
     parser.add_argument('--autoencoded', action='store_true', default=False)
     parser.add_argument('--aggregated', action='store_true', default=False)
@@ -259,11 +251,14 @@ def determine_nnclass_and_parameters(args):
     normalize_samples = False
 
     if args['nn_name'] == 'single_cw':
+        from single_Layer_Context_Window_Net import Single_Layer_Context_Window_Net
         nn_class = Single_Layer_Context_Window_Net
         hidden_f = None #no hidden layer in the single MLP.
         get_output_path = get_single_mlp_path
         add_words = ['<PAD>']
     if args['nn_name'] == 'hidden_cw':
+
+        from hidden_Layer_Context_Window_Net import Hidden_Layer_Context_Window_Net
         # one hidden layer with context window. Either minibatch or SGD.
         nn_class = Hidden_Layer_Context_Window_Net
         get_output_path = get_cwnn_path
@@ -272,36 +267,55 @@ def determine_nnclass_and_parameters(args):
         normalize_samples = args['norm_samples']
         add_feats = ['<PAD>']
     elif args['nn_name'] == 'vector_tag':
+
+        from vector_Tag_Contex_Window_Net import Vector_Tag_Contex_Window_Net
         nn_class = Vector_Tag_Contex_Window_Net
         get_output_path = get_vector_tag_path
         tag_dim = args['tagdim']
         add_tags = ['<PAD>', '<UNK>']
         add_words = ['<PAD>']
     elif args['nn_name'] == 'last_tag':
+        from last_tag_neural_network import Last_tag_neural_network_trainer
         nn_class = Last_tag_neural_network_trainer
         get_output_path = get_last_tag_path
         tag_dim = args['tagdim']
         add_words = ['<PAD>']
         add_tags = ['<PAD>']
     elif args['nn_name'] == 'rnn':
+        from recurrent_net import Recurrent_net
         #the RNN init function overwrites the n_window param and sets it to 1.
         nn_class = Recurrent_net
         get_output_path = get_rnn_path
         n_window = 1
     elif args['nn_name'] == 'cw_rnn':
+
+        from recurrent_Context_Window_net import Recurrent_Context_Window_net
         nn_class = Recurrent_Context_Window_net
         get_output_path = get_cw_rnn_path
         add_words = ['<PAD>']
     elif args['nn_name'] == 'multi_hidden_cw':
+        from multi_feature_type_hidden_layer_context_window_net import Multi_Feature_Type_Hidden_Layer_Context_Window_Net
         nn_class = Multi_Feature_Type_Hidden_Layer_Context_Window_Net
         get_output_path = get_multi_hidden_cw_path
         add_words = ['<PAD>']
         add_feats = ['<PAD>']
         multi_feats = args['multi_features']
-    if args['nn_name'] == 'two_hidden_cw':
+    elif args['nn_name'] == 'two_hidden_cw':
+
+        from two_hidden_Layer_Context_Window_Net import Two_Hidden_Layer_Context_Window_Net
         nn_class = Two_Hidden_Layer_Context_Window_Net
         get_output_path = get_two_cwnn_path
         add_words = ['<PAD>']
+
+    elif args['nn_name'] == 'tf_hidden_cw':
+        from tensor_flow.hidden_layer_context_window_net import Neural_net
+        # one hidden layer with context window. Either minibatch or SGD.
+        nn_class = Neural_net
+        get_output_path = get_cwnn_path
+        add_words = ['<PAD>']
+        multi_feats = args['multi_features']
+        normalize_samples = args['norm_samples']
+        add_feats = ['<PAD>']
 
     return nn_class, hidden_f, out_f, add_words, add_tags, add_feats, tag_dim, n_window, get_output_path, multi_feats, \
            normalize_samples
