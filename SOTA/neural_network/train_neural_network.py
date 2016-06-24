@@ -85,6 +85,7 @@ def parse_arguments():
     parser.add_argument('--lr', action='store', type=float, default=.1)
     parser.add_argument('--lrdecay', action='store_true', default=False)
     parser.add_argument('--hidden', action='store', type=int, default=False)
+    parser.add_argument('--logreg', action='store_true', default=False) #tensorflow. use logistic regression architecture.
 
     #parse arguments
     arguments = parser.parse_args()
@@ -119,6 +120,7 @@ def parse_arguments():
     args['n_hidden'] = arguments.hidden
     args['w2v_random_dim'] = arguments.w2vrandomdim
     args['lr_decay'] = arguments.lrdecay
+    args['log_reg'] = arguments.logreg
 
     return args
 
@@ -490,7 +492,8 @@ def use_testing_dataset(nn_class,
         'pos_embeddings': pos_embeddings,
         'ner_embeddings': ner_embeddings,
         'sent_nr_embeddings': sent_nr_embeddings,
-        'tense_embeddings': tense_embeddings
+        'tense_embeddings': tense_embeddings,
+        'log_reg': args['log_reg']
     }
 
     nn_trainer = nn_class(**params)
