@@ -273,7 +273,6 @@ class Neural_net(A_neural_network):
 
             # Input data
             idxs = tf.placeholder(tf.int32)
-            labels = tf.placeholder(tf.int32)
 
             out_logits = self.compute_output_layer_logits(idxs)
 
@@ -284,7 +283,7 @@ class Neural_net(A_neural_network):
         with tf.Session(graph=self.graph) as session:
             init.run()
 
-            feed_dict = {idxs: x_test, labels: y_test}
+            feed_dict = {idxs: x_test}
             pred = session.run(predictions, feed_dict=feed_dict)
 
         results['flat_trues'] = y_test

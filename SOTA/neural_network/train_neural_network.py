@@ -310,7 +310,7 @@ def determine_nnclass_and_parameters(args):
         add_words = ['<PAD>']
 
     elif args['nn_name'] == 'tf_hidden_cw':
-        from tensor_flow.hidden_layer_context_window_net import Neural_net
+        from tensor_flow.feed_forward_mlp_net import Neural_net
         # one hidden layer with context window. Either minibatch or SGD.
         nn_class = Neural_net
         get_output_path = get_cwnn_path
