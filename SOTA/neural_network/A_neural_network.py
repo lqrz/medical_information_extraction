@@ -15,6 +15,25 @@ class A_neural_network():
 
     __metaclass__ = ABCMeta
 
+    CRF_POSITIONS = {'ner': 1, 'pos': 2}
+
+    FEATURE_MAPPING = {
+        'w2v_c_nm': {'name': 'w2v', 'convolve': True, 'max_pool': False, 'use_cw': True, 'nr_filters': None,
+                     'filter_width': 1, 'nr_region_sizes': None, 'crf_position': None},
+        'w2v_nc_nm': {'name': 'w2v', 'convolve': False, 'max_pool': False, 'use_cw': True, 'nr_filters': 0,
+                      'filter_width': 0, 'nr_region_sizes': 0, 'crf_position': None},
+        'w2v_c_m': {'name': 'w2v', 'convolve': True, 'max_pool': True, 'use_cw': True, 'nr_filters': None,
+                    'filter_width': None, 'nr_region_sizes': None, 'crf_position': None},
+        'pos_c_m': {'name': 'pos', 'convolve': True, 'max_pool': True, 'use_cw': True, 'nr_filters': None,
+                    'filter_width': None, 'nr_region_sizes': None, 'crf_position': CRF_POSITIONS['pos']},
+        'ner_c_m': {'name': 'ner', 'convolve': True, 'max_pool': True, 'use_cw': True, 'nr_filters': None,
+                    'filter_width': None, 'nr_region_sizes': None, 'crf_position': CRF_POSITIONS['ner']},
+        'sent_nr_c_m': {'name': 'sent_nr', 'convolve': True, 'max_pool': True, 'use_cw': True, 'nr_filters': None,
+                        'filter_width': None, 'nr_region_sizes': None, 'crf_position': None},
+        'tense_c_m': {'name': 'tense', 'convolve': True, 'max_pool': True, 'use_cw': True, 'nr_filters': None,
+                      'filter_width': None, 'nr_region_sizes': None, 'crf_position': None}
+    }
+
     def __init__(self,
                  x_train,
                  y_train,
