@@ -25,6 +25,7 @@ from trained_models import get_cwnn_path
 from trained_models import get_multi_hidden_cw_path
 from trained_models import get_two_cwnn_path
 from trained_models import get_tf_cwnn_path
+from trained_models import get_tf_cnn_path
 from data import get_param
 from utils.plot_confusion_matrix import plot_confusion_matrix
 from data.dataset import Dataset
@@ -45,7 +46,8 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description='Neural net trainer')
     parser.add_argument('--net', type=str, action='store', required=True,
                         choices=['single_cw','hidden_cw','vector_tag','last_tag','rnn', 'cw_rnn', 'multi_hidden_cw',
-                                 'two_hidden_cw', 'tf_hidden_cw'],
+                                 'two_hidden_cw',
+                                 'tf_hidden_cw', 'tf_cnn'],
                         help='NNet type')
     parser.add_argument('--window', type=int, action='store', required=True,
                         help='Context window size. 1 for RNN')
@@ -317,6 +319,14 @@ def determine_nnclass_and_parameters(args):
         # one hidden layer with context window. Either minibatch or SGD.
         nn_class = Neural_Net
         get_output_path = get_tf_cwnn_path
+        add_words = ['<PAD>']
+        multi_feats = args['multi_features']
+        normalize_samples = args['norm_samples']
+        add_feats = ['<PAD>']
+    elif args['nn_name'] == 'tf_cnn':
+        from tensor_flow.convolutional_net import Convolutional_Neural_Net
+        nn_class = Convolutional_Neural_Net
+        get_output_path = get_tf_cnn_path
         add_words = ['<PAD>']
         multi_feats = args['multi_features']
         normalize_samples = args['norm_samples']
