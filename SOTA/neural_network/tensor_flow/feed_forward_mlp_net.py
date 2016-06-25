@@ -226,7 +226,7 @@ class Neural_Net(A_neural_network):
             cost = tf.reduce_sum(cross_entropy + alpha_l2 * l2_regularizers)
 
             # they both do the same: split the learning rate. But the 2nd one is slightly more performant
-            
+
             # optimizer_fine_tune = tf.train.AdagradOptimizer(learning_rate=learning_rate_tune).\
             #     minimize(cost, var_list=self.fine_tuning_params)
             #
