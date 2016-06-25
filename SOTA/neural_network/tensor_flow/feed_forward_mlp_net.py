@@ -78,6 +78,8 @@ class Neural_Net(A_neural_network):
         if not batch_size:
             # train SGD
             minibatch_size = 1
+        else:
+            minibatch_size = batch_size
 
         if self.log_reg:
             print 'Using logistic regression architecture window: %d batch_size: %d learning_rate: %f' % \
