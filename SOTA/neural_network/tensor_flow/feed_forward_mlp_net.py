@@ -2,8 +2,7 @@ __author__ = 'lqrz'
 
 import os
 import sys
-
-sys.path.append(os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
+sys.path.append(os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))))
 
 from utils.utils import NeuralNetwork
 from utils.metrics import Metrics
@@ -436,13 +435,78 @@ def initialize_embedding_matrix(args, word2index):
 
     return embeddings
 
-    # if __name__ == '__main__':
-    #
-    #     args = parse_arguments()
-    #     n_window = args['window_size']
-    #
-    #     x_train, y_train, x_valid, y_valid, x_test, y_test, word2index, label2index = get_dataset(n_window=n_window, add_words=['<PAD>'])
-    #
-    #     embeddings = initialize_embedding_matrix(args, word2index)
-    #
-    #     train_graph(n_window, x_train, y_train, x_valid, y_valid, word2index, label2index, embeddings=embeddings, epochs=20)
+def train_graph(n_window, x_train, y_train, x_valid, y_valid, word2index, label2index, epochs, alpha_l2=0.01):
+    '''
+    This is a simpler version (unstructured) of the neural network class above. For debugging purposes.
+    '''
+    n_unique_words = word2index.__len__()
+    emb_size = 300
+    n_out = label2index.__len__()
+
+    graph = tf.Graph()
+
+    with graph.as_default():
+
+        idxs = tf.placeholder(dtype=tf.int32)
+        labels = tf.placeholder(dtype=tf.int32)
+
+        with tf.device('/cpu:0'):
+
+            w1 = tf.Variable(initial_value=NeuralNetwork.initialize_weights(n_in=n_unique_words, n_out=emb_size, function='tanh'),
+                             dtype=tf.float32, trainable=True, name='w1')
+
+            b1 = tf.Variable(tf.zeros([emb_size * n_window]), dtype=tf.float32, name='b1')
+
+            w2 = tf.Variable(NeuralNetwork.initialize_weights(n_in=emb_size * n_window, n_out=n_out, function='softmax'),
+                             dtype=tf.float32, trainable=True, name='w2')
+
+            b2 = tf.Variable(tf.zeros([n_out]), dtype=tf.float32, name='b2')
+
+            w1_x = tf.nn.embedding_lookup(w1, idxs)
+            w1_x_r = tf.reshape(w1_x, shape=[-1, n_window * emb_size])
+
+            out = tf.nn.bias_add(tf.matmul(tf.tanh(tf.nn.bias_add(w1_x_r, b1)), w2), b2)
+            cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(out,labels)
+
+            l2 = tf.reduce_sum(tf.nn.l2_loss(w1_x)) + tf.reduce_sum(tf.nn.l2_loss(w2))
+            cost = tf.reduce_sum(cross_entropy + alpha_l2 * l2)
+
+            optimizer = tf.train.AdagradOptimizer(learning_rate=0.01).minimize(cost)
+
+            predictions = tf.to_int32(tf.arg_max(tf.nn.softmax(out), 1))
+
+            n_errors = tf.reduce_sum(tf.to_int32(tf.not_equal(predictions, labels)))
+
+            init = tf.initialize_all_variables()
+
+    with tf.Session(graph=graph) as session:
+        init.run()
+        for epoch_ix in range(epochs):
+            start = time.time()
+            train_cost_acc = 0
+            train_errors_acc = 0
+            for x_sample, y_sample in zip(x_train, y_train):
+                _, train_cost, train_errors = session.run([optimizer, cost, n_errors], feed_dict={idxs: x_sample, labels: [y_sample]})
+                train_cost_acc += train_cost
+                train_errors_acc += train_errors
+
+            valid_cost, pred, valid_errors = session.run([cost, predictions, n_errors], feed_dict={idxs: x_valid, labels: y_valid})
+
+            f1_score = Metrics.compute_f1_score(y_valid, pred, average='macro')
+
+            print 'Epoch %d train_cost: %f train_errors: %d valid_cost: %f valid_errors: %d F1: %f took: %f' % \
+                  (epoch_ix, train_cost_acc, train_errors_acc, valid_cost, valid_errors, f1_score, time.time()-start)
+
+
+if __name__ == '__main__':
+
+    # args = parse_arguments()
+    # n_window = args['window_size']
+
+    n_window = 3
+
+    x_train, y_train, x_valid, y_valid, x_test, y_test, word2index, label2index = get_dataset(n_window=n_window, add_words=['<PAD>'])
+
+    # embeddings = initialize_embedding_matrix(args, word2index)
+
+    train_graph(n_window, x_train, y_train, x_valid, y_valid, word2index, label2index, epochs=20)
