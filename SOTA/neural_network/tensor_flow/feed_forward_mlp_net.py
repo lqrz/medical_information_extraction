@@ -80,15 +80,16 @@ class Neural_Net(A_neural_network):
             minibatch_size = 1
 
         if self.log_reg:
-            print 'Using logistic regression architecture window: %d batch_size: %d' % (self.n_window, minibatch_size)
+            print 'Using logistic regression architecture window: %d batch_size: %d learning_rate: %f' % \
+                  (self.n_window, minibatch_size, kwargs['learning_rate'])
             self.forward_function = self.forward_no_hidden_layer
         elif self.n_hidden > 0:
-            print 'Using two hidden layer MLP architecture with window: %d hidden_layer: %d batch_size: %d' % (
-            self.n_window, self.n_hidden, minibatch_size)
+            print 'Using two hidden layer MLP architecture with window: %d hidden_layer: %d batch_size: %d learning_rate: %f' % (
+            self.n_window, self.n_hidden, minibatch_size, kwargs['learning_rate'])
             self.forward_function = self.forward_two_hidden_layer
         else:
-            print 'Using one hidden layer MLP architecture with window: %d batch_size: %d' % (
-            self.n_window, minibatch_size)
+            print 'Using one hidden layer MLP architecture with window: %d batch_size: %d learning_rate: %f' % (
+            self.n_window, minibatch_size, kwargs['learning_rate'])
             self.forward_function = self.forward_one_hidden_layer
 
         with self.graph.as_default():
@@ -231,8 +232,6 @@ class Neural_Net(A_neural_network):
                     train_xentropy += xentropy
                     train_errors += errors
 
-                epoch_l2_w1, epoch_l2_w2, epoch_l2_w3 = self.compute_parameters_sum()
-
                 feed_dict = {idxs: self.x_valid, labels: self.y_valid}
                 # session.run([out, y_valid, cross_entropy, tf.reduce_sum(cross_entropy)], feed_dict=feed_dict)
                 valid_cost, valid_xentropy, pred, valid_errors = session.run(
@@ -240,10 +239,13 @@ class Neural_Net(A_neural_network):
 
                 precision, recall, f1_score = self.compute_scores(self.y_valid, pred)
 
-                self.update_monitoring_lists(train_cost, train_xentropy, train_errors,
-                                             valid_cost, valid_xentropy, valid_errors,
-                                             epoch_l2_w1, epoch_l2_w2, epoch_l2_w3,
-                                             precision, recall, f1_score)
+                if plot:
+                    epoch_l2_w1, epoch_l2_w2, epoch_l2_w3 = self.compute_parameters_sum()
+
+                    self.update_monitoring_lists(train_cost, train_xentropy, train_errors,
+                                                 valid_cost, valid_xentropy, valid_errors,
+                                                 epoch_l2_w1, epoch_l2_w2, epoch_l2_w3,
+                                                 precision, recall, f1_score)
 
                 print 'epoch: %d train_cost: %f train_errors: %d valid_cost: %f valid_errors: %d F1: %f took: %f' \
                       % (
