@@ -31,7 +31,7 @@ def get_dataset(n_window, add_words=[], add_tags=[], feat_positions=[], add_feat
 class Neural_Net(A_neural_network):
     def __init__(self, log_reg, n_hidden, **kwargs):
 
-        super(Neural_net, self).__init__(**kwargs)
+        super(Neural_Net, self).__init__(**kwargs)
 
         self.graph = tf.Graph()
 
