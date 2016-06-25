@@ -188,8 +188,8 @@ class Neural_Net(A_neural_network):
         with self.graph.as_default():
 
             # Input data
-            idxs = tf.placeholder(tf.int32)
-            labels = tf.placeholder(tf.int32)
+            idxs = tf.placeholder(tf.int32, name='idxs')
+            labels = tf.placeholder(tf.int32, name='labels')
 
             out_logits = self.compute_output_layer_logits(idxs)
 
