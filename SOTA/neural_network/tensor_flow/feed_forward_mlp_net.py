@@ -51,6 +51,10 @@ class Neural_Net(A_neural_network):
         # parameters to get L2
         self.regularizables = []
 
+        # split into training and fine-tuning
+        self.training_params = []
+        self.fine_tuning_params = []
+
         self.initialize_plotting_lists()
 
     def initialize_plotting_lists(self):
@@ -82,16 +86,16 @@ class Neural_Net(A_neural_network):
             minibatch_size = batch_size
 
         if self.log_reg:
-            print 'Using logistic regression architecture window: %d batch_size: %d learning_rate: %f' % \
-                  (self.n_window, minibatch_size, kwargs['learning_rate'])
+            print 'Using logistic regression architecture window: %d batch_size: %d learning_rate_train: %f learning_rate_tune: %f' % \
+                  (self.n_window, minibatch_size, kwargs['learning_rate_train'], kwargs['learning_rate_tune'])
             self.forward_function = self.forward_no_hidden_layer
         elif self.n_hidden > 0:
-            print 'Using two hidden layer MLP architecture with window: %d hidden_layer: %d batch_size: %d learning_rate: %f' % (
-            self.n_window, self.n_hidden, minibatch_size, kwargs['learning_rate'])
+            print 'Using two hidden layer MLP architecture with window: %d hidden_layer: %d batch_size: %d learning_rate_train: %f learning_rate_tune: %f' % (
+            self.n_window, self.n_hidden, minibatch_size, kwargs['learning_rate_train'], kwargs['learning_rate_tune'])
             self.forward_function = self.forward_two_hidden_layer
         else:
-            print 'Using one hidden layer MLP architecture with window: %d batch_size: %d learning_rate: %f' % (
-            self.n_window, minibatch_size, kwargs['learning_rate'])
+            print 'Using one hidden layer MLP architecture with window: %d batch_size: %d learning_rate_train: %f learning_rate_tune: %f' % (
+            self.n_window, minibatch_size, kwargs['learning_rate_train'], kwargs['learning_rate_tune'])
             self.forward_function = self.forward_one_hidden_layer
 
         with self.graph.as_default():
@@ -111,6 +115,11 @@ class Neural_Net(A_neural_network):
 
             self.regularizables.append(self.w1)
 
+            # apply fine_tuning_learning_rate to w1
+            if not static:
+                self.fine_tuning_params.append(self.w1)
+            self.fine_tuning_params.append(self.b1)
+
             if not self.log_reg and not self.n_hidden > 0:
                 # one hidden layer
                 self.w2 = tf.Variable(
@@ -121,6 +130,10 @@ class Neural_Net(A_neural_network):
                 self.b2 = tf.Variable(tf.zeros([self.n_out]), dtype=tf.float32, name='b2')
 
                 self.regularizables.append(self.w2)
+
+                # apply training_learning_rate to w2
+                self.training_params.append(self.w2)
+                self.training_params.append(self.b2)
 
             elif not self.log_reg and self.n_hidden > 0:
                 # two hidden layer
@@ -139,6 +152,12 @@ class Neural_Net(A_neural_network):
 
                 self.regularizables.append(self.w2)
                 self.regularizables.append(self.w3)
+
+                # apply training_learning_rate to w2 and w3
+                self.training_params.append(self.w2)
+                self.training_params.append(self.b2)
+                self.training_params.append(self.w3)
+                self.training_params.append(self.b3)
 
         return
 
@@ -184,7 +203,10 @@ class Neural_Net(A_neural_network):
 
         return n_errors
 
-    def train_graph(self, minibatch_size, max_epochs, learning_rate, lr_decay, plot, alpha_l2=0.001,
+    def train_graph(self, minibatch_size, max_epochs,
+                    learning_rate_train, learning_rate_tune, lr_decay,
+                    plot,
+                    alpha_l2=0.001,
                     **kwargs):
 
         with self.graph.as_default():
@@ -203,7 +225,23 @@ class Neural_Net(A_neural_network):
 
             cost = tf.reduce_sum(cross_entropy + alpha_l2 * l2_regularizers)
 
-            optimizer = tf.train.AdagradOptimizer(learning_rate=learning_rate).minimize(cost)
+            # they both do the same: split the learning rate. But the 2nd one is slightly more performant
+            
+            # optimizer_fine_tune = tf.train.AdagradOptimizer(learning_rate=learning_rate_tune).\
+            #     minimize(cost, var_list=self.fine_tuning_params)
+            #
+            # optimizer_train = tf.train.AdagradOptimizer(learning_rate=learning_rate_train).\
+            #     minimize(cost, var_list=self.training_params)
+            # optimizer = tf.group(optimizer_fine_tune, optimizer_train)
+
+            optimizer_fine_tune = tf.train.AdagradOptimizer(learning_rate=learning_rate_tune)
+            optimizer_train = tf.train.AdagradOptimizer(learning_rate=learning_rate_train)
+            grads = tf.gradients(cost, self.fine_tuning_params + self.training_params)
+            fine_tuning_grads = grads[:len(self.fine_tuning_params)]
+            training_grads = grads[-len(self.training_params):]
+            fine_tune_op = optimizer_fine_tune.apply_gradients(zip(fine_tuning_grads, self.fine_tuning_params))
+            train_op = optimizer_train.apply_gradients(zip(training_grads, self.training_params))
+            optimizer = tf.group(fine_tune_op, train_op)
 
             predictions = self.compute_predictions(out_logits)
 
