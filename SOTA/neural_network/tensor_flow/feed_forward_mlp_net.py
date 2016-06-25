@@ -28,7 +28,7 @@ def get_dataset(n_window, add_words=[], add_tags=[], feat_positions=[], add_feat
     return x_train, y_train, x_valid, y_valid, x_test, y_test, word2index, label2index
 
 
-class Neural_net(A_neural_network):
+class Neural_Net(A_neural_network):
     def __init__(self, log_reg, n_hidden, **kwargs):
 
         super(Neural_net, self).__init__(**kwargs)

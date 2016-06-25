@@ -24,6 +24,7 @@ from trained_models import get_cw_rnn_path
 from trained_models import get_cwnn_path
 from trained_models import get_multi_hidden_cw_path
 from trained_models import get_two_cwnn_path
+from trained_models import get_tf_cwnn_path
 from data import get_param
 from utils.plot_confusion_matrix import plot_confusion_matrix
 from data.dataset import Dataset
@@ -310,10 +311,10 @@ def determine_nnclass_and_parameters(args):
         add_words = ['<PAD>']
 
     elif args['nn_name'] == 'tf_hidden_cw':
-        from tensor_flow.feed_forward_mlp_net import Neural_net
+        from tensor_flow.feed_forward_mlp_net import Neural_Net
         # one hidden layer with context window. Either minibatch or SGD.
-        nn_class = Neural_net
-        get_output_path = get_cwnn_path
+        nn_class = Neural_Net
+        get_output_path = get_tf_cwnn_path
         add_words = ['<PAD>']
         multi_feats = args['multi_features']
         normalize_samples = args['norm_samples']

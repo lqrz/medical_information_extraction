@@ -157,3 +157,13 @@ def get_two_cwnn_path(filename):
         os.makedirs(dir)
 
     return path
+
+
+def get_tf_cwnn_path(file_name):
+
+    path = pkg_resources.resource_filename('trained_models', 'tf_cwnn/'+file_name)
+    dir = os.path.dirname(path)
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+    return path
