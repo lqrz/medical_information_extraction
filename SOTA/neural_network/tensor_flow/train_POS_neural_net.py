@@ -2,7 +2,7 @@ __author__ = 'lqrz'
 
 import os
 import sys
-sys.path.append(os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
+sys.path.append(os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))))
 
 from itertools import chain
 import numpy as np
