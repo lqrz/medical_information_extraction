@@ -88,7 +88,7 @@ def train_pos_embeddings(batch_size, embedding_size, get_output_path, epochs, sk
                                    skip_window=skip_window,
                                    epochs=epochs)
 
-    representations = zip(map(lambda x: index2tag[x], range(final_embeddings.shape[0])), final_embeddings)
+    representations = dict(zip(map(lambda x: index2tag[x], range(final_embeddings.shape[0])), final_embeddings))
     cPickle.dump(representations, open(get_output_path('pos_final_embeddings.p'), 'wb'))
 
     plot_with_labels(final_embeddings, index2tag, filename=get_output_path('pos_embeddings_tsne.png'),
@@ -130,7 +130,7 @@ def train_word_embeddings(batch_size, embedding_size, get_output_path, epochs, s
                                    skip_window=skip_window,
                                    epochs=epochs)
 
-    representations = zip(map(lambda x: index2word[x], range(final_embeddings.shape[0])), final_embeddings)
+    representations = dict(zip(map(lambda x: index2word[x], range(final_embeddings.shape[0])), final_embeddings))
     cPickle.dump(representations, open(get_output_path('word_final_embeddings.p'), 'wb'))
 
     plot_index2label = dict()
