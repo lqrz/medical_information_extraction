@@ -45,3 +45,6 @@ def get_hierarchical_mapping():
 
 def get_wsj_treebank_filename():
     return pkg_resources.resource_filename('data', 'wsj/wsj01-21-right-branching-w-postags-m40.txt')
+
+def get_config_path(filename):
+    return pkg_resources.resource_filename('data', 'params/neural_network/%s' % filename)

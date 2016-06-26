@@ -12,6 +12,8 @@ import numpy as np
 import time
 from itertools import chain
 import pandas as pd
+import ConfigParser
+from collections import defaultdict
 
 from utils.metrics import Metrics
 from data import get_w2v_training_data_vectors
@@ -26,12 +28,14 @@ from trained_models import get_multi_hidden_cw_path
 from trained_models import get_two_cwnn_path
 from trained_models import get_tf_cwnn_path
 from trained_models import get_tf_cnn_path
+from trained_models import get_POS_nnet_path
 from data import get_param
 from utils.plot_confusion_matrix import plot_confusion_matrix
 from data.dataset import Dataset
 from data import get_classification_report_labels
 from data import get_hierarchical_mapping
 from data import get_aggregated_classification_report_labels
+from data import get_config_path
 from utils.get_word_tenses import get_training_set_tenses, get_validation_set_tenses, get_testing_set_tenses
 from utils.utils import Others
 from utils.utils import NeuralNetwork
@@ -61,7 +65,7 @@ def parse_arguments():
     parser.add_argument('--leaveoneout', action='store_true', default=False)
     parser.add_argument('--gradmeans', action='store_true', default=False)
 
-    group_w2v = parser.add_mutually_exclusive_group(required=True)
+    group_w2v = parser.add_mutually_exclusive_group(required=False)
     group_w2v.add_argument('--w2vvectorscache', action='store', type=str)
     group_w2v.add_argument('--w2vmodel', action='store', type=str, default=None)
     group_w2v.add_argument('--w2vrandomdim', action='store', type=int, default=None)
@@ -90,6 +94,8 @@ def parse_arguments():
     parser.add_argument('--lrdecay', action='store_true', default=False)
     parser.add_argument('--hidden', action='store', type=int, default=False)
     parser.add_argument('--logreg', action='store_true', default=False) #tensorflow. use logistic regression architecture.
+
+    parser.add_argument('--configini', action='store', type=str, default=None)
 
     #parse arguments
     arguments = parser.parse_args()
@@ -126,11 +132,13 @@ def parse_arguments():
     args['w2v_random_dim'] = arguments.w2vrandomdim
     args['lr_decay'] = arguments.lrdecay
     args['log_reg'] = arguments.logreg
+    args['config_ini_filename'] = arguments.configini
 
     return args
 
 def check_arguments_consistency(args):
-    if not args['w2v_vectors_cache'] and not args['w2v_model_name'] and not args['w2v_random_dim']:
+    if not args['w2v_vectors_cache'] and not args['w2v_model_name'] and not args['w2v_random_dim'] \
+            and args['nn_name'] != 'tf_cnn':
         logger.error('Provide either a w2vmodel or a w2v vectors cache')
         exit()
 
@@ -373,6 +381,38 @@ def get_aggregated_tags(y_train, y_valid, mapping, index2label):
 
     return y_aggregated_train_indexes, y_aggregated_valid_indexes, aggregated_label2index, aggregated_index2label
 
+def read_embeddings_info(config_parser, config_features):
+    config_embeddings = defaultdict(lambda : dict())
+
+    for feat in ['w2v_embeddings', 'pos_embeddings', 'ner_embeddings', 'sent_nr_embeddings', 'tense_embeddings']:
+        config_embeddings[feat]['source'] = config_parser.get(feat, 'source')
+        config_embeddings[feat]['dim'] = config_parser.get(feat, 'dim')
+        config_embeddings[feat]['embedding_item'] = config_parser.get(feat, 'embedding_item')
+
+    return config_embeddings
+
+def read_config_file(config_ini_filename):
+    config_features = None
+
+    if config_ini_filename:
+        logger.info('Reading configuration file')
+        config_path = get_config_path(config_ini_filename)
+        config_parser = ConfigParser.ConfigParser()
+        config_parser.read(config_path)
+        multi_feats = [name for name in config_parser.sections() if name.startswith('feature')]
+
+        config_features = defaultdict(lambda: dict())
+
+        config_embeddings = read_embeddings_info(config_parser, config_features)
+
+        for feat in multi_feats:
+            feat_name = config_parser.get(feat, 'name')
+            config_features[feat_name]['n_filters'] = np.int(config_parser.get(feat, 'n_filters'))
+            config_features[feat_name]['region_sizes'] = [np.int(rs) for rs in
+                                                     config_parser.get(feat, 'region_sizes').split()]
+
+    return config_features, config_embeddings
+
 def use_testing_dataset(nn_class,
                         hidden_f,
                         out_f,
@@ -387,6 +427,7 @@ def use_testing_dataset(nn_class,
                         get_output_path,
                         multi_feats,
                         normalize_samples,
+                        config_ini_filename,
                         max_epochs=None,
                         minibatch_size=None,
                         regularization=None,
@@ -399,9 +440,11 @@ def use_testing_dataset(nn_class,
 
     results = dict()
 
+    config_features, config_embeddings = read_config_file(config_ini_filename)
+
     logger.info('Loading CRF training data')
 
-    feat_positions = nn_class.get_features_crf_position(multi_feats)
+    feat_positions = nn_class.get_features_crf_position(config_features.keys())
 
     x_train, y_train, x_train_feats, \
     x_valid, y_valid, x_valid_feats, \
@@ -433,11 +476,9 @@ def use_testing_dataset(nn_class,
 
     unique_words = word2index.keys()
 
-    if w2v_vectors or w2v_model:
-        pretrained_embeddings = nn_class.initialize_w(w2v_dims, unique_words, w2v_vectors=w2v_vectors, w2v_model=w2v_model)
-    else:
-        n_unique_words = len(unique_words)
-        pretrained_embeddings = utils.NeuralNetwork.initialize_weights(n_unique_words, w2v_dims, function='tanh')
+    ner_embeddings, pos_embeddings, pretrained_embeddings, sent_nr_embeddings, tense_embeddings = initialize_embeddings(
+        nn_class, unique_words, w2v_dims, w2v_model, w2v_vectors, word2index, config_embeddings, features_indexes,
+        config_features.keys(), feat_positions)
 
     if tags:
         tags = get_param(tags)
@@ -449,11 +490,6 @@ def use_testing_dataset(nn_class,
         tag_mapping = get_hierarchical_mapping()
         y_train, y_valid, label2index, index2label = \
             get_aggregated_tags(y_train, y_valid, tag_mapping, index2label)
-
-    pos_embeddings = nn_class.initialize_w_pos(word2index)
-    ner_embeddings = nn_class.initialize_w_ner(word2index)
-    sent_nr_embeddings = nn_class.initialize_w_sent_nr(word2index)
-    tense_embeddings = nn_class.initialize_w_tense(word2index)
 
     n_out = len(label2index.keys())
 
@@ -506,7 +542,8 @@ def use_testing_dataset(nn_class,
         'ner_embeddings': ner_embeddings,
         'sent_nr_embeddings': sent_nr_embeddings,
         'tense_embeddings': tense_embeddings,
-        'log_reg': args['log_reg']
+        'log_reg': args['log_reg'],
+        'cnn_features': config_features
     }
 
     nn_trainer = nn_class(**params)
@@ -545,6 +582,78 @@ def use_testing_dataset(nn_class,
     cPickle.dump(word2index, open(get_output_path('word2index.p'), 'wb'))
 
     return results, index2label
+
+def initialize_w2v_embeddings(w2v_dims, w2v_model, w2v_vectors, config_embeddings, unique_words):
+    if config_embeddings:
+        source = config_embeddings['w2v_embeddings']['source']
+        dim = np.int(config_embeddings['w2v_embeddings']['dim'])
+        if source == 'random':
+            n_unique_words = len(unique_words)
+            pretrained_embeddings = utils.NeuralNetwork.initialize_weights(n_unique_words, dim, function='tanh')
+        else:
+            logger.info('Initializing w2v embeddings: cache')
+            w2v_vectors, w2v_model, w2v_dims = load_w2v_model_and_vectors_cache({'w2v_vectors_cache': source})
+            pretrained_embeddings = nn_class.initialize_w(dim, unique_words, w2v_vectors=w2v_vectors,
+                                                          w2v_model=w2v_model)
+    else:
+        pretrained_embeddings = nn_class.initialize_w(w2v_dims, unique_words, w2v_vectors=w2v_vectors,
+                                                      w2v_model=w2v_model)
+
+    return pretrained_embeddings
+
+def initialize_feature_embedding(feat_name, word2index, initializer_func, config_embeddings, get_path_func,
+                                 tag2index):
+    '''
+    Features can be initialized: 1) one-hot; 2) random 3) probabilistic; 4) from vectors_cache.
+    '''
+    if config_embeddings:
+        source = config_embeddings[feat_name]['source']
+        dim = np.int(config_embeddings[feat_name]['dim'])
+        item = config_embeddings[feat_name]['embedding_item']
+
+        if item == 'tag':
+            item2index = tag2index
+        elif item == 'word':
+            item2index = word2index
+        else:
+            raise Exception('Invalid value in cfg file for feat %s property Embedding_item' % feat_name)
+        n_unique_words = item2index.__len__()
+        if source == 'random':
+            logger.info('Initializing %s: random' % feat_name)
+            pretrained_embeddings = utils.NeuralNetwork.initialize_weights(n_in=n_unique_words, n_out=dim, function='tanh')
+        elif source == 'one-hot':
+            logger.info('Initializing %s: one-hot' % feat_name)
+            pretrained_embeddings = np.eye(N=n_unique_words, M=dim, dtype=float)
+        elif source == 'probabilistic':
+            logger.info('Initializing %s: probabilistic' % feat_name)
+            pretrained_embeddings = initializer_func(item2index)
+        else:
+            logger.info('Initializing %s: %s' % (feat_name, source))
+            vectors = cPickle.load(open(get_path_func(source)))
+            pretrained_embeddings = nn_class.initialize_w(dim, item2index.keys(), w2v_vectors=vectors,
+                                                          w2v_model=None)
+    else:
+        # logger.info('Initializing %s embeddings: random' % feat_name)
+        # pretrained_embeddings = utils.NeuralNetwork.initialize_weights(n_in=word2index.__len__(), n_out=dim, function='tanh')
+        raise Exception('Provide a configuration file for %s initialisation' % feat_name)
+
+    return pretrained_embeddings
+
+def initialize_embeddings(nn_class, unique_words, w2v_dims, w2v_model, w2v_vectors, word2index, config_embeddings,
+                          features_indexes, features, features_positions):
+
+    pretrained_embeddings = initialize_w2v_embeddings(w2v_dims, w2v_model, w2v_vectors, config_embeddings, unique_words)
+
+    features_positions = zip(features, features_positions)
+
+    pos2index, index2pos, prob_dist = features_indexes[[pos for feat,pos in features_positions if feat.startswith('pos')][0]]
+    pos_embeddings = initialize_feature_embedding('pos_embeddings', word2index, nn_class.initialize_w_pos,
+                                                  config_embeddings, get_POS_nnet_path, pos2index)
+    ner_embeddings = nn_class.initialize_w_ner(word2index)
+    sent_nr_embeddings = nn_class.initialize_w_sent_nr(word2index)
+    tense_embeddings = nn_class.initialize_w_tense(word2index)
+    return ner_embeddings, pos_embeddings, pretrained_embeddings, sent_nr_embeddings, tense_embeddings
+
 
 def write_to_file(fout_name, document_sentence_words, predictions, file_prefix, file_suffix):
     fout = open(fout_name, 'wb')
@@ -586,6 +695,10 @@ if __name__ == '__main__':
     args = parse_arguments()
 
     check_arguments_consistency(args)
+
+    w2v_vectors = None
+    w2v_model = None
+    w2v_dims = None
 
     if args['w2v_vectors_cache'] or args['w2v_model_name']:
         w2v_vectors, w2v_model, w2v_dims = load_w2v_model_and_vectors_cache(args)

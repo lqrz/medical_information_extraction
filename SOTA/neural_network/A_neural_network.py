@@ -106,8 +106,9 @@ class A_neural_network():
         self.y_test = np.array(y_test)
 
         #pretrained w1 matrix (word embeddings)
-        self.pretrained_embeddings = pretrained_embeddings
-        self.n_emb = self.pretrained_embeddings.shape[1]
+        if pretrained_embeddings is not None:
+            self.pretrained_embeddings = pretrained_embeddings
+            self.n_emb = self.pretrained_embeddings.shape[1]
 
         #output path get function
         self.get_output_path = get_output_path
