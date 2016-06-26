@@ -88,7 +88,8 @@ def train_pos_embeddings(batch_size, embedding_size, get_output_path, epochs, sk
                                    skip_window=skip_window,
                                    epochs=epochs)
 
-    cPickle.dump(final_embeddings, open(get_output_path('pos_final_embeddings.p'), 'wb'))
+    representations = zip(map(lambda x: index2tag[x], range(final_embeddings.shape[0])), final_embeddings)
+    cPickle.dump(representations, open(get_output_path('pos_final_embeddings.p'), 'wb'))
 
     plot_with_labels(final_embeddings, index2tag, filename=get_output_path('pos_embeddings_tsne.png'),
                      plot_only=final_embeddings.shape[0])
@@ -129,7 +130,8 @@ def train_word_embeddings(batch_size, embedding_size, get_output_path, epochs, s
                                    skip_window=skip_window,
                                    epochs=epochs)
 
-    cPickle.dump(final_embeddings, open(get_output_path('word_final_embeddings.p'), 'wb'))
+    representations = zip(map(lambda x: index2word[x], range(final_embeddings.shape[0])), final_embeddings)
+    cPickle.dump(representations, open(get_output_path('word_final_embeddings.p'), 'wb'))
 
     plot_index2label = dict()
     for ix,w in index2word.iteritems():
@@ -260,8 +262,8 @@ if __name__ == '__main__':
     train_pos = True
     train_words = False
     context = 1 # how many words to the left and to the right
-    epochs = 5
-    batch_size = 8
+    epochs = 1
+    batch_size = 128
     embedding_size = 100
     n_samples = 20  # negative samples
     get_output_path = get_POS_nnet_path
