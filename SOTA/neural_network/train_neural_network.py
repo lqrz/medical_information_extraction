@@ -410,8 +410,61 @@ def read_config_file(config_ini_filename):
             config_features[feat_name]['n_filters'] = np.int(config_parser.get(feat, 'n_filters'))
             config_features[feat_name]['region_sizes'] = [np.int(rs) for rs in
                                                      config_parser.get(feat, 'region_sizes').split()]
+            embeddings = None
+            if feat_name.startswith('w2v'):
+                embeddings = 'w2v_embeddings'
+            elif feat_name.startswith('pos'):
+                embeddings = 'pos_embeddings'
+            elif feat_name.startswith('ner'):
+                embeddings = 'ner_embeddings'
+            elif feat_name.startswith('sent_nr'):
+                embeddings = 'sent_nr_embeddings'
+            elif feat_name.startswith('tense'):
+                embeddings = 'tense_embeddings'
+
+            assert embeddings is not None
+            config_features[feat_name]['embeddings'] = embeddings
 
     return config_features, config_embeddings
+
+def get_train_features_dataset(nn_class, config_features, config_embeddings,
+                               x_train, x_train_feats, x_valid, x_valid_feats, x_test, x_test_feats):
+    x_train_pos = None
+    x_train_ner = None
+    x_valid_pos = None
+    x_valid_ner = None
+    x_test_pos = None
+    x_test_ner = None
+
+    for feat in config_features.keys():
+        emb_item = config_embeddings[config_features[feat]['embeddings']]['embedding_item']
+
+        if feat.startswith('pos'):
+            feat_position = nn_class.get_features_crf_position([feat])[0]
+            if emb_item == 'word':
+                x_train_pos = x_train
+                x_valid_pos = x_valid
+                x_test_pos = x_test
+            elif emb_item == 'tag':
+                x_train_pos = x_train_feats[feat_position]
+                x_valid_pos = x_valid_feats[feat_position]
+                x_test_pos = x_test_feats[feat_position]
+            else:
+                raise Exception('Invalid value for feature %s property embedding_item' % feat)
+        elif feat.startswith('ner'):
+            feat_position = nn_class.get_features_crf_position([feat])[0]
+            if emb_item == 'word':
+                x_train_ner = x_train
+                x_valid_ner = x_valid
+                x_test_ner = x_test
+            elif emb_item == 'tag':
+                x_train_ner = x_train_feats[feat_position]
+                x_valid_ner = x_valid_feats[feat_position]
+                x_test_ner = x_test_feats[feat_position]
+            else:
+                raise Exception('Invalid value for feature %s property embedding_item' % feat)
+
+    return x_train_pos, x_train_ner, x_valid_pos, x_valid_ner, x_test_pos, x_test_ner
 
 def use_testing_dataset(nn_class,
                         hidden_f,
@@ -480,6 +533,12 @@ def use_testing_dataset(nn_class,
         nn_class, unique_words, w2v_dims, w2v_model, w2v_vectors, word2index, config_embeddings, features_indexes,
         config_features.keys(), feat_positions)
 
+    x_train_pos, x_train_ner, x_valid_pos, x_valid_ner, x_test_pos, x_test_ner = get_train_features_dataset(nn_class,
+                                                                                    config_features, config_embeddings,
+                                                                                    x_train, x_train_feats,
+                                                                                    x_valid, x_valid_feats,
+                                                                                    x_test, x_test_feats)
+
     if tags:
         tags = get_param(tags)
         y_train, y_valid, label2index, index2label = \
@@ -525,6 +584,12 @@ def use_testing_dataset(nn_class,
         'valid_feats': x_valid_feats,
         'test_feats': x_test_feats,
         'features_indexes': features_indexes,
+        'train_pos_feats': x_train_pos,
+        'valid_pos_feats': x_valid_pos,
+        'test_pos_feats': x_test_pos,
+        'train_ner_feats': x_train_ner,
+        'valid_ner_feats': x_valid_ner,
+        'test_ner_feats': x_test_ner,
         'train_sent_nr_feats': x_train_sent_nr_feats,    #refers to sentence nr features.
         'valid_sent_nr_feats': x_valid_sent_nr_feats,    #refers to sentence nr features.
         'test_sent_nr_feats': x_test_sent_nr_feats,    #refers to sentence nr features.
@@ -628,7 +693,7 @@ def initialize_feature_embedding(feat_name, word2index, initializer_func, config
             logger.info('Initializing %s: probabilistic' % feat_name)
             pretrained_embeddings = initializer_func(item2index)
         else:
-            logger.info('Initializing %s: %s' % (feat_name, source))
+            logger.info('Initializing %s from vectors_cache: %s' % (feat_name, source))
             vectors = cPickle.load(open(get_path_func(source)))
             pretrained_embeddings = nn_class.initialize_w(dim, item2index.keys(), w2v_vectors=vectors,
                                                           w2v_model=None)
@@ -649,9 +714,19 @@ def initialize_embeddings(nn_class, unique_words, w2v_dims, w2v_model, w2v_vecto
     pos2index, index2pos, prob_dist = features_indexes[[pos for feat,pos in features_positions if feat.startswith('pos')][0]]
     pos_embeddings = initialize_feature_embedding('pos_embeddings', word2index, nn_class.initialize_w_pos,
                                                   config_embeddings, get_POS_nnet_path, pos2index)
-    ner_embeddings = nn_class.initialize_w_ner(word2index)
-    sent_nr_embeddings = nn_class.initialize_w_sent_nr(word2index)
-    tense_embeddings = nn_class.initialize_w_tense(word2index)
+
+    ner2index, index2ner, prob_dist = features_indexes[[pos for feat,pos in features_positions if feat.startswith('ner')][0]]
+    ner_embeddings = initialize_feature_embedding('ner_embeddings', word2index, nn_class.initialize_w_ner,
+                                                  config_embeddings, None, ner2index)
+
+    sent_nr2index, index2sent_nr, prob_dist = features_indexes[[pos for feat,pos in features_positions if feat.startswith('sent_nr')][0]]
+    sent_nr_embeddings = initialize_feature_embedding('sent_nr_embeddings', word2index, nn_class.initialize_w_sent_nr,
+                                                      config_embeddings, None, sent_nr2index)
+
+    tense2index, index2tense, prob_dist = features_indexes[[pos for feat,pos in features_positions if feat.startswith('tense')][0]]
+    tense_embeddings = initialize_feature_embedding('tense_embeddings', word2index, nn_class.initialize_w_tense,
+                                                    config_embeddings, None, tense2index)
+
     return ner_embeddings, pos_embeddings, pretrained_embeddings, sent_nr_embeddings, tense_embeddings
 
 
