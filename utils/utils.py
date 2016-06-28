@@ -133,6 +133,7 @@ class NeuralNetwork:
 
     @staticmethod
     def relu(x):
+        import theano.tensor as T
         return T.nnet.relu(x)
 
     @staticmethod
