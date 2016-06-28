@@ -515,7 +515,7 @@ def use_testing_dataset(nn_class,
     x_train_sent_nr_feats = None
     x_valid_sent_nr_feats = None
     x_test_sent_nr_feats = None
-    if any(map(lambda x: str(x).startswith('sent_nr'), multi_feats)):
+    if any(map(lambda x: str(x).startswith('sent_nr'), config_features.keys())):
         x_train_sent_nr_feats, x_valid_sent_nr_feats, x_test_sent_nr_feats = \
             nn_class.get_word_sentence_number_features(clef_training=True, clef_validation=True, clef_testing=True)
 
@@ -523,7 +523,7 @@ def use_testing_dataset(nn_class,
     x_valid_tense_feats = None
     x_test_tense_feats = None
     tense_probs = None
-    if any(map(lambda x: str(x).startswith('tense'), multi_feats)):
+    if any(map(lambda x: str(x).startswith('tense'), config_features.keys())):
         x_train_tense_feats, x_valid_tense_feats, x_test_tense_feats, tense_probs = \
             nn_class.get_tenses_features(clef_training=True, clef_validation=True, clef_testing=True)
 
@@ -590,12 +590,12 @@ def use_testing_dataset(nn_class,
         'train_ner_feats': x_train_ner,
         'valid_ner_feats': x_valid_ner,
         'test_ner_feats': x_test_ner,
-        'train_sent_nr_feats': x_train_sent_nr_feats,    #refers to sentence nr features.
-        'valid_sent_nr_feats': x_valid_sent_nr_feats,    #refers to sentence nr features.
-        'test_sent_nr_feats': x_test_sent_nr_feats,    #refers to sentence nr features.
-        'train_tense_feats': x_train_tense_feats,    #refers to tense features.
-        'valid_tense_feats': x_valid_tense_feats,    #refers to tense features.
-        'test_tense_feats': x_test_tense_feats,    #refers to tense features.
+        'train_sent_nr_feats': x_train,    #refers to sentence nr features.
+        'valid_sent_nr_feats': x_valid,    #refers to sentence nr features.
+        'test_sent_nr_feats': x_test,    #refers to sentence nr features.
+        'train_tense_feats': x_train,    #refers to tense features.
+        'valid_tense_feats': x_valid,    #refers to tense features.
+        'test_tense_feats': x_test,    #refers to tense features.
         'tense_probs': tense_probs,
         'n_filters': args['n_filters'],
         'region_sizes': args['region_sizes'],
@@ -682,14 +682,18 @@ def initialize_feature_embedding(feat_name, word2index, initializer_func, config
             item2index = word2index
         else:
             raise Exception('Invalid value in cfg file for feat %s property Embedding_item' % feat_name)
+
         n_unique_words = item2index.__len__()
+
         if source == 'random':
             logger.info('Initializing %s: random' % feat_name)
             pretrained_embeddings = utils.NeuralNetwork.initialize_weights(n_in=n_unique_words, n_out=dim, function='tanh')
         elif source == 'one-hot':
             logger.info('Initializing %s: one-hot' % feat_name)
-            pretrained_embeddings = np.eye(N=n_unique_words, M=dim, dtype=float)
+            pretrained_embeddings = np.eye(N=n_unique_words, M=n_unique_words, dtype=float)
         elif source == 'probabilistic':
+            # the probabilistic initialisation is on words
+            item2index = word2index
             logger.info('Initializing %s: probabilistic' % feat_name)
             pretrained_embeddings = initializer_func(item2index)
         else:
@@ -706,26 +710,34 @@ def initialize_feature_embedding(feat_name, word2index, initializer_func, config
 
 def initialize_embeddings(nn_class, unique_words, w2v_dims, w2v_model, w2v_vectors, word2index, config_embeddings,
                           features_indexes, features, features_positions):
+    pos_embeddings = None
+    ner_embeddings = None
+    sent_nr_embeddings = None
+    tense_embeddings = None
 
     pretrained_embeddings = initialize_w2v_embeddings(w2v_dims, w2v_model, w2v_vectors, config_embeddings, unique_words)
 
     features_positions = zip(features, features_positions)
 
-    pos2index, index2pos, prob_dist = features_indexes[[pos for feat,pos in features_positions if feat.startswith('pos')][0]]
-    pos_embeddings = initialize_feature_embedding('pos_embeddings', word2index, nn_class.initialize_w_pos,
-                                                  config_embeddings, get_POS_nnet_path, pos2index)
+    pos_index_position = [pos for feat, pos in features_positions if feat.startswith('pos')]
+    if pos_index_position:
+        pos2index, index2pos, prob_dist = features_indexes[pos_index_position[0]]
+        pos_embeddings = initialize_feature_embedding('pos_embeddings', word2index, nn_class.initialize_w_pos,
+                                                      config_embeddings, get_POS_nnet_path, pos2index)
 
-    ner2index, index2ner, prob_dist = features_indexes[[pos for feat,pos in features_positions if feat.startswith('ner')][0]]
-    ner_embeddings = initialize_feature_embedding('ner_embeddings', word2index, nn_class.initialize_w_ner,
-                                                  config_embeddings, None, ner2index)
+    ner_index_position = [pos for feat, pos in features_positions if feat.startswith('ner')]
+    if ner_index_position:
+        ner2index, index2ner, prob_dist = features_indexes[ner_index_position[0]]
+        ner_embeddings = initialize_feature_embedding('ner_embeddings', word2index, nn_class.initialize_w_ner,
+                                                      config_embeddings, None, ner2index)
 
-    sent_nr2index, index2sent_nr, prob_dist = features_indexes[[pos for feat,pos in features_positions if feat.startswith('sent_nr')][0]]
-    sent_nr_embeddings = initialize_feature_embedding('sent_nr_embeddings', word2index, nn_class.initialize_w_sent_nr,
-                                                      config_embeddings, None, sent_nr2index)
+    sent_nr_index_position = [feat for feat in features if feat.startswith('sent_nr')]
+    if sent_nr_index_position:
+        sent_nr_embeddings = nn_class.initialize_w_sent_nr(word2index)
 
-    tense2index, index2tense, prob_dist = features_indexes[[pos for feat,pos in features_positions if feat.startswith('tense')][0]]
-    tense_embeddings = initialize_feature_embedding('tense_embeddings', word2index, nn_class.initialize_w_tense,
-                                                    config_embeddings, None, tense2index)
+    tense_index_position = [feat for feat in features if feat.startswith('tense')]
+    if tense_index_position:
+        tense_embeddings = nn_class.initialize_w_tense(word2index)
 
     return ner_embeddings, pos_embeddings, pretrained_embeddings, sent_nr_embeddings, tense_embeddings
 

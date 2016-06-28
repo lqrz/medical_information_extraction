@@ -45,16 +45,16 @@ class Convolutional_Neural_Net(A_neural_network):
 
         # embeddings
         self.pos_embeddings = pos_embeddings
-        self.n_pos_emb = pos_embeddings.shape[1]
+        self.n_pos_emb = pos_embeddings.shape[1] if pos_embeddings is not None else None
 
         self.ner_embeddings = ner_embeddings
-        self.n_ner_emb = ner_embeddings.shape[1]
+        self.n_ner_emb = ner_embeddings.shape[1] if ner_embeddings is not None else None
 
         self.sent_nr_embeddings = sent_nr_embeddings
-        self.n_sent_nr_emb = sent_nr_embeddings.shape[1]
+        self.n_sent_nr_emb = sent_nr_embeddings.shape[1] if sent_nr_embeddings is not None else None
 
         self.tense_embeddings = tense_embeddings
-        self.n_tense_emb = tense_embeddings.shape[1]
+        self.n_tense_emb = tense_embeddings.shape[1] if tense_embeddings is not None else None
 
         # w2v filters
         self.w2v_filters_weights = []
@@ -236,32 +236,41 @@ class Convolutional_Neural_Net(A_neural_network):
     def initialize_parameters(self, static):
         with self.graph.as_default():
 
-            # word embeddings matrix. Always needed
-            self.w1_w2v = tf.Variable(initial_value=self.pretrained_embeddings, dtype=tf.float32, trainable=not static,
-                                      name='w1_w2v')
+            if self.using_w2v_convolution_maxpool_feature():
+                self.w1_w2v = tf.Variable(initial_value=self.pretrained_embeddings, dtype=tf.float32,
+                                          trainable=not static,
+                                          name='w1_w2v')
 
-            self.regularizables.append(self.w1_w2v)
-            self.fine_tuning_params.append(self.w1_w2v)
+                self.regularizables.append(self.w1_w2v)
+                self.fine_tuning_params.append(self.w1_w2v)
 
-            self.w1_pos = tf.Variable(initial_value=self.pos_embeddings, dtype=tf.float32, trainable=not static, name='w1_pos')
+            if self.using_pos_convolution_maxpool_feature():
+                self.w1_pos = tf.Variable(initial_value=self.pos_embeddings, dtype=tf.float32,
+                                          trainable=not static, name='w1_pos')
 
-            self.regularizables.append(self.w1_pos)
-            self.fine_tuning_params.append(self.w1_pos)
+                self.regularizables.append(self.w1_pos)
+                self.fine_tuning_params.append(self.w1_pos)
 
-            self.w1_ner = tf.Variable(initial_value=self.ner_embeddings, dtype=tf.float32, trainable=not static, name='w1_ner')
+            if self.using_ner_convolution_maxpool_feature():
+                self.w1_ner = tf.Variable(initial_value=self.ner_embeddings, dtype=tf.float32,
+                                          trainable=not static, name='w1_ner')
 
-            self.regularizables.append(self.w1_ner)
-            self.fine_tuning_params.append(self.w1_ner)
+                self.regularizables.append(self.w1_ner)
+                self.fine_tuning_params.append(self.w1_ner)
 
-            self.w1_sent_nr = tf.Variable(initial_value=self.sent_nr_embeddings, dtype=tf.float32, trainable=not static, name='w1_sent_nr')
+            if self.using_sent_nr_convolution_maxpool_feature():
+                self.w1_sent_nr = tf.Variable(initial_value=self.sent_nr_embeddings, dtype=tf.float32,
+                                              trainable=not static, name='w1_sent_nr')
 
-            self.regularizables.append(self.w1_sent_nr)
-            self.fine_tuning_params.append(self.w1_sent_nr)
+                self.regularizables.append(self.w1_sent_nr)
+                self.fine_tuning_params.append(self.w1_sent_nr)
 
-            self.w1_tense = tf.Variable(initial_value=self.tense_embeddings, dtype=tf.float32, trainable=not static, name='w1_tense')
+            if self.using_tense_convolution_maxpool_feature():
+                self.w1_tense = tf.Variable(initial_value=self.tense_embeddings, dtype=tf.float32,
+                                            trainable=not static, name='w1_tense')
 
-            self.regularizables.append(self.w1_tense)
-            self.fine_tuning_params.append(self.w1_tense)
+                self.regularizables.append(self.w1_tense)
+                self.fine_tuning_params.append(self.w1_tense)
 
 
             self.w2 = tf.Variable(tf.truncated_normal(shape=[self.n_hidden, self.n_out], stddev=0.1), name='w2')
@@ -442,7 +451,7 @@ class Convolutional_Neural_Net(A_neural_network):
 
         if self.using_tense_convolution_maxpool_feature():
             w1_tense_x = tf.nn.embedding_lookup(self.w1_tense, tense_idxs)
-            w1_tense_expanded = tf.nn.embedding_lookup(w1_tense_x, -1)
+            w1_tense_expanded = tf.expand_dims(w1_tense_x, -1)
 
         return w1_x_expanded, w1_pos_expanded, w1_ner_expanded, w1_sent_nr_expanded, w1_tense_expanded
 
