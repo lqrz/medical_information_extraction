@@ -311,6 +311,9 @@ class Neural_Net(A_neural_network):
                       % (
                       epoch_ix, train_cost, train_errors, valid_cost, valid_errors, f1_score, time.time() - start)
 
+            self.saver = tf.train.Saver(self.training_params + self.fine_tuning_params)
+            self.saver.save(session, self.get_output_path('params.model'))
+
         if plot:
             print 'Making plots'
             self.make_plots()
@@ -334,16 +337,19 @@ class Neural_Net(A_neural_network):
         with self.graph.as_default():
 
             # Input data
-            idxs = tf.placeholder(tf.int32)
-
+            # idxs = tf.placeholder(tf.int32)
+            # out_logits = self.compute_output_layer_logits(idxs)
+            idxs = self.graph.get_tensor_by_name(name='idxs:0')
             out_logits = self.compute_output_layer_logits(idxs)
 
             predictions = self.compute_predictions(out_logits)
 
-            init = tf.initialize_all_variables()
+            # init = tf.initialize_all_variables()
 
         with tf.Session(graph=self.graph) as session:
-            init.run()
+            # init.run()
+
+            self.saver.restore(session, self.get_output_path('params.model'))
 
             feed_dict = {idxs: x_test}
             pred = session.run(predictions, feed_dict=feed_dict)
