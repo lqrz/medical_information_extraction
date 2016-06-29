@@ -1,3 +1,5 @@
+from scipy.stats._continuous_distns import alpha_gen
+
 __author__ = 'lqrz'
 
 import os
@@ -29,7 +31,7 @@ def get_dataset(n_window, add_words=[], add_tags=[], feat_positions=[], add_feat
 
 
 class Neural_Net(A_neural_network):
-    def __init__(self, log_reg, n_hidden, **kwargs):
+    def __init__(self, log_reg, n_hidden, na_tag, **kwargs):
 
         super(Neural_Net, self).__init__(**kwargs)
 
@@ -47,6 +49,8 @@ class Neural_Net(A_neural_network):
 
         # dynamic assignment of funtion. Depends on architecture
         self.forward_function = None
+
+        self.na_tag = na_tag
 
         # parameters to get L2
         self.regularizables = []
@@ -75,7 +79,7 @@ class Neural_Net(A_neural_network):
 
         return
 
-    def train(self, static, batch_size, **kwargs):
+    def train(self, static, batch_size, alpha_na, **kwargs):
 
         self.initialize_parameters(static)
 
@@ -102,7 +106,10 @@ class Neural_Net(A_neural_network):
             print 'Trainable parameters: ' + ', '.join([param.name for param in tf.trainable_variables()])
             print 'Regularizable parameters: ' + ', '.join([param.name for param in self.regularizables])
 
-        self.train_graph(minibatch_size, **kwargs)
+        if alpha_na is not None:
+            print 'Loss function: decreasing na_prob with alpha %f' % alpha_na
+
+        self.train_graph(minibatch_size, alpha_na=alpha_na, **kwargs)
 
     def initialize_parameters(self, static):
 
@@ -207,6 +214,7 @@ class Neural_Net(A_neural_network):
                     learning_rate_train, learning_rate_tune, lr_decay,
                     plot,
                     alpha_l2=0.001,
+                    alpha_na=None,
                     **kwargs):
 
         with self.graph.as_default():
@@ -214,6 +222,8 @@ class Neural_Net(A_neural_network):
             # Input data
             idxs = tf.placeholder(tf.int32, name='idxs')
             labels = tf.placeholder(tf.int32, name='labels')
+
+            na_label = tf.placeholder(tf.int32, name='na_label')
 
             out_logits = self.compute_output_layer_logits(idxs)
 
@@ -223,7 +233,11 @@ class Neural_Net(A_neural_network):
             # l2 regularization
             l2_regularizers = tf.add_n([tf.nn.l2_loss(param) for param in self.regularizables])
 
-            cost = tf.reduce_sum(cross_entropy + alpha_l2 * l2_regularizers)
+            if alpha_na is not None:
+                na_prob = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(out_logits, na_label))
+                cost = tf.reduce_sum(cross_entropy + alpha_l2 * l2_regularizers + alpha_na * na_prob)
+            else:
+                cost = tf.reduce_sum(cross_entropy + alpha_l2 * l2_regularizers)
 
             # they both do the same: split the learning rate. But the 2nd one is slightly more performant
 
@@ -264,18 +278,24 @@ class Neural_Net(A_neural_network):
                 for batch_ix in range(n_batches):
                     x_sample = self.x_train[batch_ix * minibatch_size:(batch_ix + 1) * minibatch_size]
                     y_sample = self.y_train[batch_ix * minibatch_size:(batch_ix + 1) * minibatch_size]
-                    feed_dict = {idxs: x_sample, labels: y_sample}
-                    # session.run([optimizer, out, tf.nn.softmax(out), predictions, n_errors], feed_dict={idxs: x_sample, labels: [y_sample]})
+
+                    if alpha_na is not None:
+                        na_sample = [self.na_tag] * x_sample.shape[0]
+                        feed_dict_train = {idxs: x_sample, labels: y_sample, na_label: na_sample}
+                        feed_dict_valid = {idxs: self.x_valid, labels: self.y_valid, na_label: [self.na_tag]*self.x_valid.shape[0]}
+                    else:
+                        feed_dict_train = {idxs: x_sample, labels: y_sample}
+                        feed_dict_valid = {idxs: self.x_valid, labels: self.y_valid}
+
                     _, cost_val, xentropy, pred, errors = session.run(
-                        [optimizer, cost, cross_entropy, predictions, n_errors], feed_dict=feed_dict)
+                        [optimizer, cost, cross_entropy, predictions, n_errors], feed_dict=feed_dict_train)
                     train_cost += cost_val
                     train_xentropy += xentropy
                     train_errors += errors
 
-                feed_dict = {idxs: self.x_valid, labels: self.y_valid}
                 # session.run([out, y_valid, cross_entropy, tf.reduce_sum(cross_entropy)], feed_dict=feed_dict)
                 valid_cost, valid_xentropy, pred, valid_errors = session.run(
-                    [cost, cross_entropy, predictions, n_errors], feed_dict=feed_dict)
+                    [cost, cross_entropy, predictions, n_errors], feed_dict=feed_dict_valid)
 
                 precision, recall, f1_score = self.compute_scores(self.y_valid, pred)
 
