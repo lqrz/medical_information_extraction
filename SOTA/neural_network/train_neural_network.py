@@ -96,6 +96,7 @@ def parse_arguments():
     parser.add_argument('--logreg', action='store_true', default=False) #tensorflow. use logistic regression architecture.
 
     parser.add_argument('--configini', action='store', type=str, default=None)
+    parser.add_argument('--alphana', action='store', type=float, default=None)
 
     #parse arguments
     arguments = parser.parse_args()
@@ -133,6 +134,7 @@ def parse_arguments():
     args['lr_decay'] = arguments.lrdecay
     args['log_reg'] = arguments.logreg
     args['config_ini_filename'] = arguments.configini
+    args['alpha_na'] = arguments.alphana
 
     return args
 
@@ -385,14 +387,18 @@ def read_embeddings_info(config_parser, config_features):
     config_embeddings = defaultdict(lambda : dict())
 
     for feat in ['w2v_embeddings', 'pos_embeddings', 'ner_embeddings', 'sent_nr_embeddings', 'tense_embeddings']:
-        config_embeddings[feat]['source'] = config_parser.get(feat, 'source')
-        config_embeddings[feat]['dim'] = config_parser.get(feat, 'dim')
-        config_embeddings[feat]['embedding_item'] = config_parser.get(feat, 'embedding_item')
+        try:
+            config_embeddings[feat]['source'] = config_parser.get(feat, 'source')
+            config_embeddings[feat]['dim'] = config_parser.get(feat, 'dim')
+            config_embeddings[feat]['embedding_item'] = config_parser.get(feat, 'embedding_item')
+        except ConfigParser.NoSectionError:
+            continue
 
     return config_embeddings
 
 def read_config_file(config_ini_filename):
     config_features = None
+    config_embeddings = None
 
     if config_ini_filename:
         logger.info('Reading configuration file')
