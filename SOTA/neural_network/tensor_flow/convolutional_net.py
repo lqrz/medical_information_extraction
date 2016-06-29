@@ -534,6 +534,9 @@ class Convolutional_Neural_Net(A_neural_network):
                       % (
                           epoch_ix, train_cost, train_errors, valid_cost, valid_errors, f1_score, time.time() - start)
 
+            self.saver = tf.train.Saver(self.training_params + self.fine_tuning_params)
+            self.saver.save(session, self.get_output_path('params.model'))
+
         if plot:
             print 'Making plots'
             self.make_plots()
@@ -732,6 +735,8 @@ class Convolutional_Neural_Net(A_neural_network):
 
     def predict(self, on_training_set=False, on_validation_set=False, on_testing_set=False, **kwargs):
         pass
+
+        # self.saver.restore(session, self.get_output_path('params.model'))
 
     def using_w2v_convolution_maxpool_feature(self):
         return self.using_feature(feature='w2v', convolve=True, max_pool=True)
