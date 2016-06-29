@@ -231,6 +231,7 @@ class Convolutional_Neural_Net(A_neural_network):
             print 'Trainable parameters: ' + ', '.join([param.name for param in tf.trainable_variables()])
             print 'Regularizable parameters: ' + ', '.join([param.name for param in self.regularizables])
 
+        print 'Hidden layer size: %d' % self.n_hidden
         self._train_graph(minibatch_size, **kwargs)
 
     def initialize_parameters(self, static):
