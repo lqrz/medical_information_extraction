@@ -33,8 +33,8 @@ def choose_negative_sample(word_idx, pad_idx, n_unique_words):
 
 
 data_index = 0
-# Step 3: Function to generate a training batch for the skip-gram model.
-def generate_batch_skipgram(data, batch_size, num_skips, skip_window):
+
+def generate_batch_skipgram_postag(data, batch_size, num_skips, skip_window, **kwargs):
     global data_index
 
     assert batch_size % num_skips == 0
@@ -64,9 +64,42 @@ def generate_batch_skipgram(data, batch_size, num_skips, skip_window):
 
     return batch, labels
 
+def generate_batch_skipgram_words(data, batch_size, num_skips, skip_window, tags_indexes):
+    global data_index
+
+    assert batch_size % num_skips == 0
+    assert num_skips <= 2 * skip_window
+
+    batch = np.ndarray(shape=(batch_size), dtype=np.int32)
+    labels = np.ndarray(shape=(batch_size, 1), dtype=np.int32)
+    span = 2 * skip_window + 1 # [ skip_window target skip_window ]
+    buffer = deque(maxlen=span)
+    buffer_tags = deque(maxlen=span)
+
+    for _ in range(span):
+        buffer.append(data[data_index])
+        buffer_tags.append(tags_indexes[data_index])
+        data_index = (data_index + 1) % len(data)
+
+    for i in range(batch_size // num_skips):
+        target = skip_window  # target label at the center of the buffer
+        targets_to_avoid = [skip_window]
+        for j in range(num_skips):
+            while target in targets_to_avoid:
+                target = random.randint(0, span)
+            targets_to_avoid.append(target)
+            batch[i * num_skips + j] = buffer[skip_window]
+            labels[i * num_skips + j, 0] = buffer_tags[target]
+
+        buffer.append(data[data_index])
+        buffer_tags.append(tags_indexes[data_index])
+        data_index = (data_index + 1) % len(data)
+
+    return batch, labels
+
 # batch, labels = generate_batch_skipgram(batch_size=8, num_skips=2, skip_window=1)
 
-def train_pos_embeddings(batch_size, embedding_size, get_output_path, epochs, skip_window=1, n_samples=64):
+def train_pos_embeddings(batch_size, embedding_size, get_output_path, epochs, batch_func, skip_window=1, n_samples=64):
     tokens, tags = Dataset.get_wsj_dataset()
     tags_flat = list(chain(*tags))
 
@@ -86,7 +119,8 @@ def train_pos_embeddings(batch_size, embedding_size, get_output_path, epochs, sk
                                    num_sampled=n_samples,
                                    num_skips=skip_window * 2,
                                    skip_window=skip_window,
-                                   epochs=epochs)
+                                   epochs=epochs,
+                                   batch_func=batch_func)
 
     representations = dict(zip(map(lambda x: index2tag[x], range(final_embeddings.shape[0])), final_embeddings))
     cPickle.dump(representations, open(get_output_path('pos_final_embeddings.p'), 'wb'))
@@ -96,7 +130,7 @@ def train_pos_embeddings(batch_size, embedding_size, get_output_path, epochs, sk
 
     return
 
-def train_word_embeddings(batch_size, embedding_size, get_output_path, epochs, skip_window=1,
+def train_word_embeddings(batch_size, embedding_size, get_output_path, epochs, batch_func, skip_window=1,
                           n_samples=64, min_count=5):
     tokens, tags = Dataset.get_wsj_dataset()
     tokens_flat = list(chain(*tokens))
@@ -114,11 +148,18 @@ def train_word_embeddings(batch_size, embedding_size, get_output_path, epochs, s
     n_unique_tokens = unique_tokens.__len__()
     word2index = dict(zip(unique_tokens, range(n_unique_tokens)))
     index2word = dict(zip(range(n_unique_tokens), unique_tokens))
+    tags_flat = list(chain(*tags))
+
+    unique_tags = set(tags_flat).union(['<UNK>'])
+    n_unique_tags = unique_tags.__len__()
+    tag2index = dict(zip(unique_tags, range(n_unique_tags)))
 
     tokens_flat = map(lambda x: x if x in word_min_count else '<UNK>', tokens_flat)
 
     tokens_flat_indexes = map(lambda x: word2index[x], tokens_flat)
 
+    tags_flat_indexes = np.array(map(lambda x: tag2index[x], tags_flat))
+    tags_flat_indexes[np.where(np.array(tokens_flat_indexes)==word2index['<UNK>'])[0]] = tag2index['<UNK>']
     # batch_inputs, batch_labels = generate_batch_skipgram(tags_flat_indexes, batch_size=8, num_skips=skip_window*2, skip_window=skip_window)
 
     final_embeddings = train_graph(tokens_flat_indexes,
@@ -128,7 +169,9 @@ def train_word_embeddings(batch_size, embedding_size, get_output_path, epochs, s
                                    num_sampled=n_samples,
                                    num_skips=skip_window * 2,
                                    skip_window=skip_window,
-                                   epochs=epochs)
+                                   epochs=epochs,
+                                   tags_indexes=tags_flat_indexes,
+                                   batch_func=batch_func)
 
     representations = dict(zip(map(lambda x: index2word[x], range(final_embeddings.shape[0])), final_embeddings))
     cPickle.dump(representations, open(get_output_path('word_final_embeddings.p'), 'wb'))
@@ -166,7 +209,7 @@ def plot_with_labels(final_embeddings, index2tag, filename, plot_only):
     plt.savefig(filename)
 
 def train_graph(tags_flat_indexes, vocabulary_size, embedding_size, batch_size, num_sampled,
-                num_skips, skip_window, epochs):
+                num_skips, skip_window, epochs, batch_func, tags_indexes=None):
 
     graph = tf.Graph()
 
@@ -197,7 +240,7 @@ def train_graph(tags_flat_indexes, vocabulary_size, embedding_size, batch_size, 
                          num_sampled, vocabulary_size))
 
         # Construct the SGD optimizer using a learning rate of 1.0.
-        optimizer = tf.train.GradientDescentOptimizer(1.0).minimize(loss)
+        optimizer = tf.train.AdamOptimizer(1.0).minimize(loss)
 
         # Compute the cosine similarity between minibatch examples and all embeddings.
         square_emb = tf.reduce_sum(tf.square(embeddings), keep_dims=False)
@@ -222,8 +265,9 @@ def train_graph(tags_flat_indexes, vocabulary_size, embedding_size, batch_size, 
             average_loss = 0
 
             for batch_ix in xrange(n_batches):
-                batch_inputs, batch_labels = generate_batch_skipgram(tags_flat_indexes,
-                                                                     batch_size, num_skips, skip_window)
+                batch_inputs, batch_labels = batch_func(tags_flat_indexes,
+                                                        batch_size, num_skips, skip_window,
+                                                        tags_indexes=tags_indexes)
                 feed_dict = {train_inputs: batch_inputs, train_labels: batch_labels}
 
                 # We perform one update step by evaluating the optimizer op (including it
@@ -262,18 +306,21 @@ if __name__ == '__main__':
     train_pos = True
     train_words = False
     context = 1 # how many words to the left and to the right
-    epochs = 1
+    epochs = 5
     batch_size = 128
     embedding_size = 100
     n_samples = 20  # negative samples
     get_output_path = get_POS_nnet_path
 
     if train_pos:
-        train_pos_embeddings(batch_size, embedding_size, get_output_path, epochs, skip_window=context, n_samples=n_samples)
+        print 'Training POS embeddings'
+        train_pos_embeddings(batch_size, embedding_size, get_output_path, epochs, skip_window=context,
+                             n_samples=n_samples, batch_func=generate_batch_skipgram_postag)
 
     if train_words:
+        print 'Training word embeddings'
         train_word_embeddings(batch_size=32, embedding_size=100, get_output_path=get_output_path,
-                              epochs=4, skip_window=2, n_samples=20, min_count=2)
+                              epochs=4, skip_window=1, n_samples=20, min_count=2, batch_func=generate_batch_skipgram_words)
 
     exit(0)
     # n_window = 5
