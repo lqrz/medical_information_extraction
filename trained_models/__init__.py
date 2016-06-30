@@ -175,3 +175,12 @@ def get_tf_cnn_path(file_name):
         os.makedirs(dir)
 
     return path
+
+def get_tf_multi_mlp_path(file_name):
+
+    path = pkg_resources.resource_filename('trained_models', 'tf_multi_mlp/'+file_name)
+    dir = os.path.dirname(path)
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+    return path

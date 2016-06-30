@@ -31,7 +31,15 @@ class A_neural_network():
         'sent_nr_c_m': {'name': 'sent_nr', 'convolve': True, 'max_pool': True, 'use_cw': True, 'nr_filters': None,
                         'filter_width': None, 'nr_region_sizes': None, 'crf_position': None},
         'tense_c_m': {'name': 'tense', 'convolve': True, 'max_pool': True, 'use_cw': True, 'nr_filters': None,
-                      'filter_width': None, 'nr_region_sizes': None, 'crf_position': None}
+                      'filter_width': None, 'nr_region_sizes': None, 'crf_position': None},
+        'pos_nc_nm': {'name': 'pos', 'convolve': False, 'max_pool': False, 'nr_filters': None,
+                      'filter_width': None, 'nr_region_sizes': None, 'use_cw': True, 'crf_position': CRF_POSITIONS['pos']},
+        'ner_nc_nm': {'name': 'ner', 'convolve': False, 'max_pool': False, 'nr_filters': None,
+                      'filter_width': None, 'nr_region_sizes': None, 'use_cw': True, 'crf_position': CRF_POSITIONS['ner']},
+        'sent_nr_nc_nm': {'name': 'sent_nr', 'convolve': False, 'max_pool': False, 'nr_filters': None,
+                          'filter_width': None, 'nr_region_sizes': None, 'use_cw': True, 'crf_position': None},
+        'tense_nc_nm': {'name': 'tense', 'convolve': False, 'max_pool': False, 'nr_filters': None,
+                        'filter_width': None, 'nr_region_sizes': None, 'use_cw': True, 'crf_position': None}
     }
 
     def __init__(self,

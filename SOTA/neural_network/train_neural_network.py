@@ -29,6 +29,7 @@ from trained_models import get_two_cwnn_path
 from trained_models import get_tf_cwnn_path
 from trained_models import get_tf_cnn_path
 from trained_models import get_POS_nnet_path
+from trained_models import get_tf_multi_mlp_path
 from data import get_param
 from utils.plot_confusion_matrix import plot_confusion_matrix
 from data.dataset import Dataset
@@ -51,7 +52,7 @@ def parse_arguments():
     parser.add_argument('--net', type=str, action='store', required=True,
                         choices=['single_cw','hidden_cw','vector_tag','last_tag','rnn', 'cw_rnn', 'multi_hidden_cw',
                                  'two_hidden_cw',
-                                 'tf_hidden_cw', 'tf_cnn'],
+                                 'tf_hidden_cw', 'tf_cnn', 'tf_multi_mlp'],
                         help='NNet type')
     parser.add_argument('--window', type=int, action='store', required=True,
                         help='Context window size. 1 for RNN')
@@ -341,6 +342,14 @@ def determine_nnclass_and_parameters(args):
         multi_feats = args['multi_features']
         normalize_samples = args['norm_samples']
         add_feats = ['<PAD>']
+    elif args['nn_name'] == 'tf_multi_mlp':
+        from tensor_flow.multi_feat_mlp import Multi_feat_Neural_Net
+        nn_class = Multi_feat_Neural_Net
+        get_output_path = get_tf_multi_mlp_path
+        add_words = ['<PAD>']
+        multi_feats = args['multi_features']
+        normalize_samples = args['norm_samples']
+        add_feats = ['<PAD>']
 
     return nn_class, hidden_f, out_f, add_words, add_tags, add_feats, tag_dim, n_window, get_output_path, multi_feats, \
            normalize_samples
@@ -503,7 +512,9 @@ def use_testing_dataset(nn_class,
 
     logger.info('Loading CRF training data')
 
-    feat_positions = nn_class.get_features_crf_position(config_features.keys())
+    feat_names_and_positions = nn_class.get_features_crf_position(config_features.keys())
+
+    feat_positions = [v for _,v in feat_names_and_positions]
 
     x_train, y_train, x_train_feats, \
     x_valid, y_valid, x_valid_feats, \
@@ -518,26 +529,26 @@ def use_testing_dataset(nn_class,
         logger.info('Normalizing number of samples')
         x_train, y_train = NeuralNetwork.perform_sample_normalization(x_train, y_train)
 
-    x_train_sent_nr_feats = None
-    x_valid_sent_nr_feats = None
-    x_test_sent_nr_feats = None
-    if any(map(lambda x: str(x).startswith('sent_nr'), config_features.keys())):
-        x_train_sent_nr_feats, x_valid_sent_nr_feats, x_test_sent_nr_feats = \
-            nn_class.get_word_sentence_number_features(clef_training=True, clef_validation=True, clef_testing=True)
-
-    x_train_tense_feats = None
-    x_valid_tense_feats = None
-    x_test_tense_feats = None
-    tense_probs = None
-    if any(map(lambda x: str(x).startswith('tense'), config_features.keys())):
-        x_train_tense_feats, x_valid_tense_feats, x_test_tense_feats, tense_probs = \
-            nn_class.get_tenses_features(clef_training=True, clef_validation=True, clef_testing=True)
+    # x_train_sent_nr_feats = None
+    # x_valid_sent_nr_feats = None
+    # x_test_sent_nr_feats = None
+    # if any(map(lambda x: str(x).startswith('sent_nr'), config_features.keys())):
+    #     x_train_sent_nr_feats, x_valid_sent_nr_feats, x_test_sent_nr_feats = \
+    #         nn_class.get_word_sentence_number_features(clef_training=True, clef_validation=True, clef_testing=True)
+    #
+    # x_train_tense_feats = None
+    # x_valid_tense_feats = None
+    # x_test_tense_feats = None
+    # tense_probs = None
+    # if any(map(lambda x: str(x).startswith('tense'), config_features.keys())):
+    #     x_train_tense_feats, x_valid_tense_feats, x_test_tense_feats, tense_probs = \
+    #         nn_class.get_tenses_features(clef_training=True, clef_validation=True, clef_testing=True)
 
     unique_words = word2index.keys()
 
     ner_embeddings, pos_embeddings, pretrained_embeddings, sent_nr_embeddings, tense_embeddings = initialize_embeddings(
         nn_class, unique_words, w2v_dims, w2v_model, w2v_vectors, word2index, config_embeddings, features_indexes,
-        config_features.keys(), feat_positions)
+        config_features.keys(), feat_names_and_positions)
 
     x_train_pos, x_train_ner, x_valid_pos, x_valid_ner, x_test_pos, x_test_ner = get_train_features_dataset(nn_class,
                                                                                     config_features, config_embeddings,
@@ -602,7 +613,7 @@ def use_testing_dataset(nn_class,
         'train_tense_feats': x_train,    #refers to tense features.
         'valid_tense_feats': x_valid,    #refers to tense features.
         'test_tense_feats': x_test,    #refers to tense features.
-        'tense_probs': tense_probs,
+        # 'tense_probs': tense_probs,
         'n_filters': args['n_filters'],
         'region_sizes': args['region_sizes'],
         'features_to_use': args['multi_features'],
@@ -723,7 +734,7 @@ def initialize_embeddings(nn_class, unique_words, w2v_dims, w2v_model, w2v_vecto
 
     pretrained_embeddings = initialize_w2v_embeddings(w2v_dims, w2v_model, w2v_vectors, config_embeddings, unique_words)
 
-    features_positions = zip(features, features_positions)
+    # features_positions = zip(features, features_positions)
 
     pos_index_position = [pos for feat, pos in features_positions if feat.startswith('pos')]
     if pos_index_position:
