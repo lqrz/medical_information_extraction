@@ -301,13 +301,12 @@ class Multi_feat_Neural_Net(A_neural_network):
             tense_idxs = tf.placeholder(tf.int32, shape=[None, self.n_window], name='tense_idxs')
 
             labels = tf.placeholder(tf.int32, name='labels')
-            keep_prob = tf.placeholder(tf.float32, name="dropout_keep_prob")
 
             embeddings_concat = self.perform_embeddings_lookup(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
 
-            h_dropout = tf.nn.dropout(embeddings_concat, keep_prob)
+            # h_dropout = tf.nn.dropout(embeddings_concat, keep_prob)
 
-            out_logits = tf.nn.xw_plus_b(h_dropout, self.w2, self.b2)
+            out_logits = tf.nn.xw_plus_b(embeddings_concat, self.w2, self.b2)
 
             l2 = tf.add_n([tf.nn.l2_loss(param) for param in self.regularizables])
 
@@ -330,7 +329,7 @@ class Multi_feat_Neural_Net(A_neural_network):
                 for batch_ix in range(n_batches):
                     feed_dict = self.get_feed_dict(batch_ix, minibatch_size,
                                                    w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs,
-                                                   labels, keep_prob, keep_prob_val=.5, dataset='train')
+                                                   labels, dataset='train')
                     _, cost_val, xentropy, errors = session.run([optimizer, cost, cross_entropy, n_errors], feed_dict=feed_dict)
                     train_cost += cost_val
                     train_xentropy += xentropy
@@ -338,7 +337,7 @@ class Multi_feat_Neural_Net(A_neural_network):
 
                 feed_dict = self.get_feed_dict(None, minibatch_size,
                                                w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs,
-                                               labels, keep_prob, keep_prob_val=1., dataset='valid')
+                                               labels, dataset='valid')
                 valid_cost, valid_xentropy, pred, valid_errors = session.run([cost, cross_entropy, predictions, n_errors], feed_dict=feed_dict)
 
                 precision, recall, f1_score = self.compute_scores(self.y_valid, pred)
@@ -366,7 +365,6 @@ class Multi_feat_Neural_Net(A_neural_network):
     def get_feed_dict(self, batch_ix, minibatch_size,
                       w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs,
                       labels,
-                      keep_prob, keep_prob_val,
                       dataset):
 
         feed_dict = dict()
@@ -417,10 +415,9 @@ class Multi_feat_Neural_Net(A_neural_network):
 
         assert feed_dict.__len__() > 0
 
-        feed_dict[labels] = y[batch_ix * minibatch_size: (batch_ix + 1) * minibatch_size] \
-            if batch_ix is not None else y
-
-        feed_dict[keep_prob] = keep_prob_val
+        if labels is not None:
+            feed_dict[labels] = y[batch_ix * minibatch_size: (batch_ix + 1) * minibatch_size] \
+                if batch_ix is not None else y
 
         return feed_dict
 
@@ -524,9 +521,56 @@ class Multi_feat_Neural_Net(A_neural_network):
         return precision, recall, f1_score
 
     def predict(self, on_training_set=False, on_validation_set=False, on_testing_set=False, **kwargs):
-        pass
 
-        # self.saver.restore(session, self.get_output_path('params.model'))
+        results = dict()
+
+        if on_training_set:
+            dataset = 'train'
+            y_test = self.x_train
+        elif on_validation_set:
+            dataset = 'valid'
+            y_test = self.y_valid
+        elif on_testing_set:
+            dataset = 'test'
+            y_test = self.y_test
+        else:
+            raise Exception
+
+        with self.graph.as_default():
+
+            # Input data
+            # idxs = tf.placeholder(tf.int32)
+            # out_logits = self.compute_output_layer_logits(idxs)
+
+            w2v_idxs = self.graph.get_tensor_by_name(name='w2v_idxs:0')
+            pos_idxs = self.graph.get_tensor_by_name(name='pos_idxs:0')
+            ner_idxs = self.graph.get_tensor_by_name(name='ner_idxs:0')
+            sent_nr_idxs = self.graph.get_tensor_by_name(name='sent_nr_idxs:0')
+            tense_idxs = self.graph.get_tensor_by_name(name='tense_idxs:0')
+            # labels = self.graph.get_tensor_by_name(name='labels:0')
+
+            embeddings_concat = self.perform_embeddings_lookup(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
+
+            out_logits = tf.nn.xw_plus_b(embeddings_concat, self.w2, self.b2)
+
+            predictions = tf.to_int32(tf.argmax(out_logits, 1))
+
+            # init = tf.initialize_all_variables()
+
+        with tf.Session(graph=self.graph) as session:
+            # init.run()
+
+            self.saver.restore(session, self.get_output_path('params.model'))
+
+            feed_dict = self.get_feed_dict(None, None,
+                                           w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs,
+                                           labels=None, dataset=dataset)
+            pred = session.run(predictions, feed_dict=feed_dict)
+
+        results['flat_trues'] = y_test
+        results['flat_predictions'] = pred
+
+        return results
 
     def using_w2v_feature(self):
         return self.using_feature(feature='w2v', convolve=None, max_pool=None)
