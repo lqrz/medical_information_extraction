@@ -784,10 +784,12 @@ def initialize_embeddings(nn_class, unique_words, w2v_dims, w2v_model, w2v_vecto
 
     sent_nr_index_position = [feat for feat in features if feat.startswith('sent_nr')]
     if sent_nr_index_position:
+        logger.info('Initializing sent_nr_embeddings: probabilistic')
         sent_nr_embeddings = nn_class.initialize_w_sent_nr(word2index)
 
     tense_index_position = [feat for feat in features if feat.startswith('tense')]
     if tense_index_position:
+        logger.info('Initializing tense_embeddings: probabilistic')
         tense_embeddings = nn_class.initialize_w_tense(word2index)
 
     return ner_embeddings, pos_embeddings, pretrained_embeddings, sent_nr_embeddings, tense_embeddings
