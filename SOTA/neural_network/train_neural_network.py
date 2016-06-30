@@ -141,7 +141,7 @@ def parse_arguments():
 
 def check_arguments_consistency(args):
     if not args['w2v_vectors_cache'] and not args['w2v_model_name'] and not args['w2v_random_dim'] \
-            and args['nn_name'] != 'tf_cnn':
+            and args['nn_name'] != 'tf_cnn' and args['nn_name'] != 'tf_multi_mlp':
         logger.error('Provide either a w2vmodel or a w2v vectors cache')
         exit()
 
