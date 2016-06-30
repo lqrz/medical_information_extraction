@@ -218,6 +218,7 @@ class Neural_Net(A_neural_network):
                     **kwargs):
 
         with self.graph.as_default():
+            tf.set_random_seed(1234)
 
             # Input data
             idxs = tf.placeholder(tf.int32, name='idxs')
@@ -261,10 +262,8 @@ class Neural_Net(A_neural_network):
 
             n_errors = self.compute_errors(predictions, labels)
 
-            init = tf.initialize_all_variables()
-
         with tf.Session(graph=self.graph) as session:
-            init.run()
+            session.run(tf.initialize_all_variables())
             print("Initialized")
 
             n_batches = np.int(np.ceil(self.x_train.shape[0] / minibatch_size))

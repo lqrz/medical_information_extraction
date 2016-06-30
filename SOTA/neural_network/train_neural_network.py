@@ -456,7 +456,7 @@ def get_train_features_dataset(nn_class, config_features, config_embeddings,
         emb_item = config_embeddings[config_features[feat]['embeddings']]['embedding_item']
 
         if feat.startswith('pos'):
-            feat_position = nn_class.get_features_crf_position([feat])[0]
+            feat_position = [v for _,v in nn_class.get_features_crf_position([feat])][0]
             if emb_item == 'word':
                 x_train_pos = x_train
                 x_valid_pos = x_valid
@@ -468,7 +468,7 @@ def get_train_features_dataset(nn_class, config_features, config_embeddings,
             else:
                 raise Exception('Invalid value for feature %s property embedding_item' % feat)
         elif feat.startswith('ner'):
-            feat_position = nn_class.get_features_crf_position([feat])[0]
+            feat_position = [v for _,v in nn_class.get_features_crf_position([feat])][0]
             if emb_item == 'word':
                 x_train_ner = x_train
                 x_valid_ner = x_valid
@@ -554,10 +554,6 @@ def use_testing_dataset(nn_class,
         nn_class.get_data(clef_training=True, clef_validation=True, clef_testing=True, add_words=add_words,
                           add_tags=add_tags, add_feats=add_feats, x_idx=None, n_window=n_window, feat_positions=feat_positions)
 
-    if normalize_samples:
-        logger.info('Normalizing number of samples')
-        x_train, y_train = NeuralNetwork.perform_sample_normalization(x_train, y_train)
-
     # x_train_sent_nr_feats = None
     # x_valid_sent_nr_feats = None
     # x_test_sent_nr_feats = None
@@ -586,6 +582,10 @@ def use_testing_dataset(nn_class,
                                                                                     x_train, x_train_feats,
                                                                                     x_valid, x_valid_feats,
                                                                                     x_test, x_test_feats)
+
+    if normalize_samples:
+        logger.info('Normalizing number of samples')
+        x_train, y_train, x_train_pos, x_train_ner = NeuralNetwork.perform_sample_normalization(x_train, y_train, x_train_pos, x_train_ner)
 
     if tags:
         tags = get_param(tags)

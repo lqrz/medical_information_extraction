@@ -490,6 +490,7 @@ class Convolutional_Neural_Net(A_neural_network):
                      **kwargs):
 
         with self.graph.as_default():
+            tf.set_random_seed(1234)
 
             # tf.trainable_variables()
 
