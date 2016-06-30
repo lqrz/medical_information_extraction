@@ -400,6 +400,7 @@ def read_embeddings_info(config_parser, config_features):
             config_embeddings[feat]['source'] = config_parser.get(feat, 'source')
             config_embeddings[feat]['dim'] = config_parser.get(feat, 'dim')
             config_embeddings[feat]['embedding_item'] = config_parser.get(feat, 'embedding_item')
+            config_embeddings[feat]['learning'] = config_parser.get(feat, 'learning')
         except ConfigParser.NoSectionError:
             continue
 
@@ -481,6 +482,34 @@ def get_train_features_dataset(nn_class, config_features, config_embeddings,
 
     return x_train_pos, x_train_ner, x_valid_pos, x_valid_ner, x_test_pos, x_test_ner
 
+def get_training_tuning_embeddings(config_embeddings):
+    train_params = []
+    tune_params = []
+
+    for emb_name, emb_desc in config_embeddings.iteritems():
+        name = None
+        if emb_name.startswith('w2v'):
+            name = 'w2v'
+        elif emb_name.startswith('pos'):
+            name = 'pos'
+        elif emb_name.startswith('ner'):
+            name = 'ner'
+        elif emb_name.startswith('sent_nr'):
+            name = 'sent_nr'
+        elif emb_name.startswith('tense'):
+            name = 'tense'
+
+        assert name is not None
+
+        if emb_desc['learning'] == 'train':
+            train_params.append(name)
+        elif emb_desc['learning'] == 'tune':
+            tune_params.append(name)
+        else:
+            raise Exception('Invalid value for embedding %s' % emb_name)
+
+    return train_params, tune_params
+
 def use_testing_dataset(nn_class,
                         hidden_f,
                         out_f,
@@ -549,6 +578,8 @@ def use_testing_dataset(nn_class,
     ner_embeddings, pos_embeddings, pretrained_embeddings, sent_nr_embeddings, tense_embeddings = initialize_embeddings(
         nn_class, unique_words, w2v_dims, w2v_model, w2v_vectors, word2index, config_embeddings, features_indexes,
         config_features.keys(), feat_names_and_positions)
+
+    training_params, tuning_params = get_training_tuning_embeddings(config_embeddings)
 
     x_train_pos, x_train_ner, x_valid_pos, x_valid_ner, x_test_pos, x_test_ner = get_train_features_dataset(nn_class,
                                                                                     config_features, config_embeddings,
@@ -625,7 +656,9 @@ def use_testing_dataset(nn_class,
         'sent_nr_embeddings': sent_nr_embeddings,
         'tense_embeddings': tense_embeddings,
         'log_reg': args['log_reg'],
-        'cnn_features': config_features
+        'cnn_features': config_features,
+        'training_param_names': training_params,
+        'tuning_param_names': tuning_params
     }
 
     nn_trainer = nn_class(**params)
