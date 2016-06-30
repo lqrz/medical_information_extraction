@@ -14,6 +14,7 @@ class Convolutional_Neural_Net(A_neural_network):
                  train_ner_feats, valid_ner_feats, test_ner_feats,
                  train_sent_nr_feats, valid_sent_nr_feats, test_sent_nr_feats,
                  train_tense_feats, valid_tense_feats, test_tense_feats,
+                 training_param_names, tuning_param_names,
                  **kwargs):
 
         super(Convolutional_Neural_Net, self).__init__(**kwargs)
@@ -79,6 +80,8 @@ class Convolutional_Neural_Net(A_neural_network):
         # parameters to get L2
         self.regularizables = []
 
+        self.training_param_names = training_param_names
+        self.tuning_param_names = tuning_param_names
         self.fine_tuning_params = []
         self.training_params = []
 
@@ -243,35 +246,60 @@ class Convolutional_Neural_Net(A_neural_network):
                                           name='w1_w2v')
 
                 self.regularizables.append(self.w1_w2v)
-                self.fine_tuning_params.append(self.w1_w2v)
+                if 'w2v' in self.tuning_param_names:
+                    self.fine_tuning_params.append(self.w1_w2v)
+                elif 'w2v' in self.training_param_names:
+                    self.training_params.append(self.w1_w2v)
+                else:
+                    raise Exception
 
             if self.using_pos_convolution_maxpool_feature():
                 self.w1_pos = tf.Variable(initial_value=self.pos_embeddings, dtype=tf.float32,
                                           trainable=not static, name='w1_pos')
 
                 self.regularizables.append(self.w1_pos)
-                self.fine_tuning_params.append(self.w1_pos)
+                if 'pos' in self.tuning_param_names:
+                    self.fine_tuning_params.append(self.w1_pos)
+                elif 'pos' in self.training_param_names:
+                    self.training_params.append(self.w1_pos)
+                else:
+                    raise Exception
 
             if self.using_ner_convolution_maxpool_feature():
                 self.w1_ner = tf.Variable(initial_value=self.ner_embeddings, dtype=tf.float32,
                                           trainable=not static, name='w1_ner')
 
                 self.regularizables.append(self.w1_ner)
-                self.fine_tuning_params.append(self.w1_ner)
+                if 'ner' in self.tuning_param_names:
+                    self.fine_tuning_params.append(self.w1_ner)
+                elif 'ner' in self.training_param_names:
+                    self.training_params.append(self.w1_ner)
+                else:
+                    raise Exception
 
             if self.using_sent_nr_convolution_maxpool_feature():
                 self.w1_sent_nr = tf.Variable(initial_value=self.sent_nr_embeddings, dtype=tf.float32,
                                               trainable=not static, name='w1_sent_nr')
 
                 self.regularizables.append(self.w1_sent_nr)
-                self.fine_tuning_params.append(self.w1_sent_nr)
+                if 'sent_nr' in self.tuning_param_names:
+                    self.fine_tuning_params.append(self.w1_sent_nr)
+                elif 'sent_nr' in self.training_param_names:
+                    self.training_params.append(self.w1_sent_nr)
+                else:
+                    raise Exception
 
             if self.using_tense_convolution_maxpool_feature():
                 self.w1_tense = tf.Variable(initial_value=self.tense_embeddings, dtype=tf.float32,
                                             trainable=not static, name='w1_tense')
 
                 self.regularizables.append(self.w1_tense)
-                self.fine_tuning_params.append(self.w1_tense)
+                if 'tense' in self.tuning_param_names:
+                    self.fine_tuning_params.append(self.w1_tense)
+                elif 'tense' in self.training_param_names:
+                    self.training_params.append(self.w1_tense)
+                else:
+                    raise Exception
 
 
             self.w2 = tf.Variable(tf.truncated_normal(shape=[self.n_hidden, self.n_out], stddev=0.1), name='w2')
