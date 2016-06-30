@@ -4,6 +4,7 @@ import time
 import pandas
 from ggplot import *
 from collections import Counter
+from copy import copy
 
 
 class Word2Vec:
@@ -138,6 +139,11 @@ class NeuralNetwork:
 
     @staticmethod
     def perform_sample_normalization(x_train, y_train, x_train_pos, x_train_ner):
+        x_train = copy(x_train)
+        y_train = copy(y_train)
+        x_train_pos = copy(x_train_pos)
+        x_train_ner = copy(x_train_ner)
+
         counts = Counter(y_train)
 
         higher_count = counts.most_common(n=1)[0][1]
@@ -148,6 +154,9 @@ class NeuralNetwork:
             samples_to_add = np.random.choice(tag_idxs, n_to_add, replace=True)
             x_train.extend(np.array(x_train)[samples_to_add].tolist())
             y_train.extend(np.array(y_train)[samples_to_add].tolist())
+
+            if x_train.__len__() != y_train.__len__():
+                print 'debug'
             if x_train_pos:
                 x_train_pos.extend(np.array(x_train_pos)[samples_to_add].tolist())
             if x_train_ner:

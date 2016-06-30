@@ -586,6 +586,7 @@ def use_testing_dataset(nn_class,
     if normalize_samples:
         logger.info('Normalizing number of samples')
         x_train, y_train, x_train_pos, x_train_ner = NeuralNetwork.perform_sample_normalization(x_train, y_train, x_train_pos, x_train_ner)
+        assert x_train.__len__() == y_train.__len__() == x_train_pos.__len__() == x_train_ner.__len__()
 
     if tags:
         tags = get_param(tags)
