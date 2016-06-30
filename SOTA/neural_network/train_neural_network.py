@@ -52,7 +52,7 @@ def parse_arguments():
     parser.add_argument('--net', type=str, action='store', required=True,
                         choices=['single_cw','hidden_cw','vector_tag','last_tag','rnn', 'cw_rnn', 'multi_hidden_cw',
                                  'two_hidden_cw',
-                                 'tf_hidden_cw', 'tf_cnn', 'tf_multi_mlp'],
+                                 'tf_mlp', 'tf_cnn', 'tf_multi_mlp'],
                         help='NNet type')
     parser.add_argument('--window', type=int, action='store', required=True,
                         help='Context window size. 1 for RNN')
@@ -325,7 +325,7 @@ def determine_nnclass_and_parameters(args):
         get_output_path = get_two_cwnn_path
         add_words = ['<PAD>']
 
-    elif args['nn_name'] == 'tf_hidden_cw':
+    elif args['nn_name'] == 'tf_mlp':
         from tensor_flow.feed_forward_mlp_net import Neural_Net
         # one hidden layer with context window. Either minibatch or SGD.
         nn_class = Neural_Net
