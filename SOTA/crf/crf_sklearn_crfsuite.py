@@ -858,39 +858,13 @@ class CRF:
 
         return
 
-    def predict(self, x_test, y_test):
+    def predict(self, x_test):
 
-        accuracy = 0
-
-        # tagger = pycrfsuite.Tagger()
-        # tagger.open(self.output_model_filename)
-
-        # tagger = load(self.output_model_filename)
         tagger = self.model
 
-        # for sent in x_train:
-            # print tagger.tag(sent)
         predictions = tagger.predict(x_test)
-        # accuracy = sum([pred==y_test[j][i]
-        #                 for j in range(len(predictions))
-        #                 for i, pred in enumerate(predictions[j])])
 
-        # predicted_tags = zip([token_dict['word'] for sentence in x_test for token_dict in sentence], [tag for sentence in predictions for tag in sentence])
-
-        # metrics.flat_f1_score(y_train, predictions, average='weighted')
-
-        # return float(accuracy)/len(predictions[0]) #this calculation is ok
-        # print metrics.flat_classification_report(y_train, predictions)
-        flat_y_test = [tag for tag in chain(*y_test)]
-        flat_predictions = [tag for tag in chain(*predictions)]
-
-        accuracy = Metrics.compute_accuracy_score(flat_y_test, flat_predictions)
-        precision = Metrics.compute_precision_score(flat_y_test, flat_predictions, average='micro')
-        recall = Metrics.compute_recall_score(flat_y_test, flat_predictions, average='micro')
-        f1_score = Metrics.compute_f1_score(flat_y_test, flat_predictions, average='micro')
-
-        # return predicted_tags, accuracy, precision, recall, f1_score
-        return predictions, accuracy, precision, recall, f1_score
+        return predictions
 
     def filter_by_doc_nr(self, x_train, y_train, x_idx):
         x_features = []
@@ -1202,7 +1176,7 @@ def use_testing_dataset(testing_data, crf_model, feature_function):
     crf_model.train(x_train, y_train, verbose=True)
 
     logger.info('Predicting')
-    predicted_tags, _, _, _, _ = crf_model.predict(x_test, y_test)
+    predicted_tags = crf_model.predict(x_test)
 
     flat_pred = [tag for tag in chain(*predicted_tags)]
 
