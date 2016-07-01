@@ -15,7 +15,10 @@ import argparse
 import cPickle as pickle
 from collections import OrderedDict
 from itertools import chain
+import pandas as pd
 
+from data import get_classification_report_labels
+from utils.plot_confusion_matrix import plot_confusion_matrix
 from utils import utils
 from utils.metrics import Metrics
 from trained_models import get_pycrf_customfeats_folder, get_pycrf_originalfeats_folder
@@ -1177,11 +1180,6 @@ def perform_leave_one_out(training_data, max_cv_iters, crf_model, feature_functi
     return prediction_results
 
 def use_testing_dataset(testing_data, crf_model, feature_function):
-    prediction_results = dict()
-    results_accuracy = []
-    results_precision = []
-    results_recall = []
-    results_f1 = []
 
     # set the testing_data attribute of the model
     crf_model.testing_data = testing_data
@@ -1193,7 +1191,7 @@ def use_testing_dataset(testing_data, crf_model, feature_function):
     x_train = list(chain(*x.values()))
     y_train = list(chain(*y.values()))
 
-    # get testing geatures
+    # get testing features
     x = crf_model.get_features_from_crf_training_data(crf_model.testing_data, feature_function)
     y = crf_model.get_labels_from_crf_training_data(crf_model.testing_data)
 
@@ -1204,17 +1202,11 @@ def use_testing_dataset(testing_data, crf_model, feature_function):
     crf_model.train(x_train, y_train, verbose=True)
 
     logger.info('Predicting')
-    predicted_tags, accuracy, precision, recall, f1_score = crf_model.predict(x_test, y_test)
-    results_accuracy.append(accuracy)
-    results_precision.append(precision)
-    results_recall.append(recall)
-    results_f1.append(f1_score)
+    predicted_tags, _, _, _, _ = crf_model.predict(x_test, y_test)
 
-    flat_true = [tag for tag in chain(*y_test)]
     flat_pred = [tag for tag in chain(*predicted_tags)]
-    prediction_results[0] = (flat_true, flat_pred)  #TODO: do i want it by document?
 
-    return prediction_results
+    return flat_pred
 
 def pickle_results(prediction_results,
                    incl_metamap=False,
@@ -1224,11 +1216,10 @@ def pickle_results(prediction_results,
                    lda_features=False,
                    zip_features=False,
                    outputaddid=False,
-                   use_original_paper_features=False,
-                   use_custom_features=False,
                    use_leave_one_out=False,
                    crf_iters=0,
                    knowledge_graph=False,
+                   get_output_path=None,
                    **kwargs):
 
     logger.info('Pickling prediction results')
@@ -1239,13 +1230,7 @@ def pickle_results(prediction_results,
         #append string identifier if supplied.
         run_params = '_'.join([run_params,outputaddid])
 
-    output_folder = None
-    if use_original_paper_features:
-        output_folder = get_pycrf_originalfeats_folder()
-    elif use_custom_features:
-        output_folder = get_pycrf_customfeats_folder()
-
-    pickle.dump(prediction_results, open(output_folder+'prediction_results_'+run_params+'.p','wb'))
+    pickle.dump(prediction_results, open(get_output_path('prediction_results_'+run_params+'.p'),'wb'))
 
     return True
 
@@ -1308,16 +1293,30 @@ def check_arguments_consistency(args):
 
     return True
 
+def determine_output_path(use_original_paper_features, use_custom_features, **kwargs):
+    get_output_path = None
+
+    if use_original_paper_features:
+        get_output_path = get_pycrf_originalfeats_folder
+    elif use_custom_features:
+        get_output_path = get_pycrf_customfeats_folder
+    else:
+        raise Exception
+
+    return get_output_path
 
 if __name__ == '__main__':
-    training_data_filename = 'handoverdata.zip'
-    test_data_filename = 'handover-set2.zip'
+    # training_data_filename = 'handoverdata.zip'
+    # test_data_filename = 'handover-set2.zip'
 
     args = parse_arguments()
 
     check_arguments_consistency(args)
 
-    training_data, training_texts, _, _ = Dataset.get_crf_training_data_by_sentence(training_data_filename)
+    get_output_path = determine_output_path(**args)
+
+    # training_data, training_texts, _, _ = Dataset.get_crf_training_data_by_sentence(training_data_filename)
+    training_data, _, _, _ = Dataset.get_clef_training_dataset(lowercase=False)
 
     # test_data = Dataset.get_crf_training_data(test_data_filename)
 
@@ -1344,12 +1343,46 @@ if __name__ == '__main__':
         # use 101 training documents, and perform leave one out cross validation.
         prediction_results = perform_leave_one_out(training_data, args['max_cv_iters'], crf_model, feature_function)
     else:
-        # train on 101 training documents, and predict on 100 testing documents.
-        testing_data, testing_texts, _, _ = \
-            Dataset.get_crf_training_data_by_sentence(file_name=test_data_filename,
-                                                      path=Dataset.TESTING_FEATURES_PATH+'test',
-                                                      extension=Dataset.TESTING_FEATURES_EXTENSION)
+        # train on 101 training documents, and predict on 100 validation documents.
+        validation_data, _, _, validation_tags = Dataset.get_clef_validation_dataset(lowercase=False)
+        # testing_data, testing_texts, _, _ = \
+        #     Dataset.get_crf_training_data_by_sentence(file_name=test_data_filename,
+        #                                               path=Dataset.TESTING_FEATURES_PATH+'test',
+        #                                               extension=Dataset.TESTING_FEATURES_EXTENSION)
 
-        prediction_results = use_testing_dataset(testing_data, crf_model, feature_function)
+        valid_y_pred = use_testing_dataset(validation_data, crf_model, feature_function)
 
-    pickle_results(prediction_results, **args)
+    valid_y_true = list(chain(*chain(*validation_tags.values())))
+
+    assert valid_y_pred is not None
+    assert valid_y_true.__len__() == valid_y_pred.__len__()
+
+    results_macro = Metrics.compute_all_metrics(y_true=valid_y_true, y_pred=valid_y_pred, average='macro')
+    results_micro = Metrics.compute_all_metrics(y_true=valid_y_true, y_pred=valid_y_pred, average='micro')
+
+    print 'MICRO results'
+    print results_micro
+
+    print 'MACRO results'
+    print results_macro
+
+    labels_list = get_classification_report_labels()
+    assert labels_list is not None
+
+    results_noaverage = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, labels=labels_list, average=None)
+
+    print '...Saving no-averaged results to CSV file'
+    df = pd.DataFrame(results_noaverage, index=labels_list)
+    df.to_csv(get_output_path('no_average_results.csv'))
+
+    print '...Ploting confusion matrix'
+    cm = Metrics.compute_confusion_matrix(valid_y_true, valid_y_pred, labels=labels_list)
+    plot_confusion_matrix(cm, labels=labels_list, output_filename=get_output_path('confusion_matrix.png'))
+
+    print '...Computing classification stats'
+    stats = Metrics.compute_classification_stats(valid_y_true, valid_y_pred, labels_list)
+    df = pd.DataFrame(stats, index=['tp', 'tn', 'fp', 'fn'], columns=labels_list).transpose()
+    df.to_csv(get_output_path('classification_stats.csv'))
+
+    print '...Pickling results'
+    pickle_results(valid_y_pred, get_output_path=get_output_path, **args)
