@@ -99,6 +99,8 @@ def parse_arguments():
     parser.add_argument('--configini', action='store', type=str, default=None)
     parser.add_argument('--alphana', action='store', type=float, default=None)
 
+    parser.add_argument('--augmentdata', action='store_true', default=False)
+
     #parse arguments
     arguments = parser.parse_args()
 
@@ -136,6 +138,7 @@ def parse_arguments():
     args['log_reg'] = arguments.logreg
     args['config_ini_filename'] = arguments.configini
     args['alpha_na'] = arguments.alphana
+    args['augment_data'] = arguments.augmentdata
 
     return args
 
@@ -524,6 +527,7 @@ def use_testing_dataset(nn_class,
                         get_output_path,
                         multi_feats,
                         normalize_samples,
+                        augment_data,
                         config_ini_filename,
                         max_epochs=None,
                         minibatch_size=None,
@@ -582,6 +586,10 @@ def use_testing_dataset(nn_class,
                                                                                     x_train, x_train_feats,
                                                                                     x_valid, x_valid_feats,
                                                                                     x_test, x_test_feats)
+
+    if augment_data:
+        logger.info('Augmenting data')
+
 
     if normalize_samples:
         logger.info('Normalizing number of samples')
