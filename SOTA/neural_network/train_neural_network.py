@@ -936,6 +936,11 @@ if __name__ == '__main__':
     print '...Saving predictions to file'
     save_predictions_to_file(train_y_pred, valid_y_pred, test_y_pred, get_output_path)
 
+    print '...Computing classification stats'
+    stats = Metrics.compute_classification_stats(valid_y_true, valid_y_pred, labels_list)
+    df = pd.DataFrame(stats, index=['tp', 'tn', 'fp', 'fn'], columns=labels_list).transpose()
+    df.to_csv(get_output_path('classification_stats.csv'))
+
     print 'Elapsed time: ', time.time()-start
 
     logger.info('End')

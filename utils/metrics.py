@@ -45,3 +45,19 @@ class Metrics:
         cm_normalized = np.nan_to_num(np.divide(cm, np.array(totals).astype(dtype='float')[:, np.newaxis]))
 
         return cm_normalized
+
+    @staticmethod
+    def compute_classification_stats(y_true, y_pred, labels):
+        results = dict()
+        fd = Counter(y_true)
+        cm = metrics.confusion_matrix(y_true, y_pred, labels)
+
+        for ix, lab in enumerate(labels):
+            tp = np.sum(cm[ix, ix])
+            fp = np.sum(cm[:, ix]) - tp
+            fn = fd[lab] - tp #np.sum(cm[ix,:]) - tp
+            tn = y_true.__len__() - tp - fp - fn
+
+            results[lab] = [tp, tn, fp, fn]
+
+        return results
