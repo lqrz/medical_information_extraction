@@ -48,3 +48,18 @@ def get_wsj_treebank_filename():
 
 def get_config_path(filename):
     return pkg_resources.resource_filename('data', 'params/neural_network/%s' % filename)
+
+def get_mythes_checkfile(filename):
+    return pkg_resources.resource_filename('data', 'MyThes/oovs/%s' % filename)
+
+def get_mythes_lookup_path():
+    return pkg_resources.resource_filename('data', 'MyThes/lqrz_lookup')
+
+def get_mythes_english_thesaurus_index_path():
+    return pkg_resources.resource_filename('data', 'MyThes/th_en_US_new.idx')
+
+def get_mythes_english_thesaurus_data_path():
+    return pkg_resources.resource_filename('data', 'MyThes/th_en_US_new.dat')
+
+def get_mythes_oov_replacements_path():
+    return pkg_resources.resource_filename('data', 'MyThes/oovs/replacements.p')

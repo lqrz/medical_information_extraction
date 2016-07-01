@@ -164,6 +164,17 @@ class NeuralNetwork:
 
         return x_train, y_train, x_train_pos, x_train_ner
 
+    @staticmethod
+    def generate_synonyms_samples(x_train, y_train, word2index, index2word):
+
+        x_train = copy(x_train)
+        y_train = copy(y_train)
+
+        counts = Counter(y_train)
+        higher_count = counts.most_common(n=1)[0][1]
+
+        for tag, cnt in counts.iteritems():
+            n_to_add = higher_count - cnt
 
 class Others:
     def __init__(self):
