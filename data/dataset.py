@@ -194,7 +194,8 @@ class Dataset:
     def get_crf_training_data_by_sentence(file_name, path=CRF_FEATURES_PATH+'output',
                                           extension=CRF_FEATURES_EXTENSION,
                                           separator='\t',
-                                          include_tag=True):
+                                          include_tag=True,
+                                          lowercase=True):
         """
         returns a dictionary indexed in the following way:
             -doc_nr
@@ -232,7 +233,7 @@ class Dataset:
                     continue
                 dict_word = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
                 line = line.strip().split(separator)
-                dict_word['word'] = line[0]
+                dict_word['word'] = line[0].lower() if lowercase else line[0]
                 if include_tag:
                     dict_word['features'] = line[1:-2]
                     dict_word['tag'] = line[-2] # -2 is the true label, -1 is their predicted tag
@@ -240,7 +241,7 @@ class Dataset:
                     dict_word['features'] = line[1:-1]
                     dict_word['tag'] = None
                 dict_sentence.append(dict_word)
-                word_sentence.append(dict_word['word'])
+                word_sentence.append(dict_word['word'].lower() if lowercase else dict_word['word'])
                 tag_sentence.append(dict_word['tag'])
                 sentences[doc_nr].append(line[0])
 
@@ -250,27 +251,30 @@ class Dataset:
         return training_data, sentences, document_sentence_words, document_sentence_tags
 
     @staticmethod
-    def get_clef_training_dataset():
+    def get_clef_training_dataset(lowercase=True):
         training_data_filename = 'handoverdata.zip'
         return Dataset.get_crf_training_data_by_sentence(training_data_filename,
-                                                      Dataset.CRF_FEATURES_PATH+'output',
-                                                      Dataset.CRF_FEATURES_EXTENSION)
+                                                         Dataset.CRF_FEATURES_PATH+'output',
+                                                         Dataset.CRF_FEATURES_EXTENSION,
+                                                         lowercase=lowercase)
 
     @staticmethod
-    def get_clef_validation_dataset():
+    def get_clef_validation_dataset(lowercase=True):
         validation_data_filename = 'handover-set2.zip'
         return Dataset.get_crf_training_data_by_sentence(validation_data_filename,
                                                       Dataset.TESTING_FEATURES_PATH+'test',
-                                                      Dataset.TESTING_FEATURES_EXTENSION)
+                                                      Dataset.TESTING_FEATURES_EXTENSION,
+                                                         lowercase=lowercase)
 
     @staticmethod
-    def get_clef_testing_dataset():
+    def get_clef_testing_dataset(lowercase=True):
         testing_data_filename = 'CRF_noLabel.zip'
         return Dataset.get_crf_training_data_by_sentence(testing_data_filename,
                                                       Dataset.CLEF_TESTING_PATH,
                                                       Dataset.CLEF_TESTING_EXTENSION,
                                                       separator=' ',
-                                                      include_tag=False)
+                                                      include_tag=False,
+                                                         lowercase=lowercase)
 
     @staticmethod
     def get_wsj_dataset():

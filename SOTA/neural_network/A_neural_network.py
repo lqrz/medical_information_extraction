@@ -203,7 +203,8 @@ class A_neural_network():
 
     @classmethod
     def get_data(cls, clef_training=True, clef_validation=False, clef_testing=False,
-                 add_words=[], add_tags=[], add_feats=[], x_idx=None, n_window=None, feat_positions=None):
+                 add_words=[], add_tags=[], add_feats=[], x_idx=None, n_window=None, feat_positions=None,
+                 lowercase=True):
         """
         this is at sentence level.
         gets the training data and organizes it into sentences per document.
@@ -236,7 +237,8 @@ class A_neural_network():
         x_test_feats = None
 
         if clef_training:
-            train_features, _, train_document_sentence_words, train_document_sentence_tags = Dataset.get_clef_training_dataset()
+            train_features, _, train_document_sentence_words, train_document_sentence_tags = \
+                Dataset.get_clef_training_dataset(lowercase=lowercase)
 
             if feat_positions:
                 x_train_features = cls.get_features_by_position(feat_positions, train_features)
@@ -245,7 +247,8 @@ class A_neural_network():
             document_sentence_tags.extend(train_document_sentence_tags.values())
 
         if clef_validation:
-            valid_features, _, valid_document_sentence_words, valid_document_sentence_tags = Dataset.get_clef_validation_dataset()
+            valid_features, _, valid_document_sentence_words, valid_document_sentence_tags = \
+                Dataset.get_clef_validation_dataset(lowercase=lowercase)
 
             if feat_positions:
                 x_valid_features = cls.get_features_by_position(feat_positions, valid_features)
@@ -254,7 +257,8 @@ class A_neural_network():
             document_sentence_tags.extend(valid_document_sentence_tags.values())
 
         if clef_testing:
-            test_features, _, test_document_sentence_words, test_document_sentence_tags = Dataset.get_clef_testing_dataset()
+            test_features, _, test_document_sentence_words, test_document_sentence_tags = \
+                Dataset.get_clef_testing_dataset(lowercase=lowercase)
 
             if feat_positions:
                 x_test_features = cls.get_features_by_position(feat_positions, test_features)
