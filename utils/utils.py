@@ -4,7 +4,7 @@ import time
 import pandas
 from ggplot import *
 from collections import Counter
-from copy import copy
+from copy import copy, deepcopy
 
 
 class Word2Vec:
@@ -165,16 +165,79 @@ class NeuralNetwork:
         return x_train, y_train, x_train_pos, x_train_ner
 
     @staticmethod
-    def generate_synonyms_samples(x_train, y_train, word2index, index2word):
+    def replace_oovs(x_valid, index2word, word2index, n_window):
+        from oov import oov_replacement
+        from oov import get_oovs
 
-        x_train = copy(x_train)
-        y_train = copy(y_train)
+        oovs = get_oovs()
+        replacements = oov_replacement()
 
-        counts = Counter(y_train)
-        higher_count = counts.most_common(n=1)[0][1]
+        next_index = index2word.__len__()
 
-        for tag, cnt in counts.iteritems():
-            n_to_add = higher_count - cnt
+        for i, sample in enumerate(x_valid):
+            word = index2word[sample[n_window / 2]]
+            if word in oovs:
+                try:
+                    replace = replacements[word]
+                except KeyError:
+                    continue
+                try:
+                    ix = word2index[replace]
+                except KeyError:
+                    word2index[replace] = next_index
+                    index2word[next_index] = replace
+                    ix = next_index
+                    next_index += 1
+
+                x_valid[i][n_window/2] = ix
+
+        return x_valid, index2word, word2index
+
+    @staticmethod
+    def generate_synonyms_samples(x_train, y_train, word2index, index2word, n_window, index2label):
+        from oov import data_augmentation
+
+        next_index = index2word.__len__()
+
+        augmentations = data_augmentation()
+
+        tag_count = Counter(y_train)
+
+        to_add = Counter()
+
+        na_count = tag_count.most_common(n=1)[0][1]
+
+        for tag_ix, cnt in tag_count.iteritems():
+            to_add[tag_ix] = na_count - cnt
+
+        for i, (x_sample, y_sample) in enumerate(zip(x_train, y_train)):
+            word = index2word[x_sample[n_window/2]].lower()
+            tag = index2label[y_sample]
+            try:
+                augs = augmentations[(tag, word)]
+            except KeyError:
+                continue
+
+            for aug in augs:
+
+                if to_add[y_sample] > 0:
+                    try:
+                        ix = word2index[aug]
+                    except KeyError:
+                        word2index[aug] = next_index
+                        index2word[next_index] = aug
+                        ix = next_index
+                        next_index += 1
+
+                    new_sample = deepcopy(x_sample)
+                    new_sample[n_window/2] = ix
+                    x_train.append(new_sample)
+                    y_train.append(y_train[i])
+                    to_add[y_sample] -= 1
+
+        assert x_train.__len__() == y_train.__len__()
+
+        return x_train, y_train, word2index, index2word
 
 class Others:
     def __init__(self):

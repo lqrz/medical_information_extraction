@@ -100,6 +100,7 @@ def parse_arguments():
     parser.add_argument('--alphana', action='store', type=float, default=None)
 
     parser.add_argument('--augmentdata', action='store_true', default=False)
+    parser.add_argument('--treatoovs', action='store_true', default=False)
 
     #parse arguments
     arguments = parser.parse_args()
@@ -139,6 +140,7 @@ def parse_arguments():
     args['config_ini_filename'] = arguments.configini
     args['alpha_na'] = arguments.alphana
     args['augment_data'] = arguments.augmentdata
+    args['treat_oovs'] = arguments.treatoovs
 
     return args
 
@@ -528,6 +530,7 @@ def use_testing_dataset(nn_class,
                         multi_feats,
                         normalize_samples,
                         augment_data,
+                        treat_oovs,
                         config_ini_filename,
                         max_epochs=None,
                         minibatch_size=None,
@@ -573,12 +576,6 @@ def use_testing_dataset(nn_class,
     #     x_train_tense_feats, x_valid_tense_feats, x_test_tense_feats, tense_probs = \
     #         nn_class.get_tenses_features(clef_training=True, clef_validation=True, clef_testing=True)
 
-    unique_words = word2index.keys()
-
-    ner_embeddings, pos_embeddings, pretrained_embeddings, sent_nr_embeddings, tense_embeddings = initialize_embeddings(
-        nn_class, unique_words, w2v_dims, w2v_model, w2v_vectors, word2index, config_embeddings, features_indexes,
-        config_features.keys(), feat_names_and_positions)
-
     training_params, tuning_params = get_training_tuning_embeddings(config_embeddings)
 
     x_train_pos, x_train_ner, x_valid_pos, x_valid_ner, x_test_pos, x_test_ner = get_train_features_dataset(nn_class,
@@ -589,12 +586,27 @@ def use_testing_dataset(nn_class,
 
     if augment_data:
         logger.info('Augmenting data')
+        x_train, y_train, word2index, index2word = NeuralNetwork.generate_synonyms_samples(x_train, y_train, word2index, index2word, n_window,
+                                                                   index2label)
 
+    if treat_oovs:
+        logger.info('Replacing OOVs in validation set')
+        x_valid, index2word, word2index = NeuralNetwork.replace_oovs(x_valid, index2word, word2index, n_window)
 
     if normalize_samples:
         logger.info('Normalizing number of samples')
         x_train, y_train, x_train_pos, x_train_ner = NeuralNetwork.perform_sample_normalization(x_train, y_train, x_train_pos, x_train_ner)
-        assert x_train.__len__() == y_train.__len__() == x_train_pos.__len__() == x_train_ner.__len__()
+        assert x_train.__len__() == y_train.__len__()
+        if x_train_pos is not None:
+            assert x_train.__len__() == x_train_pos.__len__()
+        if x_train_ner is not None:
+            assert x_train.__len__() == x_train_ner.__len__()
+
+    unique_words = word2index.keys()
+
+    ner_embeddings, pos_embeddings, pretrained_embeddings, sent_nr_embeddings, tense_embeddings = initialize_embeddings(
+        nn_class, unique_words, w2v_dims, w2v_model, w2v_vectors, word2index, config_embeddings, features_indexes,
+        config_features.keys(), feat_names_and_positions)
 
     if tags:
         tags = get_param(tags)

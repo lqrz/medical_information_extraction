@@ -17,13 +17,10 @@ from data import get_mythes_oov_replacements_path
 
 
 def oov_replacement():
+    oovs = get_oovs()
+
     _, _, training_tokens, _ = Dataset.get_clef_training_dataset()
-    _, _, validation_tokens, _ = Dataset.get_clef_validation_dataset()
-
     training_tokens = [w.lower() for w in list(chain(*chain(*training_tokens.values())))]
-    validation_tokens = [w.lower() for w in list(chain(*chain(*validation_tokens.values())))]
-
-    oovs = set(validation_tokens).difference(set(training_tokens))
 
     checklist_filename = 'oovs.txt'
     checklist_path = get_mythes_checkfile(checklist_filename)
@@ -67,12 +64,21 @@ def oov_replacement():
             replacements[oov] = chosen
 
     out_path = open(get_mythes_oov_replacements_path(), 'wb')
-    cPickle.dump(replacements, out_path)
+    # cPickle.dump(replacements, out_path)
 
     print 'Out of the %d OOVs, %d had synonyms in the Thesaurus, and %d had synonyms in the training data' % \
           (oovs.__len__(), synonym_count, chosen_count)
 
-    return
+    return replacements
+
+
+def get_oovs():
+    _, _, training_tokens, _ = Dataset.get_clef_training_dataset()
+    _, _, validation_tokens, _ = Dataset.get_clef_validation_dataset()
+    training_tokens = [w.lower() for w in list(chain(*chain(*training_tokens.values())))]
+    validation_tokens = [w.lower() for w in list(chain(*chain(*validation_tokens.values())))]
+    oovs = set(validation_tokens).difference(set(training_tokens))
+    return oovs
 
 def data_augmentation():
     _, _, training_tokens, training_tags = Dataset.get_clef_training_dataset()
@@ -95,21 +101,23 @@ def data_augmentation():
     na_count = tag_count.most_common(n=1)[0][1]
 
     tmp_path = get_mythes_checkfile('check.tmp')
-    fout = open(tmp_path, 'wb')
 
     lookup_pgm_path = get_mythes_lookup_path()
     lookup_index_path = get_mythes_english_thesaurus_index_path()
     lookup_data_path = get_mythes_english_thesaurus_data_path()
     params = ' '.join([lookup_pgm_path, lookup_index_path, lookup_data_path, tmp_path])
-    p = subprocess.Popen([params],
-                         stdout=subprocess.PIPE,
-                         shell=True)
+
+    augmentations = dict()
 
     for tag, cnt in tag_count.iteritems():
         to_add = na_count - cnt
         tokens = list(set(training_tags_tokens[tag]))
+        fout = open(tmp_path, 'wb')
         fout.write('\n'.join(tokens))
         fout.close()
+        p = subprocess.Popen([params],
+                             stdout=subprocess.PIPE,
+                             shell=True)
         std_out, std_err = p.communicate()
 
         if std_err is not None:
@@ -118,8 +126,14 @@ def data_augmentation():
 
         for i, line in enumerate(std_out.split('\n')):
             token = line.split('\t')[0]
-            synonyms = [w for w in line.split('\t')[1:] if w.split(' ').__len__() == 1 and w != '']
+            token = token.lower()
+            if token == '':
+                continue
 
+            synonyms = set([w.lower() for w in line.split('\t')[1:] if w.split(' ').__len__() == 1 and w != ''])
+            augmentations[(tag,token)] = synonyms
+
+    return augmentations
 
 if __name__ == '__main__':
     # oov_replacement()
