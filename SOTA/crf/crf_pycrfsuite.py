@@ -32,6 +32,8 @@ from data import get_w2v_model
 from data import get_w2v_training_data_vectors
 from utils import features_distributions
 from utils import get_word_tenses
+from data import get_hierarchical_mapping
+from data import get_aggregated_classification_report_labels
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -1246,7 +1248,18 @@ def perform_leave_one_out(training_data, max_cv_iters, crf_model, feature_functi
 
     return prediction_results
 
-def use_testing_dataset(testing_data, crf_model, feature_function):
+def convert_metatags(y_dataset):
+    mapping = get_hierarchical_mapping()
+
+    mapped_dataset = []
+
+    # y_dataset comes in sentences
+    for sent in y_dataset:
+        mapped_dataset.append(map(lambda x: mapping[x], sent))
+
+    return mapped_dataset
+
+def use_testing_dataset(testing_data, crf_model, feature_function, metatags, **kwargs):
 
     # set the testing_data attribute of the model
     crf_model.testing_data = testing_data
@@ -1273,13 +1286,19 @@ def use_testing_dataset(testing_data, crf_model, feature_function):
     x_test = list(chain(*x.values()))
     y_test = list(chain(*y.values()))
 
+    if metatags:
+        y_train = convert_metatags(y_train)
+        y_test = convert_metatags(y_test)
+
     logger.info('Training the model')
     log = crf_model.train(x_train, y_train, verbose=crf_model.verbose)
 
     logger.info('Predicting')
     predicted_tags = crf_model.predict(x_test)
 
-    return log, predicted_tags
+    y_test_flat = list(chain(*y_test))
+
+    return log, predicted_tags, y_test_flat
 
 def pickle_results(prediction_results,
                    incl_metamap=False,
@@ -1332,6 +1351,7 @@ def parse_arguments():
     parser.add_argument('--sentnrmode', action='store', type=str, default=None)
     parser.add_argument('--sectionmode', action='store', type=str, default=None)
     parser.add_argument('--tensemode', action='store', type=str, default=None)
+    parser.add_argument('--metatags', action='store_true', default=False)
 
     arguments = parser.parse_args()
 
@@ -1360,6 +1380,7 @@ def parse_arguments():
     args['sent_nr_mode'] = arguments.sentnrmode
     args['section_mode'] = arguments.sectionmode
     args['tense_mode'] = arguments.tensemode
+    args['metatags'] = arguments.metatags
 
     return args
 
@@ -1437,11 +1458,11 @@ if __name__ == '__main__':
         #                                               path=Dataset.TESTING_FEATURES_PATH+'test',
         #                                               extension=Dataset.TESTING_FEATURES_EXTENSION)
 
-        train_log, valid_y_pred = use_testing_dataset(validation_data, crf_model, feature_function)
+        train_log, valid_y_pred, valid_y_true = use_testing_dataset(validation_data, crf_model, feature_function, **args)
 
         print train_log[-1]
 
-    valid_y_true = list(chain(*chain(*validation_tags.values())))
+    # valid_y_true = list(chain(*chain(*validation_tags.values())))
 
     assert valid_y_pred is not None
     assert valid_y_true.__len__() == valid_y_pred.__len__()
@@ -1455,7 +1476,10 @@ if __name__ == '__main__':
     print 'MACRO results'
     print results_macro
 
-    labels_list = get_classification_report_labels()
+    if args['metatags']:
+        labels_list = get_aggregated_classification_report_labels()
+    else:
+        labels_list = get_classification_report_labels()
     assert labels_list is not None
 
     results_noaverage = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, labels=labels_list, average=None)
