@@ -31,6 +31,7 @@ from data import get_google_knowled_graph_cache
 from data import get_w2v_model
 from data import get_w2v_training_data_vectors
 from utils import features_distributions
+from utils import get_word_tenses
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -68,6 +69,7 @@ class CRF:
                  output_model_filename,
                  sent_nr_mode,
                  section_mode,
+                 tense_mode,
                  w2v_vector_features=False,
                  w2v_similar_words=False,
                  kmeans_features=False,
@@ -99,6 +101,7 @@ class CRF:
 
         self.sent_nr_mode = sent_nr_mode
         self.section_mode = section_mode
+        self.tense_mode = tense_mode
 
         self.kmeans_model_name = kmeans_model_name
 
@@ -164,6 +167,8 @@ class CRF:
 
         self.training_word_sent_nr_representations = features_distributions.training_word_sent_nr_representations()
         self.training_word_section_representations = features_distributions.training_word_section_representations(6)
+        self.token_tenses = None
+        self.token_nr = 0
 
     def load_knowledge_graph_cache(self, path):
         return pickle.load(open(get_google_knowled_graph_cache(path), 'rb'))
@@ -290,6 +295,16 @@ class CRF:
 
         return features
 
+    def add_tense_features(self, mode):
+        features = dict()
+
+        assert self.token_tenses is not None
+
+        if mode == 'association':
+            features['word_tense'] = self.token_tenses[self.token_nr]
+
+        return features
+
     def extend_original_word_features(self, sentence, word_idx, sentence_ix):
         features = dict()
 
@@ -320,6 +335,13 @@ class CRF:
         if self.section_mode is not None:
             section_feats = self.add_section_nr_feature(word, mode=self.section_mode)
             features.update(section_feats)
+
+        if self.tense_mode is not None:
+            try:
+                tense_feats = self.add_tense_features(mode=self.tense_mode)
+                features.update(tense_feats)
+            except IndexError:
+                print 'debug'
 
         if word_idx > 0:
             previous_word = sentence[word_idx-1]['word']
@@ -881,8 +903,8 @@ class CRF:
 
     def get_sentence_features(self, sentence, feature_function, sentence_ix):
         features = []
-        for j, word_dict in enumerate(sentence):
-            features.append(feature_function(sentence, j, sentence_ix=sentence_ix))
+        for word_ix, word_dict in enumerate(sentence):
+            features.append(feature_function(sentence, word_idx=word_ix, sentence_ix=sentence_ix))
 
         return features
 
@@ -1229,12 +1251,20 @@ def use_testing_dataset(testing_data, crf_model, feature_function):
     # set the testing_data attribute of the model
     crf_model.testing_data = testing_data
 
+    # initialise token tenses
+    crf_model.token_tenses = list(chain(*get_word_tenses.get_training_set_tenses().values()))
+    crf_model.token_nr = 0
+
     # get training features
     x = crf_model.get_features_from_crf_training_data(crf_model.training_data, feature_function)
     y = crf_model.get_labels_from_crf_training_data(crf_model.training_data)
 
     x_train = list(chain(*x.values()))
     y_train = list(chain(*y.values()))
+
+    # initialise token tenses
+    crf_model.token_tenses = list(chain(*get_word_tenses.get_validation_set_tenses().values()))
+    crf_model.token_nr = 0
 
     # get testing features
     x = crf_model.get_features_from_crf_training_data(crf_model.testing_data, feature_function)
@@ -1301,6 +1331,7 @@ def parse_arguments():
     parser.add_argument('--addbias', action='store_true', default=False)
     parser.add_argument('--sentnrmode', action='store', type=str, default=None)
     parser.add_argument('--sectionmode', action='store', type=str, default=None)
+    parser.add_argument('--tensemode', action='store', type=str, default=None)
 
     arguments = parser.parse_args()
 
@@ -1328,6 +1359,7 @@ def parse_arguments():
     args['add_bias'] = arguments.addbias
     args['sent_nr_mode'] = arguments.sentnrmode
     args['section_mode'] = arguments.sectionmode
+    args['tense_mode'] = arguments.tensemode
 
     return args
 
