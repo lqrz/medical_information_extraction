@@ -16,6 +16,8 @@ import cPickle as pickle
 from collections import OrderedDict
 from itertools import chain
 import pandas as pd
+from scipy import spatial
+from scipy import stats
 
 from data import get_classification_report_labels
 from utils.plot_confusion_matrix import plot_confusion_matrix
@@ -27,6 +29,7 @@ from data.dataset import Dataset
 from data import get_google_knowled_graph_cache
 from data import get_w2v_model
 from data import get_w2v_training_data_vectors
+from utils import features_distributions
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -37,6 +40,7 @@ logger = logging.getLogger(__name__)
 # logger_predictions.addHandler(hndlr)
 # logger_predictions.setLevel(logging.INFO)
 
+np.random.seed(1234)
 
 def memoize(func):
 
@@ -75,6 +79,8 @@ class CRF:
                  crf_iters = None,
                  nnet_ensemble=None,
                  knowledge_graph=None,
+                 verbose=False,
+                 add_bias=False,
                  **kwargs):
 
         self.training_data = training_data
@@ -83,6 +89,10 @@ class CRF:
 
         self.output_model_filename = output_model_filename
         self.model = None
+
+        self.verbose = verbose
+
+        self.add_bias = add_bias
 
         self.kmeans_model_name = kmeans_model_name
 
@@ -145,6 +155,8 @@ class CRF:
         self.knowledge_graph = None
         if knowledge_graph:
             self.knowledge_graph = self.load_knowledge_graph_cache(knowledge_graph)
+
+        self.training_word_sent_nr_representations = features_distributions.training_word_sent_nr_representations()
 
     def load_knowledge_graph_cache(self, path):
         return pickle.load(open(get_google_knowled_graph_cache(path), 'rb'))
@@ -210,7 +222,7 @@ class CRF:
 
         return document_sentence_tag
 
-    def get_custom_word_features(self, sentence, word_idx):
+    def get_custom_word_features(self, sentence, word_idx, sentence_idx, **kwargs):
         features = dict()
         previous_features = dict()
         next_features = dict()
@@ -219,44 +231,29 @@ class CRF:
         features_names = ['word', 'lemma', 'ner', 'pos', 'parse_tree', 'dependents', 'governors', 'has_digit',
                           'is_capitalized']
 
-        word = sentence[word_idx]['word']
+        word = sentence[word_idx]['word'].lower()
         word_lemma = sentence[word_idx]['features'][0]
         word_ner = sentence[word_idx]['features'][1]
         word_pos = sentence[word_idx]['features'][2]
         word_parse_tree = sentence[word_idx]['features'][3]
         word_basic_dependents = sentence[word_idx]['features'][4]
         word_basic_governors = sentence[word_idx]['features'][5]
-        # word_unk_score = self.training_data[file_idx][word_idx]['features'][6]
-        # word_phrase = self.training_data[file_idx][word_idx]['features'][7]
-        # word_top_candidate_1 = self.training_data[file_idx][word_idx]['features'][8]
-        # word_top_candidate_2 = self.training_data[file_idx][word_idx]['features'][9]
-        # word_top_candidate_3 = self.training_data[file_idx][word_idx]['features'][10]
-        # word_top_candidate_4 = self.training_data[file_idx][word_idx]['features'][11]
-        # word_top_candidate_5 = self.training_data[file_idx][word_idx]['features'][12]
-        # word_top_mapping = self.training_data[file_idx][word_idx]['features'][13]
-        # word_medication_score = self.training_data[file_idx][word_idx]['features'][14]
-        # word_location = self.training_data[file_idx][word_idx]['features'][15]
+
         word_tag = sentence[word_idx]['tag']
         word_shape_digit = re.search('\d', word) is not None
         word_shape_capital = re.match('[A-Z]', word) is not None
 
         word_feature_values = [word, word_lemma, word_ner, word_pos,
-                                 word_parse_tree, word_basic_dependents,
-                                 word_basic_governors, word_shape_digit,
-                                 word_shape_capital]
+                               word_parse_tree, word_basic_dependents,
+                               word_basic_governors, word_shape_digit,
+                               word_shape_capital]
 
         for desc,val in zip(features_names,word_feature_values):
             word_features[desc] = val
 
-        # features.append(word)
-        # features.append(word_lemma)
-        # features.append(word_ner)
-        # features.append(word_pos)
-        # features.append(word_parse_tree)
-        # features.append(word_basic_dependents)
-        # features.append(word_basic_governors)
-        # features.append(word_shape_digit)
-        # features.append(word_shape_capital)
+        if self.add_bias:
+            features['bias1'] = True
+
         features['word'] = word
         features['word_lemma'] = word_lemma
         features['word_ner'] = word_ner
@@ -277,36 +274,17 @@ class CRF:
             previous_word_parse_tree = sentence[word_idx-1]['features'][3]
             previous_word_basic_dependents = sentence[word_idx-1]['features'][4]
             previous_word_basic_governors = sentence[word_idx-1]['features'][5]
-            # previous_word_unk_score = self.training_data[file_idx][word_idx-1]['features'][6]
-            # previous_word_phrase = self.training_data[file_idx][word_idx-1]['features'][7]
-            # previous_word_top_candidate_1 = self.training_data[file_idx][word_idx-1]['features'][8]
-            # previous_word_top_candidate_2 = self.training_data[file_idx][word_idx-1]['features'][9]
-            # previous_word_top_candidate_3 = self.training_data[file_idx][word_idx-1]['features'][10]
-            # previous_word_top_candidate_4 = self.training_data[file_idx][word_idx-1]['features'][11]
-            # previous_word_top_candidate_5 = self.training_data[file_idx][word_idx-1]['features'][12]
-            # previous_word_top_mapping = self.training_data[file_idx][word_idx-1]['features'][13]
-            # previous_word_medication_score = self.training_data[file_idx][word_idx-1]['features'][14]
-            # previous_word_location = self.training_data[file_idx][word_idx-1]['features'][15]
             previous_word_shape_digit = re.search('\d', previous_word) is not None
             previous_word_shape_capital = re.match('[A-Z]', previous_word) is not None
 
             previous_features_values = [previous_word, previous_word_lemma, previous_word_ner, previous_word_pos,
-                                     previous_word_parse_tree, previous_word_basic_dependents,
-                                     previous_word_basic_governors, previous_word_shape_digit,
-                                     previous_word_shape_capital]
+                                        previous_word_parse_tree, previous_word_basic_dependents,
+                                        previous_word_basic_governors, previous_word_shape_digit,
+                                        previous_word_shape_capital]
 
             for desc,val in zip(features_names,previous_features_values):
                 previous_features[desc] = val
 
-            # features.append(previous_word)
-            # features.append(previous_word_lemma)
-            # features.append(previous_word_ner)
-            # features.append(previous_word_pos)
-            # features.append(previous_word_parse_tree)
-            # features.append(previous_word_basic_dependents)
-            # features.append(previous_word_basic_governors)
-            # features.append(previous_word_shape_digit)
-            # features.append(previous_word_shape_capital)
             features['previous_word'] = previous_word
             features['previous_lemma'] = previous_word_lemma
             features['previous_ner'] = previous_word_ner
@@ -324,11 +302,11 @@ class CRF:
                 for feat_name in features_names:
                     try:
                         features['previous_'+feat_name+'_'+feat_name] = \
-                        previous_features[feat_name] + '/' + word_features[feat_name]
+                            previous_features[feat_name] + '/' + word_features[feat_name]
                     except TypeError:
                         # this is for boolean-type features
                         features['previous_'+feat_name+'_'+feat_name] = \
-                        previous_features[feat_name] or word_features[feat_name]
+                            previous_features[feat_name] or word_features[feat_name]
 
         else:
             # features.append('BOS')
@@ -342,36 +320,17 @@ class CRF:
             next_word_parse_tree = sentence[word_idx+1]['features'][3]
             next_word_basic_dependents = sentence[word_idx+1]['features'][4]
             next_word_basic_governors = sentence[word_idx+1]['features'][5]
-            # next_word_unk_score = self.training_data[file_idx][word_idx+1]['features'][6]
-            # next_word_phrase = self.training_data[file_idx][word_idx+1]['features'][7]
-            # next_word_top_candidate_1 = self.training_data[file_idx][word_idx+1]['features'][8]
-            # next_word_top_candidate_2 = self.training_data[file_idx][word_idx+1]['features'][9]
-            # next_word_top_candidate_3 = self.training_data[file_idx][word_idx+1]['features'][10]
-            # next_word_top_candidate_4 = self.training_data[file_idx][word_idx+1]['features'][11]
-            # next_word_top_candidate_5 = self.training_data[file_idx][word_idx+1]['features'][12]
-            # next_word_top_mapping = self.training_data[file_idx][word_idx+1]['features'][13]
-            # next_word_medication_score = self.training_data[file_idx][word_idx+1]['features'][14]
-            # next_word_location = self.training_data[file_idx][word_idx+1]['features'][15]
             next_word_shape_digit = re.search('\d', next_word) is not None
             next_word_shape_capital = re.match('[A-Z]', next_word) is not None
 
             next_feature_values = [next_word, next_word_lemma, next_word_ner, next_word_pos,
-                                     next_word_parse_tree, next_word_basic_dependents,
-                                     next_word_basic_governors, next_word_shape_digit,
-                                     next_word_shape_capital]
+                                   next_word_parse_tree, next_word_basic_dependents,
+                                   next_word_basic_governors, next_word_shape_digit,
+                                   next_word_shape_capital]
 
             for desc,val in zip(features_names,next_feature_values):
                 next_features[desc] = val
 
-            # features.append(next_word)
-            # features.append(next_word_lemma)
-            # features.append(next_word_ner)
-            # features.append(next_word_pos)
-            # features.append(next_word_parse_tree)
-            # features.append(next_word_basic_dependents)
-            # features.append(next_word_basic_governors)
-            # features.append(next_word_shape_digit)
-            # features.append(next_word_shape_capital)
             features['next_word'] = next_word
             features['next_lemma'] = next_word_lemma
             features['next_ner'] = next_word_ner
@@ -389,11 +348,11 @@ class CRF:
                 for feat_name in features_names:
                     try:
                         features[feat_name+'_'+'next_'+feat_name] = \
-                        word_features[feat_name] + '/' + next_features[feat_name]
+                            word_features[feat_name] + '/' + next_features[feat_name]
                     except TypeError:
                         # this is for boolean-type features
                         features[feat_name+'_'+'next_'+feat_name] = \
-                        word_features[feat_name] or next_features[feat_name]
+                            word_features[feat_name] or next_features[feat_name]
 
         else:
             # features.append('EOS')
@@ -404,7 +363,7 @@ class CRF:
             similar_words = self.get_similar_w2v_words(word, self.similar_words_cache, topn=5)
             for j,sim_word in enumerate(similar_words):
                 features['w2v_similar_word_'+str(j)] = sim_word
-            # features.extend(similar_words)
+                # features.extend(similar_words)
 
         # kmeans features
         if (self.kmeans_features and self.kmeans_model) and self.w2v_model:
@@ -417,7 +376,7 @@ class CRF:
             topics = self.get_lda_topics(word, self.word_lda_topics, topn=5)
             for j,topic in enumerate(topics):
                 features['lda_topic_'+str(j)] = str(topic)
-            # features.extend(topics)
+                # features.extend(topics)
 
         # word2vec dimensions features
         if self.w2v_vector_features and (self.w2v_model or self.word_vector_cache):
@@ -488,7 +447,7 @@ class CRF:
 
         return topics
 
-    def get_original_paper_word_features(self, sentence, word_idx):
+    def get_original_paper_word_features(self, sentence, word_idx, **kwargs):
         # features = []
         features = OrderedDict()
 
@@ -517,6 +476,9 @@ class CRF:
 
         if self.original_inc_unk_score:
             features['word_unk_score'] = word_unk_score
+
+        if self.add_bias:
+            features['bias1'] = True
 
         # Unigram
         # U01:%x[0,0]
@@ -679,7 +641,7 @@ class CRF:
 
         else:
             # features['BOS'] = True
-            features['BOS'] = 'True'
+            features['BOS'] = True
 
         if word_idx < len(sentence)-1:
             # U02:%x[1,0]
@@ -793,16 +755,10 @@ class CRF:
 
         return features
 
-    def get_sentence_features(self, sentence, feature_function):
-        # return [self.training_data[file_idx][j]['features'] for j, word in enumerate(word_tokenize(sentence))]
+    def get_sentence_features(self, sentence, feature_function, sentence_ix):
         features = []
-        # for j, word in enumerate(word_tokenize(sentence)):
         for j, word_dict in enumerate(sentence):
-            # if word_dict['word'] != word:
-            #     print 'mismatch'
-            # else:
-            #     features.append(feature_function(sentence, file_idx, j))
-            features.append(feature_function(sentence, j))
+            features.append(feature_function(sentence, j, sentence_ix=sentence_ix))
 
         return features
 
@@ -811,8 +767,8 @@ class CRF:
         #         for file_idx, sentences in self.training_data.iteritems() for sentence in sentences]
         document_sentence_features = defaultdict(list)
         for doc_nr, sentences in data.iteritems():
-            for sentence in sentences:
-                document_sentence_features[doc_nr].append(self.get_sentence_features(sentence, feature_function))
+            for sentence_ix, sentence in enumerate(sentences):
+                document_sentence_features[doc_nr].append(self.get_sentence_features(sentence, feature_function, sentence_ix))
 
         return document_sentence_features
 
@@ -823,15 +779,21 @@ class CRF:
         for xseq, yseq in zip(x_train, y_train):
             crf_trainer.append(xseq, yseq)
 
+        crf_trainer.select(algorithm='lbfgs')   # l2sgd or lbfgs
+
         crf_trainer.set_params({
-            'c1': 1.0,
+            # 'c1': 0,  # not passing it equals to setting it to zero.
+            'feature.minfreq': 1,
+            'max_linesearch': 20,
+            'linesearch': 'MoreThuente',    # Backtracking StrongBacktracking MoreThuente
+            'epsilon': 1e-5,
             'c2': 1e-3,
-            'max_iterations': self.crf_iters,
-            'feature.possible_transitions': True,
+            'max_iterations': None,     # set it to None for 'epsilon' to take over, otherwise self.crf_iters
+            'feature.possible_transitions': False,
             'feature.possible_states': False
-            # 'linesearch',
-            # 'max_linesearch'
         })
+
+        print crf_trainer.get_params()
 
         crf_trainer.train(self.output_model_filename)
 
@@ -1158,7 +1120,7 @@ def use_testing_dataset(testing_data, crf_model, feature_function):
     y_test = list(chain(*y.values()))
 
     logger.info('Training the model')
-    log = crf_model.train(x_train, y_train, verbose=True)
+    log = crf_model.train(x_train, y_train, verbose=crf_model.verbose)
 
     logger.info('Predicting')
     predicted_tags = crf_model.predict(x_test)
@@ -1211,6 +1173,7 @@ def parse_arguments():
     parser.add_argument('--cviters', action='store', type=int, default=0)
     parser.add_argument('--crfiters', action='store', type=int, default=50)
     parser.add_argument('--knowledgegraph', action='store', type=str, default=False)
+    parser.add_argument('--addbias', action='store_true', default=False)
 
     arguments = parser.parse_args()
 
@@ -1234,6 +1197,7 @@ def parse_arguments():
     args['use_leave_one_out'] = arguments.leaveoneout
     args['crf_iters'] = arguments.crfiters
     args['knowledge_graph'] = arguments.knowledgegraph
+    args['add_bias'] = arguments.addbias
 
     return args
 
@@ -1308,6 +1272,8 @@ if __name__ == '__main__':
         #                                               extension=Dataset.TESTING_FEATURES_EXTENSION)
 
         train_log, valid_y_pred = use_testing_dataset(validation_data, crf_model, feature_function)
+
+        print train_log[-1]
 
     valid_y_true = list(chain(*chain(*validation_tags.values())))
 
