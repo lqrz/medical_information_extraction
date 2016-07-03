@@ -18,6 +18,7 @@ from itertools import chain
 import pandas as pd
 from scipy import spatial
 from scipy import stats
+import time
 
 from data import get_classification_report_labels
 from utils.plot_confusion_matrix import plot_confusion_matrix
@@ -65,6 +66,8 @@ class CRF:
     def __init__(self, training_data,
                  testing_data,
                  output_model_filename,
+                 sent_nr_mode,
+                 section_mode,
                  w2v_vector_features=False,
                  w2v_similar_words=False,
                  kmeans_features=False,
@@ -93,6 +96,9 @@ class CRF:
         self.verbose = verbose
 
         self.add_bias = add_bias
+
+        self.sent_nr_mode = sent_nr_mode
+        self.section_mode = section_mode
 
         self.kmeans_model_name = kmeans_model_name
 
@@ -157,6 +163,7 @@ class CRF:
             self.knowledge_graph = self.load_knowledge_graph_cache(knowledge_graph)
 
         self.training_word_sent_nr_representations = features_distributions.training_word_sent_nr_representations()
+        self.training_word_section_representations = features_distributions.training_word_section_representations(6)
 
     def load_knowledge_graph_cache(self, path):
         return pickle.load(open(get_google_knowled_graph_cache(path), 'rb'))
@@ -222,7 +229,116 @@ class CRF:
 
         return document_sentence_tag
 
-    def get_custom_word_features(self, sentence, word_idx, sentence_idx, **kwargs):
+    def add_sentence_nr_feature(self, word, sentence_ix, mode):
+        features = dict()
+
+        assert mode in ['string', 'distribution', 'cosine_similarity', 'kl']
+
+        if mode == 'string':
+            # i tried implementing this as float and str, and str gives better results.
+            features['sentence_idx'] = str(sentence_ix)
+        else:
+
+            try:
+                sent_nr_rep = self.training_word_sent_nr_representations[word]
+            except KeyError:
+                sent_nr_rep = [1e-9] * self.training_word_sent_nr_representations.values()[0].__len__()
+
+            if mode == 'distribution':
+                # word as sent_nr distribution
+                for i, v in enumerate(sent_nr_rep):
+                    features['sent_nr_' + str(i + 1)] = v
+
+            else:
+                for i in range(self.training_word_sent_nr_representations.values()[0].__len__()):
+                    sample_rep = [1e-9] * self.training_word_sent_nr_representations.values()[0].__len__()
+                    sample_rep[i] = 1.
+
+                    if mode == 'cosine_similarity':
+                        features['sent_nr_kl'+str(i+1)] = spatial.distance.cosine(sent_nr_rep, sample_rep)
+                    elif mode == 'kl':
+                        features['sent_nr_cos' + str(i + 1)] = stats.entropy(sent_nr_rep, sample_rep)
+
+        return features
+
+    def add_section_nr_feature(self, word, mode):
+        features = dict()
+
+        assert mode in ['string', 'distribution', 'cosine_similarity', 'kl']
+
+        try:
+            sect_rep = self.training_word_section_representations[word]
+        except KeyError:
+            sect_rep = [1e-9] * self.training_word_section_representations.values()[0].__len__()
+
+        if mode == 'string':
+            # section_nr as string
+            features['section_nr'] = str(np.argmax(sect_rep))
+        elif mode == 'distribution':
+            # word as sent_nr distribution
+            for i, v in enumerate(sect_rep):
+                features['sect_rep' + str(i + 1)] = v
+        else:
+            for i in range(self.training_word_section_representations.values()[0].__len__()):
+                sample_rep = [1e-9] * self.training_word_section_representations.values()[0].__len__()
+                sample_rep[i] = 1.
+
+                if mode == 'cosine_similarity':
+                    features['sect_nr_kl'+str(i+1)] = spatial.distance.cosine(sect_rep, sample_rep)
+                elif mode == 'kl':
+                    features['sect_nr_cos'+str(i+1)] = stats.entropy(sect_rep, sample_rep)
+
+        return features
+
+    def extend_original_word_features(self, sentence, word_idx, sentence_ix):
+        features = dict()
+
+        original_features = self.get_original_paper_word_features(sentence, word_idx)
+        features.update(original_features)
+        features['word'] = features['word'].lower()
+
+        if features.has_key('next_word'):
+            features['next_word'] = features['next_word'].lower()
+
+        if features.has_key('previous_word'):
+            features['previous_word'] = features['previous_word'].lower()
+
+        word = sentence[word_idx]['word']
+
+        word_shape_digit = re.search('\d', word) is not None
+        word_shape_capital = re.match('[A-Z]', word) is not None
+
+        features['word_has_digit'] = word_shape_digit
+        features['word_is_capitalized'] = word_shape_capital
+        features['prefix'] = word[:3]
+        features['suffix'] = word[-3:]
+
+        if self.sent_nr_mode is not None:
+            sent_nr_feats = self.add_sentence_nr_feature(word, sentence_ix, mode=self.sent_nr_mode)
+            features.update(sent_nr_feats)
+
+        if self.section_mode is not None:
+            section_feats = self.add_section_nr_feature(word, mode=self.section_mode)
+            features.update(section_feats)
+
+        if word_idx > 0:
+            previous_word = sentence[word_idx-1]['word']
+            previous_word_shape_digit = re.search('\d', previous_word) is not None
+            previous_word_shape_capital = re.match('[A-Z]', previous_word) is not None
+            features['previous_has_digit'] = previous_word_shape_digit
+            features['previous_is_capitalized'] = previous_word_shape_capital
+
+        if word_idx < len(sentence) - 1:
+            next_word = sentence[word_idx+1]['word']
+            next_word_shape_digit = re.search('\d', next_word) is not None
+            next_word_shape_capital = re.match('[A-Z]', next_word) is not None
+
+            features['next_has_digit'] = next_word_shape_digit
+            features['next_is_capitalized'] = next_word_shape_capital
+
+        return features
+
+    def get_custom_word_features(self, sentence, word_idx, sentence_ix):
         features = dict()
         previous_features = dict()
         next_features = dict()
@@ -231,7 +347,7 @@ class CRF:
         features_names = ['word', 'lemma', 'ner', 'pos', 'parse_tree', 'dependents', 'governors', 'has_digit',
                           'is_capitalized']
 
-        word = sentence[word_idx]['word'].lower()
+        word = sentence[word_idx]['word']
         word_lemma = sentence[word_idx]['features'][0]
         word_ner = sentence[word_idx]['features'][1]
         word_pos = sentence[word_idx]['features'][2]
@@ -265,6 +381,14 @@ class CRF:
         features['word_is_capitalized'] = word_shape_capital
         features['prefix'] = word[:3]
         features['suffix'] = word[-3:]
+
+        if self.sent_nr_mode is not None:
+            sent_nr_feats = self.add_sentence_nr_feature(word, sentence_ix, mode=self.sent_nr_mode)
+            features.update(sent_nr_feats)
+
+        if self.section_mode is not None:
+            section_feats = self.add_section_nr_feature(word, mode=self.section_mode)
+            features.update(section_feats)
 
         if word_idx > 0:
             previous_word = sentence[word_idx-1]['word']
@@ -1158,6 +1282,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description='CRF Sklearn')
     parser.add_argument('--originalfeatures', action='store_true', default=False)
     parser.add_argument('--customfeatures', action='store_true', default=False)
+    parser.add_argument('--extendedfeatures', action='store_true', default=False)
     parser.add_argument('--w2vsimwords', action='store_true', default=False)
     parser.add_argument('--w2vvectors', action='store_true', default=False)
     parser.add_argument('--w2vmodel', action='store', type=str, default=None)
@@ -1174,6 +1299,8 @@ def parse_arguments():
     parser.add_argument('--crfiters', action='store', type=int, default=50)
     parser.add_argument('--knowledgegraph', action='store', type=str, default=False)
     parser.add_argument('--addbias', action='store_true', default=False)
+    parser.add_argument('--sentnrmode', action='store', type=str, default=None)
+    parser.add_argument('--sectionmode', action='store', type=str, default=None)
 
     arguments = parser.parse_args()
 
@@ -1182,6 +1309,7 @@ def parse_arguments():
     args = dict()
     args['use_original_paper_features'] = arguments.originalfeatures
     args['use_custom_features'] = arguments.customfeatures
+    args['use_extended_features'] = arguments.extendedfeatures
     args['w2v_similar_words'] = arguments.w2vsimwords
     args['w2v_vector_features'] = arguments.w2vvectors
     args['w2v_model_file'] = arguments.w2vmodel
@@ -1198,6 +1326,8 @@ def parse_arguments():
     args['crf_iters'] = arguments.crfiters
     args['knowledge_graph'] = arguments.knowledgegraph
     args['add_bias'] = arguments.addbias
+    args['sent_nr_mode'] = arguments.sentnrmode
+    args['section_mode'] = arguments.sectionmode
 
     return args
 
@@ -1214,12 +1344,12 @@ def check_arguments_consistency(args):
 
     return True
 
-def determine_output_path(use_original_paper_features, use_custom_features, **kwargs):
+def determine_output_path(use_original_paper_features, use_custom_features, use_extended_features, **kwargs):
     get_output_path = None
 
     if use_original_paper_features:
         get_output_path = get_pycrf_originalfeats_folder
-    elif use_custom_features:
+    elif use_custom_features or use_extended_features:
         get_output_path = get_pycrf_customfeats_folder
     else:
         raise Exception
@@ -1229,6 +1359,8 @@ def determine_output_path(use_original_paper_features, use_custom_features, **kw
 if __name__ == '__main__':
     # training_data_filename = 'handoverdata.zip'
     # test_data_filename = 'handover-set2.zip'
+
+    actual_time = time.time()
 
     args = parse_arguments()
 
@@ -1251,6 +1383,8 @@ if __name__ == '__main__':
         feature_function = crf_model.get_original_paper_word_features
     elif args['use_custom_features']:
         feature_function = crf_model.get_custom_word_features
+    elif args['use_extended_features']:
+        feature_function = crf_model.extend_original_word_features
 
     logger.info('Extracting features with: '+feature_function.__str__())
 
@@ -1296,16 +1430,16 @@ if __name__ == '__main__':
 
     print '...Saving no-averaged results to CSV file'
     df = pd.DataFrame(results_noaverage, index=labels_list)
-    df.to_csv(get_output_path('no_average_results.csv'))
+    df.to_csv(get_output_path('no_average_results_'+str(actual_time)+'.csv'))
 
     print '...Ploting confusion matrix'
     cm = Metrics.compute_confusion_matrix(valid_y_true, valid_y_pred, labels=labels_list)
-    plot_confusion_matrix(cm, labels=labels_list, output_filename=get_output_path('confusion_matrix.png'))
+    plot_confusion_matrix(cm, labels=labels_list, output_filename=get_output_path('confusion_matrix_'+str(actual_time)+'.png'))
 
     print '...Computing classification stats'
     stats = Metrics.compute_classification_stats(valid_y_true, valid_y_pred, labels_list)
     df = pd.DataFrame(stats, index=['tp', 'tn', 'fp', 'fn'], columns=labels_list).transpose()
-    df.to_csv(get_output_path('classification_stats.csv'))
+    df.to_csv(get_output_path('classification_stats_'+str(actual_time)+'.csv'))
 
     print '...Pickling results'
     pickle_results(valid_y_pred, get_output_path=get_output_path, **args)
