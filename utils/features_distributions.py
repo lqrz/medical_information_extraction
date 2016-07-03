@@ -66,6 +66,26 @@ def training_word_sentence_nr_distribution():
 
     return distribution
 
+def training_word_section_distribution(n_sections):
+    distribution = dict()
+
+    _, _, training_words, _ = Dataset.get_clef_training_dataset()
+
+    section_nr = []
+    for doc in training_words.values():
+        doc_word_len = list(chain(*doc)).__len__()
+        words_per_section = np.int(np.ceil(doc_word_len / float(n_sections)))
+        section_nr.extend(np.arange(doc_word_len) // words_per_section)
+
+    tokens = list(chain(*chain(*training_words.values())))
+
+    counts = Counter(zip(tokens, section_nr))
+
+    for (word, sect_nr), cnt in counts.iteritems():
+        distribution[(word, sect_nr)] = float(cnt) / sum([v for (w,_),v in counts.iteritems() if w==word])
+
+    return distribution
+
 def training_tag_sentence_nr_distribution():
     distribution = dict()
 
@@ -157,6 +177,23 @@ def training_word_sent_nr_representations():
 
     return representations
 
+def training_word_section_representations(n_sections):
+    representations = dict()
+    distribution = training_word_section_distribution(n_sections)
+    training_data, _, training_words, _ = Dataset.get_clef_training_dataset()
+
+    unique_words = set(chain(*chain(*training_words.values())))
+
+    for word in unique_words:
+        rep = [0.] * n_sections
+        for sect_ix, prob in [(p,v) for (w,p),v in distribution.iteritems() if w==word]:
+            rep[sect_ix] = prob
+
+        assert any(rep)
+        representations[word] = rep
+
+    return representations
+
 def training_word_tense_representations():
     representations = dict()
     distribution = training_word_tenses_distribution()
@@ -240,4 +277,5 @@ if __name__ == '__main__':
     # training_word_sentence_nr_distribution()
     # training_word_pos_distribution()
     # training_tag_pos_distribution()
-    training_word_ner_distribution()
+    # training_word_ner_distribution()
+    training_word_section_representations(n_sections=6)
