@@ -21,7 +21,7 @@ from data import get_classification_report_labels
 from utils.plot_confusion_matrix import plot_confusion_matrix
 from utils import utils
 from utils.metrics import Metrics
-from trained_models import get_pycrf_customfeats_folder, get_pycrf_originalfeats_folder
+from trained_models import get_sklearncrf_customfeats_folder, get_sklearncrf_originalfeats_folder
 from trained_models import get_kmeans_path, get_lda_path
 from data.dataset import Dataset
 from data import get_google_knowled_graph_cache
@@ -830,8 +830,9 @@ class CRF:
         # crf_trainer = sklearn_crfsuite.Trainer(verbose=verbose)
         crf_trainer = sklearn_crfsuite.CRF(
             algorithm='lbfgs',
-            c1=1.0,
-            c2=1e-3,
+            linesearch='MoreThuente',   # 'Backtracking' or 'StrongBacktracking'
+            c1=1.0,     # alpha for L1 regularization
+            c2=1e-3,    # alpha for L2 regularization
             max_iterations=self.crf_iters,
             all_possible_transitions=True,
             verbose=verbose
@@ -1271,9 +1272,9 @@ def determine_output_path(use_original_paper_features, use_custom_features, **kw
     get_output_path = None
 
     if use_original_paper_features:
-        get_output_path = get_pycrf_originalfeats_folder
+        get_output_path = get_sklearncrf_originalfeats_folder
     elif use_custom_features:
-        get_output_path = get_pycrf_customfeats_folder
+        get_output_path = get_sklearncrf_customfeats_folder
     else:
         raise Exception
 

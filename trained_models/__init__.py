@@ -88,6 +88,22 @@ def get_pycrf_originalfeats_folder(filename):
 
     return path
 
+def get_sklearncrf_customfeats_folder(filename):
+    path = pkg_resources.resource_filename('trained_models', 'sklearn_crf/custom_feats/%s' % filename)
+    dir = os.path.dirname(path)
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+    return path
+
+def get_sklearncrf_originalfeats_folder(filename):
+    path = pkg_resources.resource_filename('trained_models', 'sklearn_crf/original_feats/%s' % filename)
+    dir = os.path.dirname(path)
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+    return path
+
 def get_lda_path(file_name):
     return pkg_resources.resource_filename('trained_models', 'lda/'+file_name)
 
