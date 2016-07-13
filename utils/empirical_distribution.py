@@ -55,9 +55,18 @@ class Empirical_distribution():
 
         return self.validation_distribution
 
-def plot_empirical_distribution(distribution, label2index):
-    labels = map(lambda x: label2index[x], [tag for tag,_ in distribution])
-    probs = [prob for _,prob in distribution]
+def plot_empirical_distribution(distribution):
+    import rpy2.robjects as robj
+    import rpy2.robjects.pandas2ri  # for dataframe conversion
+    from rpy2.robjects.packages import importr
+    from trained_models import get_analysis_folder_path
+    from data import get_training_classification_report_labels
+
+    # labels = map(lambda x: label2index[x], [tag for tag,_ in distribution])
+    labels = get_training_classification_report_labels()
+    probs = []
+    for lab in labels:
+        probs.extend([p for t,p in distribution if t==lab])
 
     data = {
         'labels': labels,
@@ -65,10 +74,41 @@ def plot_empirical_distribution(distribution, label2index):
     }
 
     df = pd.DataFrame(data)
-    p = ggplot(df, aes(x='labels', weight='probs')) + \
-        geom_bar(stat='bin')
+    plotFunc = robj.r("""
+        library(ggplot2)
 
-    ggsave('empirical_distribution', p, dpi=100, bbox_inches='tight')
+        function(df, output_filename){
+            str(df)
+            # the following instructions are for the plot to take the order given in the dataframe,
+            # otherwise, ggplot will reorder it alphabetically.
+            df$labels <- as.character(df$labels)
+            df$labels <- factor(df$labels, levels=unique(df$labels))
+            str(df)
+            p <- ggplot(df, aes(x=labels, y=probs)) +
+            geom_bar(stat="identity") +
+            labs(x='Label', y='Probability', title='Empirical distribution') +
+            ylim(0,1) +
+            theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+            print(p)
+
+            ggsave(output_filename, plot=p)
+
+            }
+        """)
+
+    gr = importr('grDevices')
+    robj.pandas2ri.activate()
+    conv_df = robj.conversion.py2ri(df)
+
+    plotFunc(conv_df, get_analysis_folder_path('empirical_distribution.png'))
+
+    gr.dev_off()
+
+    # p = ggplot(df, aes(x='labels', weight='probs')) + \
+    #     geom_bar(stat='bin')
+
+    # ggsave('empirical_distribution', p, dpi=100, bbox_inches='tight')
 
 if __name__ == '__main__':
     ed = Empirical_distribution.Instance()
@@ -84,12 +124,12 @@ if __name__ == '__main__':
         except:
             continue
 
-    _, _, _, document_sentence_tags = Dataset.get_clef_validation_dataset()
+    _, _, _, document_sentence_tags = Dataset.get_clef_training_dataset(lowercase=False)
     tags = list(chain(*(chain(*document_sentence_tags.values()))))
 
-    label2index = OrderedDict()
-    label2index.update(list(zip(set(tags), range(set(tags).__len__()))))
+    # label2index = OrderedDict()
+    # label2index.update(list(zip(set(tags), range(set(tags).__len__()))))
 
-    plot_empirical_distribution(validation_dist, label2index)
+    plot_empirical_distribution(training_dist)
 
     print '...End'
