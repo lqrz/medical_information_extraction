@@ -19,7 +19,8 @@ from ggplot_lqrz import ggplot_lqrz
 
 
 def get_data():
-    training_data, _, document_sentence_words, document_sentence_tags = Dataset.get_clef_training_dataset()
+    training_data, _, document_sentence_words, document_sentence_tags = \
+        Dataset.get_clef_training_dataset(lowercase=False)
 
     return training_data, document_sentence_words, document_sentence_tags
 
@@ -83,7 +84,44 @@ def get_vector_matrix(words_per_tag, word2index, original_embeddings):
 
     return np.array(reps), np.array(tags), np.array(counts)
 
+# def plot_pca(reps, tags, counts, dimensions, get_output_path, resize=False, title=None, **kwargs):
+#
+#     plt = None
+#
+#     if dimensions == 2:
+#         sklearn_pca = sklearnPCA(n_components=2)
+#         sklearn_transf = sklearn_pca.fit_transform(reps)
+#
+#         if resize:
+#             data = np.concatenate([sklearn_transf, np.matrix(tags).T, np.matrix(counts).T], axis=1)
+#             df = pd.DataFrame(data, columns=['x', 'y', 'tag', 'count'])
+#
+#             p = ggplot_lqrz(df, aes(x='x', y='y', color='tag', size='count')) + \
+#                 geom_point() + \
+#                 labs(x='1st-component', y='2nd-component', title='PCA') + \
+#                 xlim(-5, 5) + \
+#                 ylim(-5, 5)
+#         else:
+#             data = np.concatenate([sklearn_transf, np.matrix(tags).T], axis=1)
+#             df = pd.DataFrame(data, columns=['x', 'y', 'tag'])
+#
+#             p = ggplot_lqrz(df, aes(x='x', y='y', color='tag')) + \
+#                 geom_point(size=20) + \
+#                 labs(x='1st-component', y='2nd-component', title='PCA') + \
+#                 xlim(-5, 5) + \
+#                 ylim(-5, 5)
+#
+#
+#     output_filename = ''.join(['test_dataset_pca-%s', '-resize' if resize else '-no_resize',
+#                                '-', title if title else '', '.png'])
+#     ggsave(get_output_path(output_filename % dimensions), p, dpi=100, bbox_inches='tight')
+#
+#     return True
+
 def plot_pca(reps, tags, counts, dimensions, get_output_path, resize=False, title=None, **kwargs):
+    import rpy2.robjects as robj
+    import rpy2.robjects.pandas2ri  # for dataframe conversion
+    from rpy2.robjects.packages import importr
 
     plt = None
 
@@ -104,16 +142,47 @@ def plot_pca(reps, tags, counts, dimensions, get_output_path, resize=False, titl
             data = np.concatenate([sklearn_transf, np.matrix(tags).T], axis=1)
             df = pd.DataFrame(data, columns=['x', 'y', 'tag'])
 
-            p = ggplot_lqrz(df, aes(x='x', y='y', color='tag')) + \
-                geom_point(size=20) + \
-                labs(x='1st-component', y='2nd-component', title='PCA') + \
-                xlim(-5, 5) + \
-                ylim(-5, 5)
+            # p = ggplot_lqrz(df, aes(x='x', y='y', color='tag')) + \
+            #     geom_point(size=20) + \
+            #     labs(x='1st-component', y='2nd-component', title='PCA') + \
+            #     xlim(-5, 5) + \
+            #     ylim(-5, 5)
 
+            plotFunc = robj.r("""
+                library(ggplot2)
 
-    output_filename = ''.join(['test_dataset_pca-%s', '-resize' if resize else '-no_resize',
-                               '-', title if title else '', '.png'])
-    ggsave(get_output_path(output_filename % dimensions), p, dpi=100, bbox_inches='tight')
+                function(df, title){
+                    str(df)
+                    df$x <- as.numeric(as.character(df$x))
+                    df$y <- as.numeric(as.character(df$y))
+                    str(df)
+                    p <- ggplot(df, aes(x=x, y=y, colour=tag)) +
+                    geom_point() +
+                    labs(x='1st-component', y='2nd-component', title='PCA') +
+                    xlim(-5,5) +
+                    ylim(-5,5)
+
+                    print(p)
+
+                    ggsave(title, plot=p, width=14, height=7)
+
+                    }
+                """)
+
+            gr = importr('grDevices')
+            robj.pandas2ri.activate()
+            conv_df = robj.conversion.py2ri(df)
+
+            output_filename = ''.join(['test_dataset_pca-%s', '-resize' if resize else '-no_resize',
+                                       '-', title if title else '', '.png'])
+
+            plotFunc(conv_df, get_output_path(output_filename % dimensions))
+
+            gr.dev_off()
+
+    # output_filename = ''.join(['test_dataset_pca-%s', '-resize' if resize else '-no_resize',
+    #                            '-', title if title else '', '.png'])
+    # ggsave(get_output_path(output_filename % dimensions), p, dpi=100, bbox_inches='tight')
 
     return True
 
