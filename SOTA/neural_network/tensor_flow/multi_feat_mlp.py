@@ -15,6 +15,7 @@ class Multi_feat_Neural_Net(A_neural_network):
                  train_sent_nr_feats, valid_sent_nr_feats, test_sent_nr_feats,
                  train_tense_feats, valid_tense_feats, test_tense_feats,
                  training_param_names, tuning_param_names,
+                 n_hidden,
                  **kwargs):
 
         super(Multi_feat_Neural_Net, self).__init__(**kwargs)
@@ -29,6 +30,8 @@ class Multi_feat_Neural_Net(A_neural_network):
         self.w1_tense = None
         self.w2 = None
         self.b2 = None
+        self.w3 = None
+        self.b3 = None
 
         # datasets
         self.train_pos_feats = train_pos_feats
@@ -75,7 +78,8 @@ class Multi_feat_Neural_Net(A_neural_network):
 
         self.features_to_use = self.parse_features_to_use(cnn_features)
 
-        self.n_hidden = self.determine_hidden_layer_size()
+        self.n_hidden = n_hidden
+        self.hidden_layer_size = self.determine_hidden_layer_size()
 
         # parameters to get L2
         self.regularizables = []
@@ -200,13 +204,24 @@ class Multi_feat_Neural_Net(A_neural_network):
         else:
             minibatch_size = batch_size
 
+        if self.n_hidden > 0:
+            print 'Using two hidden layer MLP architecture with window: %d hidden_layer: %d batch_size: %d learning_rate_train: %f learning_rate_tune: %f' % (
+            self.n_window, self.n_hidden, minibatch_size, kwargs['learning_rate_train'], kwargs['learning_rate_tune'])
+            self.forward_function = self.forward_two_hidden_layer
+            self.hidden_activations = self.hidden_activations_two_hidden_layer
+        else:
+            print 'Using one hidden layer MLP architecture with window: %d batch_size: %d learning_rate_train: %f learning_rate_tune: %f' % (
+                self.n_window, minibatch_size, kwargs['learning_rate_train'], kwargs['learning_rate_tune'])
+            self.forward_function = self.forward_one_hidden_layer
+            self.hidden_activations = self.hidden_activations_one_hidden_layer
+
         with self.graph.as_default():
             print 'Trainable parameters: ' + ', '.join([param.name for param in tf.trainable_variables()])
             print 'Training-params: ' + ','.join([param.name for param in self.training_params])
             print 'Tuning-params: ' + ','.join([param.name for param in self.fine_tuning_params])
             print 'Regularizable parameters: ' + ', '.join([param.name for param in self.regularizables])
 
-        print 'Hidden layer size: %d' % self.n_hidden
+        print 'Hidden layer size: %d' % self.hidden_layer_size
         self._train_graph(minibatch_size, **kwargs)
 
     def initialize_parameters(self, static):
@@ -265,7 +280,6 @@ class Multi_feat_Neural_Net(A_neural_network):
                 else:
                     raise Exception
 
-
             if self.using_tense_feature():
                 self.w1_tense = tf.Variable(initial_value=self.tense_embeddings, dtype=tf.float32,
                                             trainable=not static, name='w1_tense')
@@ -278,8 +292,24 @@ class Multi_feat_Neural_Net(A_neural_network):
                 else:
                     raise Exception
 
-            self.w2 = tf.Variable(tf.truncated_normal(shape=[self.n_hidden, self.n_out], stddev=0.1), name='w2')
-            self.b2 = tf.Variable(tf.constant(0.1, shape=[self.n_out]), name='b2')
+            if self.n_hidden > 0:
+                # two hidden layers
+                self.w2 = tf.Variable(tf.truncated_normal(shape=[self.hidden_layer_size, self.n_hidden], stddev=0.1),
+                                      name='w2')
+                self.b2 = tf.Variable(tf.constant(0.1, shape=[self.n_hidden]), name='b2')
+
+                self.w3 = tf.Variable(initial_value=tf.truncated_normal(shape=[self.n_hidden, self.n_out], stddev=0.1),
+                                      name='w3')
+                self.b3 = tf.Variable(tf.constant(0.1, shape=[self.n_out]), name='b3')
+
+                self.regularizables.append(self.w3)
+                self.training_params.append(self.w3)
+                self.training_params.append(self.b3)
+            else:
+                # one hidden layer
+                self.w2 = tf.Variable(tf.truncated_normal(shape=[self.hidden_layer_size, self.n_out], stddev=0.1),
+                                      name='w2')
+                self.b2 = tf.Variable(tf.constant(0.1, shape=[self.n_out]), name='b2')
 
             self.regularizables.append(self.w2)
             self.training_params.append(self.w2)
@@ -319,6 +349,34 @@ class Multi_feat_Neural_Net(A_neural_network):
 
         return embeddings_concat
 
+    def hidden_activations_one_hidden_layer(self, w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs):
+        # lookup and reshape
+        embeddings_concat = self.perform_embeddings_lookup(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
+        h = tf.tanh(embeddings_concat)
+
+        return h
+
+    def forward_one_hidden_layer(self, w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs):
+        h = self.hidden_activations_one_hidden_layer(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
+
+        return tf.nn.xw_plus_b(h, self.w2, self.b2)
+
+    def hidden_activations_two_hidden_layer(self, w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs):
+        # lookup and reshape
+        embeddings_concat = self.perform_embeddings_lookup(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
+        h1 = tf.tanh(embeddings_concat)
+        h2 = tf.tanh(tf.nn.xw_plus_b(h1, self.w2, self.b2))
+
+        return h2
+
+    def forward_two_hidden_layer(self, w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs):
+        h = self.hidden_activations_two_hidden_layer(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
+
+        return tf.nn.xw_plus_b(h, self.w3, self.b3)
+
+    def compute_predictions(self, out_logits):
+        return tf.to_int32(tf.argmax(tf.nn.softmax(out_logits), 1))
+
     def _train_graph(self, minibatch_size, max_epochs,
                      learning_rate_train, learning_rate_tune, lr_decay,
                      plot, alpha_l2=0.001,
@@ -337,18 +395,17 @@ class Multi_feat_Neural_Net(A_neural_network):
 
             labels = tf.placeholder(tf.int32, name='labels')
 
-            embeddings_concat = self.perform_embeddings_lookup(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
 
             # h_dropout = tf.nn.dropout(embeddings_concat, keep_prob)
 
-            out_logits = tf.nn.xw_plus_b(embeddings_concat, self.w2, self.b2)
+            out_logits = self.forward_function(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
 
             l2 = tf.add_n([tf.nn.l2_loss(param) for param in self.regularizables])
 
             cross_entropy = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=out_logits, labels=labels))
             cost = cross_entropy + alpha_l2 * l2
 
-            predictions = tf.to_int32(tf.argmax(tf.nn.softmax(out_logits), 1))
+            predictions = self.compute_predictions(out_logits)
             n_errors = tf.reduce_sum(tf.to_int32(tf.not_equal(predictions, labels)))
 
             optimizer = self.instantiate_optimizer(learning_rate_tune, learning_rate_train, cost)
@@ -584,13 +641,9 @@ class Multi_feat_Neural_Net(A_neural_network):
             tense_idxs = self.graph.get_tensor_by_name(name='tense_idxs:0')
             # labels = self.graph.get_tensor_by_name(name='labels:0')
 
-            embeddings_concat = self.perform_embeddings_lookup(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
+            out_logits = self.forward_function(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
 
-            out_logits = tf.nn.xw_plus_b(embeddings_concat, self.w2, self.b2)
-
-            predictions = tf.to_int32(tf.argmax(tf.nn.softmax(out_logits), 1))
-
-            # init = tf.initialize_all_variables()
+            predictions = self.compute_predictions(out_logits)
 
         with tf.Session(graph=self.graph) as session:
             # init.run()
@@ -638,7 +691,7 @@ class Multi_feat_Neural_Net(A_neural_network):
     def get_hidden_activations(self, on_training_set, on_validation_set, on_testing_set, **kwargs):
 
         hidden_activations = None
-        
+
         if on_training_set:
             dataset = 'train'
         elif on_validation_set:
@@ -655,7 +708,7 @@ class Multi_feat_Neural_Net(A_neural_network):
             sent_nr_idxs = self.graph.get_tensor_by_name(name='sent_nr_idxs:0')
             tense_idxs = self.graph.get_tensor_by_name(name='tense_idxs:0')
 
-            embeddings_concat = self.perform_embeddings_lookup(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
+            h = self.hidden_activations(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
 
         with tf.Session(graph=self.graph) as session:
             # init.run()
@@ -665,6 +718,6 @@ class Multi_feat_Neural_Net(A_neural_network):
             feed_dict = self.get_feed_dict(None, None,
                                            w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs,
                                            labels=None, dataset=dataset)
-            hidden_activations = session.run(embeddings_concat, feed_dict=feed_dict)
+            hidden_activations = session.run(h, feed_dict=feed_dict)
 
         return hidden_activations
