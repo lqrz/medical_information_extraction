@@ -561,7 +561,7 @@ class Multi_feat_Neural_Net(A_neural_network):
 
         if on_training_set:
             dataset = 'train'
-            y_test = self.x_train
+            y_test = self.y_train
         elif on_validation_set:
             dataset = 'valid'
             y_test = self.y_valid
@@ -588,7 +588,7 @@ class Multi_feat_Neural_Net(A_neural_network):
 
             out_logits = tf.nn.xw_plus_b(embeddings_concat, self.w2, self.b2)
 
-            predictions = tf.to_int32(tf.argmax(out_logits, 1))
+            predictions = tf.to_int32(tf.argmax(tf.nn.softmax(out_logits), 1))
 
             # init = tf.initialize_all_variables()
 
