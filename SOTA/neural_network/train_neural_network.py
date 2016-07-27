@@ -717,6 +717,14 @@ def use_testing_dataset(nn_class,
         pass
     cPickle.dump(word2index, open(get_output_path('word2index.p'), 'wb'))
 
+    training_hidden_activations = nn_trainer.get_hidden_activations(
+        on_training_set=True, on_validation_set=False, on_testing_set=False)
+    cPickle.dump(training_hidden_activations, open(get_output_path('training_hidden_activations.p'), 'wb'))
+
+    validation_hidden_activations = nn_trainer.get_hidden_activations(
+        on_training_set=False, on_validation_set=True, on_testing_set=False)
+    cPickle.dump(validation_hidden_activations, open(get_output_path('validation_hidden_activations.p'), 'wb'))
+
     return results, index2label
 
 def initialize_w2v_embeddings(w2v_dims, w2v_model, w2v_vectors, config_embeddings, unique_words):

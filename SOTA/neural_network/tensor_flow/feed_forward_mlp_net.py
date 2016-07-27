@@ -49,6 +49,7 @@ class Neural_Net(A_neural_network):
 
         # dynamic assignment of funtion. Depends on architecture
         self.forward_function = None
+        self.hidden_activations = None
 
         self.na_tag = na_tag
 
@@ -93,14 +94,17 @@ class Neural_Net(A_neural_network):
             print 'Using logistic regression architecture window: %d batch_size: %d learning_rate_train: %f learning_rate_tune: %f' % \
                   (self.n_window, minibatch_size, kwargs['learning_rate_train'], kwargs['learning_rate_tune'])
             self.forward_function = self.forward_no_hidden_layer
+            self.hidden_activations = None
         elif self.n_hidden > 0:
             print 'Using two hidden layer MLP architecture with window: %d hidden_layer: %d batch_size: %d learning_rate_train: %f learning_rate_tune: %f' % (
             self.n_window, self.n_hidden, minibatch_size, kwargs['learning_rate_train'], kwargs['learning_rate_tune'])
             self.forward_function = self.forward_two_hidden_layer
+            self.hidden_activations = self.hidden_activations_two_hidden_layer
         else:
             print 'Using one hidden layer MLP architecture with window: %d batch_size: %d learning_rate_train: %f learning_rate_tune: %f' % (
             self.n_window, minibatch_size, kwargs['learning_rate_train'], kwargs['learning_rate_tune'])
             self.forward_function = self.forward_one_hidden_layer
+            self.hidden_activations = self.hidden_activations_one_hidden_layer
 
         with self.graph.as_default():
             print 'Trainable parameters: ' + ', '.join([param.name for param in tf.trainable_variables()])
@@ -173,27 +177,39 @@ class Neural_Net(A_neural_network):
 
         return out
 
+    def hidden_activations_one_hidden_layer(self, w1_x_r):
+        return tf.tanh(tf.nn.bias_add(w1_x_r, self.b1))
+
     def forward_one_hidden_layer(self, w1_x_r):
         # forward pass
-        h = tf.tanh(tf.nn.bias_add(w1_x_r, self.b1))
+        h = self.hidden_activations(w1_x_r)
         out = tf.matmul(h, self.w2) + self.b2
 
         return out
 
-    def forward_two_hidden_layer(self, w1_x_r):
+    def hidden_activations_two_hidden_layer(self, w1_x_r):
         h1 = tf.tanh(tf.nn.bias_add(w1_x_r, self.b1))
         a2 = tf.matmul(h1, self.w2)
         h2 = tf.tanh(tf.nn.bias_add(a2, self.b2))
+
+        return h2
+
+    def forward_two_hidden_layer(self, w1_x_r):
+        h2 = self.hidden_activations(w1_x_r)
         a3 = tf.matmul(h2, self.w3)
         out = tf.nn.bias_add(a3, self.b3)
 
         return out
 
-    def compute_output_layer_logits(self, idxs):
-        # embedding lookup
+    def lookup_and_reshape(self, idxs):
         w1_x = tf.nn.embedding_lookup(self.w1, idxs)
         w1_x_r = tf.reshape(w1_x, shape=[-1, self.n_window * self.n_emb])
 
+        return w1_x_r
+
+    def compute_output_layer_logits(self, idxs):
+        # embedding lookup
+        w1_x_r = self.lookup_and_reshape(idxs)
         out = self.forward_function(w1_x_r)
 
         return out
@@ -441,6 +457,33 @@ class Neural_Net(A_neural_network):
     def to_string(self):
         return '[Tensorflow] Neural network'
 
+    def get_hidden_activations(self, on_training_set, on_validation_set, on_testing_set, **kwargs):
+
+        hidden_activations = None
+
+        if on_training_set:
+            x_test = self.x_train
+        elif on_validation_set:
+            x_test = self.x_valid
+        elif on_testing_set:
+            x_test = self.x_test
+        else:
+            raise Exception
+
+        with self.graph.as_default():
+            idxs = self.graph.get_tensor_by_name(name='idxs:0')
+            w1_x_r = self.lookup_and_reshape(idxs)
+            h = self.hidden_activations(w1_x_r)
+
+        with tf.Session(graph=self.graph) as session:
+            # init.run()
+
+            self.saver.restore(session, self.get_output_path('params.model'))
+
+            feed_dict = {idxs: x_test}
+            hidden_activations = session.run(h, feed_dict=feed_dict)
+
+        return hidden_activations
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Neural net trainer')
