@@ -348,7 +348,7 @@ class Multi_feat_Neural_Net(A_neural_network):
             cross_entropy = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=out_logits, labels=labels))
             cost = cross_entropy + alpha_l2 * l2
 
-            predictions = tf.to_int32(tf.argmax(out_logits, 1))
+            predictions = tf.to_int32(tf.argmax(tf.nn.softmax(out_logits), 1))
             n_errors = tf.reduce_sum(tf.to_int32(tf.not_equal(predictions, labels)))
 
             optimizer = self.instantiate_optimizer(learning_rate_tune, learning_rate_train, cost)
@@ -634,3 +634,37 @@ class Multi_feat_Neural_Net(A_neural_network):
 
     def to_string(self):
         print '[Tensorflow] Multi-features feed-forward neural network'
+
+    def get_hidden_activations(self, on_training_set, on_validation_set, on_testing_set, **kwargs):
+
+        hidden_activations = None
+        
+        if on_training_set:
+            dataset = 'train'
+        elif on_validation_set:
+            dataset = 'valid'
+        elif on_testing_set:
+            dataset = 'test'
+        else:
+            raise Exception
+
+        with self.graph.as_default():
+            w2v_idxs = self.graph.get_tensor_by_name(name='w2v_idxs:0')
+            pos_idxs = self.graph.get_tensor_by_name(name='pos_idxs:0')
+            ner_idxs = self.graph.get_tensor_by_name(name='ner_idxs:0')
+            sent_nr_idxs = self.graph.get_tensor_by_name(name='sent_nr_idxs:0')
+            tense_idxs = self.graph.get_tensor_by_name(name='tense_idxs:0')
+
+            embeddings_concat = self.perform_embeddings_lookup(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
+
+        with tf.Session(graph=self.graph) as session:
+            # init.run()
+
+            self.saver.restore(session, self.get_output_path('params.model'))
+
+            feed_dict = self.get_feed_dict(None, None,
+                                           w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs,
+                                           labels=None, dataset=dataset)
+            hidden_activations = session.run(embeddings_concat, feed_dict=feed_dict)
+
+        return hidden_activations
