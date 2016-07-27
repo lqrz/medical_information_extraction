@@ -95,7 +95,7 @@ class Neural_Net(A_neural_network):
                   (self.n_window, minibatch_size, kwargs['learning_rate_train'], kwargs['learning_rate_tune'])
             self.forward_function = self.forward_no_hidden_layer
             self.hidden_activations = None
-        elif self.n_hidden > 1:
+        elif self.n_hidden > 0:
             print 'Using two hidden layer MLP architecture with window: %d hidden_layer: %d batch_size: %d learning_rate_train: %f learning_rate_tune: %f' % (
             self.n_window, self.n_hidden, minibatch_size, kwargs['learning_rate_train'], kwargs['learning_rate_tune'])
             self.forward_function = self.forward_two_hidden_layer
