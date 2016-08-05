@@ -26,12 +26,52 @@ np.random.seed(1234)
 
 class CRF(object):
 
-    def __init__(self, hidden_activation_folder, output_model_filename, verbose, metatags, **kwargs):
+    def __init__(self, hidden_activation_folder, output_model_filename, verbose, metatags,
+                 sentence_level, document_level,
+                 **kwargs):
+
+        self.sentence_level = sentence_level
+        self.document_level = document_level
+
         self.x_train, self.x_valid = self.load_x_datasets(hidden_activation_folder)
         self.output_model_filename = output_model_filename
-        self.y_train, self.y_valid = CRF.load_true_labels()
+        self.y_train, self.y_valid = self.load_true_labels()
         self.verbose = verbose
         self.metatags = metatags
+
+    def get_sentence_level_features(self, document_items, activations):
+
+        x = []
+        acc = 0
+        for doc in document_items.values():
+            for sent in doc:
+                sent_reps = []
+                for rep in activations[acc: acc+sent.__len__()]:
+                    sent_reps.append(dict(zip(map(str, range(rep.__len__())), rep)))
+                    # x_train.append(training_hidden_activations[acc: acc+sent.__len__()])
+                acc += sent.__len__()
+                x.append(sent_reps)
+
+        assert acc == list(chain(*chain(*document_items.values()))).__len__()
+
+        return x
+
+    def get_document_level_features(self, document_items, activations):
+
+        x = []
+        acc = 0
+        for doc in document_items.values():
+            doc_reps = []
+            n_doc_words = list(chain(*doc)).__len__()
+            for rep in activations[acc: acc + n_doc_words]:
+                doc_reps.append(dict(zip(map(str, range(rep.__len__())), rep)))
+                # x_train.append(training_hidden_activations[acc: acc+sent.__len__()])
+            acc += n_doc_words
+            x.append(doc_reps)
+
+        assert acc == list(chain(*chain(*document_items.values()))).__len__()
+
+        return x
 
     def load_x_datasets(self, hidden_activation_folder):
         root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
@@ -44,33 +84,35 @@ class CRF(object):
         _, _, _, training_labels = Dataset.get_clef_training_dataset(lowercase=True)
         _, _, _, validation_labels = Dataset.get_clef_validation_dataset(lowercase=True)
 
-        x_train = []
-        acc = 0
-        for doc in training_labels.values():
-            for sent in doc:
-                x_train.append(training_hidden_activations[acc: acc+sent.__len__()])
-                acc += sent.__len__()
-
-        assert acc == list(chain(*chain(*training_labels.values()))).__len__()
-
-        x_valid = []
-        acc = 0
-        for doc in validation_labels.values():
-            for sent in doc:
-                x_valid.append(validation_hidden_activations[acc: acc+sent.__len__()])
-                acc += sent.__len__()
-
-        assert acc == list(chain(*chain(*validation_labels.values()))).__len__()
+        if self.sentence_level:
+            logger.info('Using sentence level')
+            x_train = self.get_sentence_level_features(training_labels, training_hidden_activations)
+            x_valid = self.get_sentence_level_features(validation_labels, validation_hidden_activations)
+        elif self.document_level:
+            logger.info('Using document level')
+            x_train = self.get_document_level_features(training_labels, training_hidden_activations)
+            x_valid = self.get_document_level_features(validation_labels, validation_hidden_activations)
+        else:
+            raise Exception()
 
         return x_train, x_valid
 
-    @staticmethod
-    def load_true_labels():
+    def load_true_labels(self):
         _, _, _, training_labels = Dataset.get_clef_training_dataset(lowercase=True)
         _, _, _, validation_labels = Dataset.get_clef_validation_dataset(lowercase=True)
 
-        y_train = list(chain(*training_labels.values()))
-        y_valid = list(chain(*validation_labels.values()))
+        if self.sentence_level:
+            y_train = list(chain(*training_labels.values()))
+            y_valid = list(chain(*validation_labels.values()))
+        elif self.document_level:
+            y_train = []
+            y_valid = []
+            for doc in training_labels.values():
+                y_train.append(list(chain(*doc)))
+            for doc in validation_labels.values():
+                y_valid.append(list(chain(*doc)))
+        else:
+            raise Exception()
 
         return y_train, y_valid
 
@@ -153,6 +195,9 @@ def parse_arguments():
     parser.add_argument('--folder', action='store', type=str, required=True)
     parser.add_argument('--metatags', action='store_true', default=False)
     parser.add_argument('--verbose', action='store_true', default=False)
+    level_group = parser.add_mutually_exclusive_group(required=True)
+    level_group.add_argument('--sentence', action='store_true', default=False)
+    level_group.add_argument('--document', action='store_true', default=False)
 
     arguments = parser.parse_args()
 
@@ -160,6 +205,8 @@ def parse_arguments():
     args['hidden_activation_folder'] = arguments.folder
     args['metatags'] = arguments.metatags
     args['verbose'] = arguments.verbose
+    args['sentence_level'] = arguments.sentence
+    args['document_level'] = arguments.document
 
     return args
 
