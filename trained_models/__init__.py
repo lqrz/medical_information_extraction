@@ -210,3 +210,11 @@ def get_analysis_folder_path(file_name):
         os.makedirs(dir)
 
     return path
+
+def get_pycrf_neuralcrf_folder(filename):
+    path = pkg_resources.resource_filename('trained_models', 'pycrf/neural_crf/%s' % filename)
+    dir = os.path.dirname(path)
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+    return path
