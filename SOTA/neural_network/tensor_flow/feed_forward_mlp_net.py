@@ -485,6 +485,33 @@ class Neural_Net(A_neural_network):
 
         return hidden_activations
 
+    def get_output_logits(self, on_training_set, on_validation_set, on_testing_set, **kwargs):
+
+        output_logits = None
+
+        if on_training_set:
+            x_test = self.x_train
+        elif on_validation_set:
+            x_test = self.x_valid
+        elif on_testing_set:
+            x_test = self.x_test
+        else:
+            raise Exception
+
+        with self.graph.as_default():
+            idxs = self.graph.get_tensor_by_name(name='idxs:0')
+            out_logits = self.compute_output_layer_logits(idxs)
+
+        with tf.Session(graph=self.graph) as session:
+            # init.run()
+
+            self.saver.restore(session, self.get_output_path('params.model'))
+
+            feed_dict = {idxs: x_test}
+            output_logits = session.run(out_logits, feed_dict=feed_dict)
+
+        return output_logits
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Neural net trainer')
 
