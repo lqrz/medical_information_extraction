@@ -720,7 +720,7 @@ def use_testing_dataset(nn_class,
     training_hidden_activations = nn_trainer.get_hidden_activations(
         on_training_set=True, on_validation_set=False, on_testing_set=False)
     cPickle.dump(training_hidden_activations, open(get_output_path('training_hidden_activations.p'), 'wb'))
-    
+
     training_output_logits = nn_trainer.get_output_logits(
         on_training_set=True, on_validation_set=False, on_testing_set=False)
     cPickle.dump(training_output_logits, open(get_output_path('training_output_logits.p'), 'wb'))
