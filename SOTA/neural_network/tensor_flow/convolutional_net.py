@@ -2,6 +2,8 @@ __author__ = 'lqrz'
 
 from SOTA.neural_network.A_neural_network import A_neural_network
 from utils.metrics import Metrics
+from utils import utils
+from data.dataset import Dataset
 
 import time
 import tensorflow as tf
@@ -108,7 +110,7 @@ class Convolutional_Neural_Net(A_neural_network):
         for feat in features:
             pos = cls.FEATURE_MAPPING[feat]['crf_position']
             if pos:
-                positions.append(pos)
+                positions.append((feat,pos))
 
         return positions
 
@@ -484,6 +486,27 @@ class Convolutional_Neural_Net(A_neural_network):
 
         return w1_x_expanded, w1_pos_expanded, w1_ner_expanded, w1_sent_nr_expanded, w1_tense_expanded
 
+    def hidden_activations(self, w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs):
+
+        w1_x_expanded, w1_pos_expanded, w1_ner_expanded, w1_sent_nr_expanded, w1_tense_expanded = \
+            self.perform_embeddings_lookup(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
+
+        return self.perform_convolutions(w1_x_expanded, w1_pos_expanded, w1_ner_expanded,
+                                                  w1_sent_nr_expanded, w1_tense_expanded)
+
+    def forward_pass(self, w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, keep_prob):
+
+        h_pooled_flat = self.hidden_activations(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
+
+        h_dropout = tf.nn.dropout(h_pooled_flat, keep_prob)
+
+        out_logits = tf.nn.xw_plus_b(h_dropout, self.w2, self.b2)
+
+        return out_logits
+
+    def compute_predictions(self, out_logits):
+        return tf.to_int32(tf.argmax(out_logits, 1))
+
     def _train_graph(self, minibatch_size, max_epochs,
                      learning_rate_train, learning_rate_tune, lr_decay,
                      plot, alpha_l2=0.001,
@@ -503,22 +526,14 @@ class Convolutional_Neural_Net(A_neural_network):
             labels = tf.placeholder(tf.int32, name='labels')
             keep_prob = tf.placeholder(tf.float32, name="dropout_keep_prob")
 
-            w1_x_expanded, w1_pos_expanded, w1_ner_expanded, w1_sent_nr_expanded, w1_tense_expanded = \
-                self.perform_embeddings_lookup(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
-
-            h_pooled_flat = self.perform_convolutions(w1_x_expanded, w1_pos_expanded, w1_ner_expanded,
-                                                      w1_sent_nr_expanded, w1_tense_expanded)
-
-            h_dropout = tf.nn.dropout(h_pooled_flat, keep_prob)
-
-            out_logits = tf.nn.xw_plus_b(h_dropout, self.w2, self.b2)
+            out_logits = self.forward_pass(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, keep_prob)
 
             l2 = tf.add_n([tf.nn.l2_loss(param) for param in self.regularizables])
 
             cross_entropy = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=out_logits, labels=labels))
             cost = cross_entropy + alpha_l2 * l2
 
-            predictions = tf.to_int32(tf.argmax(out_logits, 1))
+            predictions = self.compute_predictions(out_logits)
             n_errors = tf.reduce_sum(tf.to_int32(tf.not_equal(predictions, labels)))
 
             optimizer = self.instantiate_optimizer(learning_rate_tune, learning_rate_train, cost)
@@ -624,8 +639,9 @@ class Convolutional_Neural_Net(A_neural_network):
 
         assert feed_dict.__len__() > 0
 
-        feed_dict[labels] = y[batch_ix * minibatch_size: (batch_ix + 1) * minibatch_size] \
-            if batch_ix is not None else y
+        if labels is not None:
+            feed_dict[labels] = y[batch_ix * minibatch_size: (batch_ix + 1) * minibatch_size] \
+                if batch_ix is not None else y
 
         feed_dict[keep_prob] = keep_prob_val
 
@@ -763,9 +779,48 @@ class Convolutional_Neural_Net(A_neural_network):
         return precision, recall, f1_score
 
     def predict(self, on_training_set=False, on_validation_set=False, on_testing_set=False, **kwargs):
-        pass
 
-        # self.saver.restore(session, self.get_output_path('params.model'))
+        results = dict()
+
+        if on_training_set:
+            dataset = 'train'
+            y_test = self.y_train
+        elif on_validation_set:
+            dataset = 'valid'
+            y_test = self.y_valid
+        elif on_testing_set:
+            dataset = 'test'
+            y_test = self.y_test
+        else:
+            raise Exception
+
+        with self.graph.as_default():
+            w2v_idxs = self.graph.get_tensor_by_name(name='w2v_idxs:0')
+            pos_idxs = self.graph.get_tensor_by_name(name='pos_idxs:0')
+            ner_idxs = self.graph.get_tensor_by_name(name='ner_idxs:0')
+            sent_nr_idxs = self.graph.get_tensor_by_name(name='sent_nr_idxs:0')
+            tense_idxs = self.graph.get_tensor_by_name(name='tense_idxs:0')
+            keep_prob = self.graph.get_tensor_by_name(name='dropout_keep_prob:0')
+
+            out_logits = self.forward_pass(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, keep_prob)
+
+            predictions = self.compute_predictions(out_logits)
+
+        with tf.Session(graph=self.graph) as session:
+            # init.run()
+
+            self.saver.restore(session, self.get_output_path('params.model'))
+
+            feed_dict = self.get_feed_dict(None, None,
+                                           w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs,
+                                           None, keep_prob, keep_prob_val=1., dataset=dataset)
+
+            pred = session.run(predictions, feed_dict=feed_dict)
+
+        results['flat_trues'] = y_test
+        results['flat_predictions'] = pred
+
+        return results
 
     def using_w2v_convolution_maxpool_feature(self):
         return self.using_feature(feature='w2v', convolve=True, max_pool=True)
@@ -797,3 +852,75 @@ class Convolutional_Neural_Net(A_neural_network):
 
     def to_string(self):
         print '[Tensorflow] Convolutional neural network'
+
+    def get_hidden_activations(self, on_training_set=False, on_validation_set=False, on_testing_set=False):
+
+        hidden_activations = None
+
+        if on_training_set:
+            dataset = 'train'
+        elif on_validation_set:
+            dataset = 'valid'
+        elif on_testing_set:
+            dataset = 'test'
+        else:
+            raise Exception
+
+        with self.graph.as_default():
+            w2v_idxs = self.graph.get_tensor_by_name(name='w2v_idxs:0')
+            pos_idxs = self.graph.get_tensor_by_name(name='pos_idxs:0')
+            ner_idxs = self.graph.get_tensor_by_name(name='ner_idxs:0')
+            sent_nr_idxs = self.graph.get_tensor_by_name(name='sent_nr_idxs:0')
+            tense_idxs = self.graph.get_tensor_by_name(name='tense_idxs:0')
+            keep_prob = self.graph.get_tensor_by_name(name='dropout_keep_prob:0')
+
+            h = self.hidden_activations(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
+
+        with tf.Session(graph=self.graph) as session:
+            # init.run()
+
+            self.saver.restore(session, self.get_output_path('params.model'))
+
+            feed_dict = self.get_feed_dict(None, None,
+                                           w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs,
+                                           None, keep_prob, keep_prob_val=1., dataset=dataset)
+
+            hidden_activations = session.run(h, feed_dict=feed_dict)
+
+        return hidden_activations
+
+    def get_output_logits(self, on_training_set=False, on_validation_set=False, on_testing_set=False):
+
+        output_logits = None
+
+        if on_training_set:
+            dataset = 'train'
+        elif on_validation_set:
+            dataset = 'valid'
+        elif on_testing_set:
+            dataset = 'test'
+        else:
+            raise Exception
+
+        with self.graph.as_default():
+            w2v_idxs = self.graph.get_tensor_by_name(name='w2v_idxs:0')
+            pos_idxs = self.graph.get_tensor_by_name(name='pos_idxs:0')
+            ner_idxs = self.graph.get_tensor_by_name(name='ner_idxs:0')
+            sent_nr_idxs = self.graph.get_tensor_by_name(name='sent_nr_idxs:0')
+            tense_idxs = self.graph.get_tensor_by_name(name='tense_idxs:0')
+            keep_prob = self.graph.get_tensor_by_name(name='dropout_keep_prob:0')
+
+            out_logits = self.forward_pass(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, keep_prob)
+
+        with tf.Session(graph=self.graph) as session:
+            # init.run()
+
+            self.saver.restore(session, self.get_output_path('params.model'))
+
+            feed_dict = self.get_feed_dict(None, None,
+                                           w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs,
+                                           None, keep_prob, keep_prob_val=1., dataset=dataset)
+
+            output_logits = session.run(out_logits, feed_dict=feed_dict)
+
+        return output_logits
