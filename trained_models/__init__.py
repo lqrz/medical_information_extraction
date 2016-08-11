@@ -226,3 +226,12 @@ def get_pycrf_neuralcrf_crfsuite_folder(filename):
         os.makedirs(dir)
 
     return path
+
+def get_tf_hierarchical_mlp_path(file_name):
+
+    path = pkg_resources.resource_filename('trained_models', 'tf_hierarchical_mlp/'+file_name)
+    dir = os.path.dirname(path)
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+    return path
