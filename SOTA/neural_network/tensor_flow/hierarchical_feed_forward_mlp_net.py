@@ -1,5 +1,3 @@
-from scipy.stats._continuous_distns import alpha_gen
-
 __author__ = 'lqrz'
 
 import os
@@ -9,31 +7,21 @@ sys.path.append(os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(
 from utils.utils import NeuralNetwork
 from utils.metrics import Metrics
 from data import load_w2v_vectors
+from SOTA.neural_network.tensor_flow.feed_forward_mlp_net import Neural_Net
 from SOTA.neural_network.A_neural_network import A_neural_network
+from utils.huffman_encoding import Huffman_encoding
 
 import time
 import tensorflow as tf
 import numpy as np
 import argparse
 
-def get_dataset(n_window, add_words=[], add_tags=[], feat_positions=[], add_feats=[]):
-    x_train, y_train, x_train_feats, \
-    x_valid, y_valid, x_valid_feats, \
-    x_test, y_test, x_test_feats, \
-    word2index, index2word, \
-    label2index, index2label, \
-    features_indexes = \
-        A_neural_network.get_data(clef_training=True, clef_validation=True, clef_testing=True, add_words=add_words,
-                                  add_tags=add_tags, add_feats=add_feats, x_idx=None, n_window=n_window,
-                                  feat_positions=feat_positions)
 
-    return x_train, y_train, x_valid, y_valid, x_test, y_test, word2index, label2index
+class Hierarchical_feed_forward_neural_net(Neural_Net):
 
-
-class Neural_Net(A_neural_network):
     def __init__(self, log_reg, n_hidden, na_tag, **kwargs):
 
-        super(Neural_Net, self).__init__(**kwargs)
+        super(Hierarchical_feed_forward_neural_net, self).__init__(log_reg, n_hidden, na_tag, **kwargs)
 
         self.graph = tf.Graph()
 
@@ -62,120 +50,21 @@ class Neural_Net(A_neural_network):
 
         self.initialize_plotting_lists()
 
-    def initialize_plotting_lists(self):
+        self.convert_y_datasets()
 
-        # plotting purposes
-        self.train_costs_list = []
-        self.train_errors_list = []
-        self.valid_costs_list = []
-        self.valid_errors_list = []
-        self.precision_list = []
-        self.recall_list = []
-        self.f1_score_list = []
-        self.epoch_l2_w1_list = []
-        self.epoch_l2_w2_list = []
-        self.epoch_l2_w3_list = []
-        self.train_cross_entropy_list = []
-        self.valid_cross_entropy_list = []
-
-        return
-
-    def train(self, static, batch_size, alpha_na, **kwargs):
-
-        self.initialize_parameters(static)
-
-        if not batch_size:
-            # train SGD
-            minibatch_size = 1
+    def convert_y_datasets(self):
+        if np.any(np.equal(self.y_test, None)):
+            # there are no values for the test dataset. Do not include it.
+            encoding = Huffman_encoding(np.concatenate([self.y_train, self.y_valid])).encode()
         else:
-            minibatch_size = batch_size
+            # include the test dataset
+            encoding = Huffman_encoding(np.concatenate([self.y_train, self.y_valid, self.y_test])).encode()
+            self.y_test = map(lambda x: encoding[x], self.y_test)
 
-        if self.log_reg:
-            print 'Using logistic regression architecture window: %d batch_size: %d learning_rate_train: %f learning_rate_tune: %f' % \
-                  (self.n_window, minibatch_size, kwargs['learning_rate_train'], kwargs['learning_rate_tune'])
-            self.forward_function = self.forward_no_hidden_layer
-            self.hidden_activations = None
-        elif self.n_hidden > 0:
-            print 'Using two hidden layer MLP architecture with window: %d hidden_layer: %d batch_size: %d learning_rate_train: %f learning_rate_tune: %f' % (
-            self.n_window, self.n_hidden, minibatch_size, kwargs['learning_rate_train'], kwargs['learning_rate_tune'])
-            self.forward_function = self.forward_two_hidden_layer
-            self.hidden_activations = self.hidden_activations_two_hidden_layer
-        else:
-            print 'Using one hidden layer MLP architecture with window: %d batch_size: %d learning_rate_train: %f learning_rate_tune: %f' % (
-            self.n_window, minibatch_size, kwargs['learning_rate_train'], kwargs['learning_rate_tune'])
-            self.forward_function = self.forward_one_hidden_layer
-            self.hidden_activations = self.hidden_activations_one_hidden_layer
+        self.y_train = map(lambda x: encoding[x], self.y_train)
+        self.y_valid = map(lambda x: encoding[x], self.y_valid)
 
-        with self.graph.as_default():
-            print 'Trainable parameters: ' + ', '.join([param.name for param in tf.trainable_variables()])
-            print 'Regularizable parameters: ' + ', '.join([param.name for param in self.regularizables])
-
-        if alpha_na is not None:
-            print 'Loss function: decreasing na_prob with alpha %f' % alpha_na
-
-        self.train_graph(minibatch_size, alpha_na=alpha_na, **kwargs)
-
-    def initialize_parameters(self, static):
-
-        with self.graph.as_default():
-
-            # word embeddings matrix and bias. Always needed
-            self.w1 = tf.Variable(initial_value=self.pretrained_embeddings, dtype=tf.float32, trainable=not static,
-                                  name='w1')
-            self.b1 = tf.Variable(tf.zeros([self.n_emb * self.n_window]), dtype=tf.float32, name='b1')
-
-            self.regularizables.append(self.w1)
-
-            # apply fine_tuning_learning_rate to w1
-            if not static:
-                self.fine_tuning_params.append(self.w1)
-            self.fine_tuning_params.append(self.b1)
-
-            if not self.log_reg and not self.n_hidden > 0:
-                # one hidden layer
-                self.w2 = tf.Variable(
-                    initial_value=NeuralNetwork.initialize_weights(n_in=self.n_window * self.n_emb, n_out=self.n_out,
-                                                                   function='softmax'),
-                    dtype=tf.float32, name='w2')
-
-                self.b2 = tf.Variable(tf.zeros([self.n_out]), dtype=tf.float32, name='b2')
-
-                self.regularizables.append(self.w2)
-
-                # apply training_learning_rate to w2
-                self.training_params.append(self.w2)
-                self.training_params.append(self.b2)
-
-            elif not self.log_reg and self.n_hidden > 0:
-                # two hidden layer
-                self.w2 = tf.Variable(
-                    initial_value=NeuralNetwork.initialize_weights(n_in=self.n_window * self.n_emb, n_out=self.n_hidden,
-                                                                   function='tanh'),
-                    dtype=tf.float32, name='w2')
-
-                self.b2 = tf.Variable(tf.zeros([self.n_hidden]), name='b2')
-
-                self.w3 = tf.Variable(
-                    initial_value=NeuralNetwork.initialize_weights(self.n_hidden, n_out=self.n_out,
-                                                                   function='softmax'),
-                    dtype=tf.float32, name='w3')
-                self.b3 = tf.Variable(tf.zeros([self.n_out]), dtype=tf.float32, name='b3')
-
-                self.regularizables.append(self.w2)
-                self.regularizables.append(self.w3)
-
-                # apply training_learning_rate to w2 and w3
-                self.training_params.append(self.w2)
-                self.training_params.append(self.b2)
-                self.training_params.append(self.w3)
-                self.training_params.append(self.b3)
-
-        return
-
-    def forward_no_hidden_layer(self, w1_x_r):
-        out = tf.nn.bias_add(w1_x_r, self.b1)
-
-        return out
+        return True
 
     def hidden_activations_one_hidden_layer(self, w1_x_r):
         return tf.tanh(tf.nn.bias_add(w1_x_r, self.b1))
