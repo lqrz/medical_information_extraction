@@ -30,6 +30,7 @@ from trained_models import get_tf_cwnn_path
 from trained_models import get_tf_cnn_path
 from trained_models import get_POS_nnet_path
 from trained_models import get_tf_multi_mlp_path
+from trained_models import get_tf_hierarchical_mlp_path
 from data import get_param
 from utils.plot_confusion_matrix import plot_confusion_matrix
 from data.dataset import Dataset
@@ -52,7 +53,7 @@ def parse_arguments():
     parser.add_argument('--net', type=str, action='store', required=True,
                         choices=['single_cw','hidden_cw','vector_tag','last_tag','rnn', 'cw_rnn', 'multi_hidden_cw',
                                  'two_hidden_cw',
-                                 'tf_mlp', 'tf_cnn', 'tf_multi_mlp'],
+                                 'tf_mlp', 'tf_cnn', 'tf_multi_mlp', 'tf_hierarchical_mlp'],
                         help='NNet type')
     parser.add_argument('--window', type=int, action='store', required=True,
                         help='Context window size. 1 for RNN')
@@ -146,7 +147,8 @@ def parse_arguments():
 
 def check_arguments_consistency(args):
     if not args['w2v_vectors_cache'] and not args['w2v_model_name'] and not args['w2v_random_dim'] \
-            and args['nn_name'] != 'tf_cnn' and args['nn_name'] != 'tf_multi_mlp' and args['nn_name'] != 'tf_mlp':
+            and args['nn_name'] != 'tf_cnn' and args['nn_name'] != 'tf_multi_mlp' and args['nn_name'] != 'tf_mlp' \
+            and args['nn_name'] != 'tf_hierarchical_mlp':
         logger.error('Provide either a w2vmodel or a w2v vectors cache')
         exit()
 
@@ -351,6 +353,14 @@ def determine_nnclass_and_parameters(args):
         from tensor_flow.multi_feat_mlp import Multi_feat_Neural_Net
         nn_class = Multi_feat_Neural_Net
         get_output_path = get_tf_multi_mlp_path
+        add_words = ['<PAD>']
+        multi_feats = args['multi_features']
+        normalize_samples = args['norm_samples']
+        add_feats = ['<PAD>']
+    elif args['nn_name'] == 'tf_hierarchical_mlp':
+        from tensor_flow.hierarchical_feed_forward_mlp_net import Hierarchical_feed_forward_neural_net
+        nn_class = Hierarchical_feed_forward_neural_net
+        get_output_path = get_tf_hierarchical_mlp_path
         add_words = ['<PAD>']
         multi_feats = args['multi_features']
         normalize_samples = args['norm_samples']
