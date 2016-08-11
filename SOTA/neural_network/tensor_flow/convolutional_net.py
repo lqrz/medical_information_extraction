@@ -2,8 +2,6 @@ __author__ = 'lqrz'
 
 from SOTA.neural_network.A_neural_network import A_neural_network
 from utils.metrics import Metrics
-from utils import utils
-from data.dataset import Dataset
 
 import time
 import tensorflow as tf
