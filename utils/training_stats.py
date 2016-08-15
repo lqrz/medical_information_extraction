@@ -116,6 +116,99 @@ def feature_is_capitalized():
 
     return True
 
+def feature_is_digit():
+
+    _, _, document_words, document_tags = Dataset.get_clef_training_dataset(lowercase=False)
+
+    all_words = list(chain(*chain(*document_words.values())))
+    all_tags = list(chain(*chain(*document_tags.values())))
+
+    # uppercased_idxs = np.where(map(lambda x: re.match(r'.*[0-9].*', x), all_words))[0]
+    # lowercased_idxs = np.where(map(lambda x: not re.match(r'[0-9].*', x), all_words))[0]
+    uppercased_idxs = np.where(map(lambda x: x.isdigit(), all_words))[0]
+    lowercased_idxs = np.where(map(lambda x: not x.isdigit(), all_words))[0]
+
+    tags_cnt = Counter(all_tags)
+    cnt_upper = Counter(np.array(all_tags)[uppercased_idxs])
+    cnt_lower = Counter(np.array(all_tags)[lowercased_idxs])
+
+    df = pd.DataFrame({'labels': get_training_classification_report_labels(),
+                       'p_dig': map(lambda x: cnt_upper[x] / float(tags_cnt[x]), get_training_classification_report_labels()),
+                       'p_notdig': map(lambda x: cnt_lower[x] / float(tags_cnt[x]), get_training_classification_report_labels()),
+                       'p_lab_dig': map(lambda x: cnt_upper[x] / float(sum(cnt_upper.values())),
+                                    get_training_classification_report_labels()),
+                       'p_lab_notdig': map(lambda x: cnt_lower[x] / float(sum(cnt_lower.values())),
+                                    get_training_classification_report_labels())})
+
+    df_melted = pd.melt(df, id_vars=['labels'], value_vars=['p_dig', 'p_lab_dig'], var_name='measure',
+                        value_name='prob')
+
+    gr = importr('grDevices')
+    robj.pandas2ri.activate()
+    conv_df = robj.conversion.py2ri(df_melted)
+    plotFunc = robj.r("""
+            library(ggplot2)
+
+            function(df, output_filename, title){
+                str(df)
+                df$labels <- as.character(df$labels)
+                df$labels <- factor(df$labels, levels=unique(df$labels))
+
+                p <- ggplot(df, aes(x=labels)) +
+                geom_bar(stat="identity", aes(y=prob, fill=measure), position="stack") +
+                #geom_bar(stat="identity", aes(y=p_dig)) +
+                labs(x='Label', y='Probability', title=title) +
+                theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+                scale_fill_discrete(name="Measure", breaks=c("p_dig", "p_lab_dig"),
+                    labels=c("p(dig(w)|label)", "p(label|dig(w))"))
+
+                print(p)
+
+                ggsave(output_filename, plot=p)
+
+                }
+            """)
+    plotFunc(conv_df, get_analysis_folder_path('feature_digit_distribution.png'), 'isDigit')
+
+    training_dist = get_empirical_distribution()
+
+    probs = []
+    for l in get_training_classification_report_labels():
+        probs.extend([('p(label)', l, p) for t, p in training_dist if t == l])
+        probs.append(('p(label|dig(w))', l, cnt_upper[l] / float(sum(cnt_upper.values()))))
+        probs.append(('p(label|not_dig(w))', l, cnt_lower[l] / float(sum(cnt_lower.values()))))
+
+    df = pd.DataFrame(probs, columns=['type', 'label', 'prob'])
+    conv_df = robj.conversion.py2ri(df)
+    plotFunc_comparison = robj.r("""
+            library(ggplot2)
+
+            function(df, output_filename, title){
+                str(df)
+                df$label <- as.character(df$label)
+                df$label <- factor(df$label, levels=unique(df$label))
+
+                # this is for re-ordering the facets. I want 'Prior' to appear first.
+                df$type2 <- factor(df$type, levels=c('p(label)', 'p(label|dig(w))', 'p(label|not_dig(w))'))
+
+                p <- ggplot(df, aes(x=label)) +
+                    geom_bar(stat="identity", aes(y=prob)) +
+                    facet_grid(type2 ~ .) +
+                    labs(x='Label', y='Probability', title=title) +
+                    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+                    ylim(0,1)
+
+                print(p)
+
+                ggsave(output_filename, plot=p)
+
+                }
+            """)
+    plotFunc_comparison(conv_df, get_analysis_folder_path('feature_digit_distribution_comparison.png'), 'isDigit')
+    gr.dev_off()
+
+    return True
+
 def feature_is_stopword():
     from nltk.corpus import stopwords
     stop_words = stopwords.words('english')
@@ -498,7 +591,8 @@ def feature_tag_contiguity():
 
 if __name__ == '__main__':
 
-    feature_is_capitalized()
+    # feature_is_capitalized()
+    feature_is_digit()
     # feature_is_stopword()
     # feature_tag_section()
     # text_heatmap()
