@@ -447,9 +447,9 @@ def tags_repetition_within_document():
             (tag, p_n_1, p_n_2, p_n_3)
         )
 
-    df = pd.DataFrame(data[::-1], columns=['Label', 'p(n=1)', 'p(n=2)', 'p(n>2)'])
+    df = pd.DataFrame(data[::-1], columns=['Label', '1', '2', '>2'])
 
-    df_melted = pd.melt(df, id_vars=['Label'], value_vars=['p(n=1)', 'p(n=2)', 'p(n>2)'], var_name='Bin', value_name='Prob')
+    df_melted = pd.melt(df, id_vars=['Label'], value_vars=['1', '2', '>2'], var_name='Bin', value_name='Prob')
 
     gr = importr('grDevices')
     robj.pandas2ri.activate()
@@ -467,7 +467,7 @@ def tags_repetition_within_document():
                     p <- ggplot(df, aes(x=Bin, y=Label, fill=Prob)) +
                         geom_tile() +
                         scale_fill_gradient(low='white', high='steelblue', guide = guide_legend(title = "Probability")) +
-                        labs(x='Bin', y='Labels', title='Label bincount probability') +
+                        labs(x='Sentence repetition', y='Labels', title='Label sentence repetition probability') +
                         theme(panel.grid.major = element_blank(),
                             panel.border = element_blank(),
                             panel.background = element_blank(),
@@ -480,7 +480,7 @@ def tags_repetition_within_document():
                     }
                 """)
 
-    plotFunc(conv_df, get_analysis_folder_path('feature_bincount_probability.png'))
+    plotFunc(conv_df, get_analysis_folder_path('feature_sentence_repetition_distribution.png'))
     gr.dev_off()
 
     return True
@@ -543,6 +543,8 @@ def feature_tag_contiguity():
             tags = set(sent)
             for tag in tags:
                 remaining_tags = tags.difference(set([tag]))
+                if np.where(np.array(sent)==tag)[0].__len__()>1:
+                    remaining_tags.add(tag)
                 tag_contiguity[tag].extend(remaining_tags)
 
     data = []
@@ -594,10 +596,10 @@ if __name__ == '__main__':
     # feature_is_capitalized()
     # feature_is_digit()
     # feature_is_stopword()
-    feature_tag_section(n_sections=6)
-    # text_heatmap()
+    # feature_tag_section(n_sections=6)
     # tags_repetition_within_document()
     # feature_tag_in_document()
-    # feature_tag_contiguity()
+    feature_tag_contiguity()
+    # text_heatmap()
 
     print 'End'
