@@ -303,8 +303,8 @@ def feature_is_stopword():
 
     return True
 
-def feature_tag_section():
-    data = feature_tag_section_data()
+def feature_tag_section(n_sections=6):
+    data = feature_tag_section_data(n_sections)
 
     df = pd.DataFrame(data[::-1], columns=['label', 'section', 'prob'])
 
@@ -592,9 +592,9 @@ def feature_tag_contiguity():
 if __name__ == '__main__':
 
     # feature_is_capitalized()
-    feature_is_digit()
+    # feature_is_digit()
     # feature_is_stopword()
-    # feature_tag_section()
+    feature_tag_section(n_sections=6)
     # text_heatmap()
     # tags_repetition_within_document()
     # feature_tag_in_document()
