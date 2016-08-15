@@ -25,14 +25,15 @@ def get_empirical_distribution():
     return training_dist
 
 def feature_is_capitalized():
+    import re
 
     _, _, document_words, document_tags = Dataset.get_clef_training_dataset(lowercase=False)
 
     all_words = list(chain(*chain(*document_words.values())))
     all_tags = list(chain(*chain(*document_tags.values())))
 
-    uppercased_idxs = np.where(map(lambda x: x.isupper(), all_words))[0]
-    lowercased_idxs = np.where(map(lambda x: not x.isupper(), all_words))[0]
+    uppercased_idxs = np.where(map(lambda x: re.match(r'[A-Z].*', x), all_words))[0]
+    lowercased_idxs = np.where(map(lambda x: not re.match(r'[A-Z].*', x), all_words))[0]
 
     tags_cnt = Counter(all_tags)
     cnt_upper = Counter(np.array(all_tags)[uppercased_idxs])
