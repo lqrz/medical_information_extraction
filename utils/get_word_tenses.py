@@ -29,14 +29,17 @@ def determine_pos(previous_pos, word_dict, governor_word_dict, sent_dicts, i):
         if governor_word_dict:
             # continue with the governor
             governor_governor_surface = governor_word_dict['features'][5]
-        else:
+        elif not governor_word_dict and word_dict['word'] in ['.', ',', ';', ':', '-', '/', '\\', '_', '~']:
             # punctuations have no governors
             return '#NA'
+        else:
+            # if i backtrack a word till root
+            return 'VBZ'
 
-        governor_ix = [j for j,dic in enumerate(sent_dicts) if dic['word'] == governor_word_dict['word']][0]
+        governor_ix = [j for j,dic in enumerate(sent_dicts) if dic['word'].lower() == governor_word_dict['word'].lower()][0]
         previous_pos = sent_dicts[governor_ix-1]['features'][2]
         try:
-            governor_governor_dict = [dic for dic in sent_dicts if dic['word'] == governor_governor_surface][0]
+            governor_governor_dict = [dic for dic in sent_dicts if dic['word'].lower() == governor_governor_surface.lower()][0]
         except IndexError:
             governor_governor_dict = []
 
@@ -50,6 +53,7 @@ def get_dataset_sentence_tenses(dataset_dicts):
     dataset_sentences = []
 
     for j, sent_dicts in enumerate(dataset_dicts):
+
         dataset_sentences.append([w['word'] for w in sent_dicts])
         verb_pos_in_sentence = [word['features'][2] for word in sent_dicts if
                                 word['features'][2] in pos_tense_mapping.keys()]
@@ -66,7 +70,7 @@ def get_dataset_sentence_tenses(dataset_dicts):
             for i, word_dict in enumerate(sent_dicts):
                 governor_surface = word_dict['features'][5]
                 try:
-                    governor_dict = [dic for dic in sent_dicts if dic['word'] == governor_surface][0]
+                    governor_dict = [dic for dic in sent_dicts if dic['word'].lower() == governor_surface.lower()][0]
                 except IndexError:
                     governor_dict = []
 
