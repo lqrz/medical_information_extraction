@@ -7,7 +7,7 @@ class Metrics:
 
     @staticmethod
     def compute_accuracy_score(y_true, y_pred, **kwargs):
-        return metrics.accuracy_score(y_true, y_pred, **kwargs)
+        return metrics.accuracy_score(y_true, y_pred)
 
     @staticmethod
     def compute_f1_score(y_true, y_pred, **kwargs):
@@ -59,5 +59,48 @@ class Metrics:
             tn = y_true.__len__() - tp - fp - fn
 
             results[lab] = [tp, tn, fp, fn]
+
+        return results
+
+    @staticmethod
+    def compute_averaged_scores(y_true, y_pred, labels):
+        results = dict()
+        stats = Metrics.compute_classification_stats(y_true=y_true, y_pred=y_pred, labels=labels)
+
+        acc_tp = .0
+        acc_fp = .0
+        acc_fn = .0
+        precisions = []
+        recalls = []
+        for label in labels:
+            tp = stats[label][0]
+            fp = stats[label][2]
+            fn = stats[label][3]
+            acc_tp += tp
+            acc_fp += fp
+            acc_fn += fn
+
+            precision = tp / (tp + fp)
+            recall = tp / (tp + fn)
+
+            precisions.append(precision)
+            recalls.append(recall)
+
+        # MICRO
+        micro_precision = tp / (tp + fp)
+        micro_recall = tp / (tp + fn)
+        micro_f1 = micro_precision * micro_recall / (micro_precision + micro_recall)
+
+        # MACRO
+        macro_precision = np.mean(precisions)
+        macro_recall = np.mean(recalls)
+        macro_f1 = macro_precision * macro_recall / (macro_precision + macro_recall)
+
+        results['micro_precision'] = micro_precision
+        results['micro_recall'] = micro_recall
+        results['micro_f1'] = micro_f1
+        results['macro_precision'] = macro_precision
+        results['macro_recall'] = macro_recall
+        results['macro_f1'] = macro_f1
 
         return results
