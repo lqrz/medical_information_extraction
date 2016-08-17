@@ -67,34 +67,56 @@ class Metrics:
         results = dict()
         stats = Metrics.compute_classification_stats(y_true=y_true, y_pred=y_pred, labels=labels)
 
-        acc_tp = .0
-        acc_fp = .0
-        acc_fn = .0
+        acc_tp = 0.
+        acc_fp = 0.
+        acc_fn = 0.
         precisions = []
         recalls = []
+        f1s = []
+        na_precision = 0.
+        na_recall = 0.
+        na_f1 = 0.
         for label in labels:
-            tp = stats[label][0]
-            fp = stats[label][2]
-            fn = stats[label][3]
-            acc_tp += tp
-            acc_fp += fp
-            acc_fn += fn
+            tp = float(stats[label][0])
+            fp = float(stats[label][2])
+            fn = float(stats[label][3])
 
-            precision = tp / (tp + fp)
-            recall = tp / (tp + fn)
+            if label == 'NA':
+                na_precision = tp / (tp + fp)
+                na_recall = tp / (tp + fn)
+                na_f1 = 2 * na_precision * na_recall / (na_precision + na_recall)
+            else:
 
-            precisions.append(precision)
-            recalls.append(recall)
+                acc_tp += tp
+                acc_fp += fp
+                acc_fn += fn
 
-        # MICRO
-        micro_precision = tp / (tp + fp)
-        micro_recall = tp / (tp + fn)
-        micro_f1 = micro_precision * micro_recall / (micro_precision + micro_recall)
+                try:
+                    precision = tp / (tp + fp)
+                except ZeroDivisionError:
+                    precision = 0.
+                try:
+                    recall = tp / (tp + fn)
+                except ZeroDivisionError:
+                    recall = 0.
+                try:
+                    f1 = 2 * precision * recall / (precision + recall)
+                except ZeroDivisionError:
+                    f1 = 0.
 
-        # MACRO
+                precisions.append(precision)
+                recalls.append(recall)
+                f1s.append(f1)
+
+        # MICRO (without NA)
+        micro_precision = acc_tp / (acc_tp + acc_fp)
+        micro_recall = acc_tp / (acc_tp + acc_fn)
+        micro_f1 = 2 * micro_precision * micro_recall / (micro_precision + micro_recall)
+
+        # MACRO (without NA)
         macro_precision = np.mean(precisions)
         macro_recall = np.mean(recalls)
-        macro_f1 = macro_precision * macro_recall / (macro_precision + macro_recall)
+        macro_f1 = np.mean(f1s)
 
         results['micro_precision'] = micro_precision
         results['micro_recall'] = micro_recall
@@ -102,5 +124,8 @@ class Metrics:
         results['macro_precision'] = macro_precision
         results['macro_recall'] = macro_recall
         results['macro_f1'] = macro_f1
+        results['na_precision'] = na_precision
+        results['na_recall'] = na_recall
+        results['na_f1'] = na_f1
 
         return results
