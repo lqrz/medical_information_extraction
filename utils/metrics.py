@@ -29,7 +29,7 @@ class Metrics:
     def compute_all_metrics(y_true, y_pred, **kwargs):
         results = dict()
 
-        results['accuracy'] = Metrics.compute_recall_score(y_true, y_pred, **kwargs)
+        results['accuracy'] = Metrics.compute_accuracy_score(y_true, y_pred, **kwargs)
         results['precision'] = Metrics.compute_precision_score(y_true, y_pred, **kwargs)
         results['recall'] = Metrics.compute_recall_score(y_true, y_pred, **kwargs)
         results['f1_score'] = Metrics.compute_f1_score(y_true, y_pred, **kwargs)
