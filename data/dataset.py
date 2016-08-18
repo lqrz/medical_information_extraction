@@ -5,6 +5,7 @@ from collections import defaultdict
 import io
 from nltk import sent_tokenize
 import re
+from itertools import chain
 
 import data
 
@@ -269,12 +270,37 @@ class Dataset:
     @staticmethod
     def get_clef_testing_dataset(lowercase=True):
         testing_data_filename = 'CRF_noLabel.zip'
-        return Dataset.get_crf_training_data_by_sentence(testing_data_filename,
+        training_data, sentences, document_sentence_words, document_sentence_tags = \
+            Dataset.get_crf_training_data_by_sentence(testing_data_filename,
                                                       Dataset.CLEF_TESTING_PATH,
                                                       Dataset.CLEF_TESTING_EXTENSION,
                                                       separator=' ',
                                                       include_tag=False,
-                                                         lowercase=lowercase)
+                                                      lowercase=lowercase)
+
+        labels = defaultdict(list)
+        f = open(data.get_resource('CRF_noLabel/testGS.txt'), 'rb')
+
+        for line in f:
+            register = line.strip().split('\t')
+            doc_nr = int(register[0]) # doc_nr
+            label = register[2] # gold label
+
+            labels[doc_nr].append(label)
+
+        for doc_nr, gold_labels in labels.iteritems():
+            assert list(chain(*training_data[doc_nr])).__len__() == labels[doc_nr].__len__()
+            doc_word_nr = 0 # word_nr wrt the document
+            for sent_nr, sent in enumerate(training_data[doc_nr]):
+                for sent_word_nr, word_dict in enumerate(sent):
+                    word_dict['tag'] = labels[doc_nr][doc_word_nr]
+                    document_sentence_tags[doc_nr][sent_nr][sent_word_nr] = labels[doc_nr][doc_word_nr]
+                    doc_word_nr += 1
+
+        assert all([d['tag'] for d in list(chain(*chain(*training_data.values())))])
+        assert all(list(chain(*chain(*document_sentence_tags.values()))))
+
+        return training_data, sentences, document_sentence_words, document_sentence_tags
 
     @staticmethod
     def get_wsj_dataset():
