@@ -185,7 +185,6 @@ class Metrics:
             if metatags:
                 valid_labels_list = get_aggregated_classification_report_labels()
             else:
-                # the validation label set is different from training and testing
                 valid_labels_list = get_validation_classification_report_labels()
 
             assert valid_labels_list is not None
@@ -215,7 +214,6 @@ class Metrics:
             if metatags:
                 test_labels_list = get_aggregated_classification_report_labels()
             else:
-                # training and testing have the same labels
                 test_labels_list = get_testing_classification_report_labels()
 
             assert test_labels_list is not None
