@@ -69,3 +69,6 @@ def get_training_classification_report_labels():
 
 def get_validation_classification_report_labels():
     return cPickle.load(open(pkg_resources.resource_filename('data', 'params/classification_report/validation_labels_order.p'),'rb'))
+
+def get_testing_classification_report_labels():
+    return cPickle.load(open(pkg_resources.resource_filename('data', 'params/classification_report/testing_labels_order.p'),'rb'))
