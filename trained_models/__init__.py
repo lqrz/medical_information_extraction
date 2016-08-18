@@ -244,3 +244,12 @@ def get_tf_collobert_path(file_name):
         os.makedirs(dir)
 
     return path
+
+def get_lookup_path(filename):
+    path = pkg_resources.resource_filename('trained_models', 'lookup/%s' % filename)
+
+    dir = os.path.dirname(path)
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+    return path
