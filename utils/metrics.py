@@ -5,9 +5,10 @@ import numpy as np
 import time
 import pandas as pd
 
+from data import get_training_classification_report_labels
 from data import get_validation_classification_report_labels
+from data import get_testing_classification_report_labels
 from data import get_aggregated_classification_report_labels
-from data import get_classification_report_labels
 from plot_confusion_matrix import plot_confusion_matrix
 
 class Metrics:
@@ -140,97 +141,114 @@ class Metrics:
     @staticmethod
     def print_metric_results(train_y_true, train_y_pred, valid_y_true, valid_y_pred, test_y_true, test_y_pred,
                              metatags,
-                             get_output_path):
+                             get_output_path,
+                             additional_labels=[]):
 
         actual_time = time.time()
 
-        assert train_y_pred is not None
-        assert train_y_true.__len__() == train_y_pred.__len__()
+        if train_y_pred:
 
-        assert valid_y_pred is not None
-        assert valid_y_true.__len__() == valid_y_pred.__len__()
+            assert train_y_pred is not None
+            assert train_y_true.__len__() == train_y_pred.__len__()
 
-        assert test_y_true is not None
-        assert test_y_true.__len__() == test_y_pred.__len__()
+            train_results_micro = Metrics.compute_all_metrics(y_true=train_y_true, y_pred=train_y_pred, average='micro')
+            train_results_macro = Metrics.compute_all_metrics(y_true=train_y_true, y_pred=train_y_pred, average='macro')
 
-        train_results_micro = Metrics.compute_all_metrics(y_true=train_y_true, y_pred=train_y_pred, average='micro')
-        train_results_macro = Metrics.compute_all_metrics(y_true=train_y_true, y_pred=train_y_pred, average='macro')
+            if metatags:
+                train_labels_list = get_aggregated_classification_report_labels()
+            else:
+                train_labels_list = get_training_classification_report_labels()
 
-        if metatags:
-            train_labels_list = get_aggregated_classification_report_labels()
-        else:
-            train_labels_list = get_classification_report_labels()
+            assert train_labels_list is not None
 
-        assert train_labels_list is not None
+            if additional_labels:
+                train_labels_list.extend(additional_labels)
 
-        train_averaged = Metrics.compute_averaged_scores(y_true=train_y_true, y_pred=train_y_pred,
-                                                   labels=train_labels_list)
-        print 'Train MICRO results'
-        print train_results_micro
+            train_averaged = Metrics.compute_averaged_scores(y_true=train_y_true, y_pred=train_y_pred,
+                                                       labels=train_labels_list)
+            print 'Train MICRO results'
+            print train_results_micro
 
-        print 'Train MACRO results'
-        print train_results_macro
+            print 'Train MACRO results'
+            print train_results_macro
 
-        print 'Train AVERAGED results'
-        print train_averaged
+            print 'Train AVERAGED results'
+            print train_averaged
 
-        valid_results_micro = Metrics.compute_all_metrics(y_true=valid_y_true, y_pred=valid_y_pred, average='micro')
-        valid_results_macro = Metrics.compute_all_metrics(y_true=valid_y_true, y_pred=valid_y_pred, average='macro')
+        if valid_y_pred:
+            assert valid_y_pred is not None
+            assert valid_y_true.__len__() == valid_y_pred.__len__()
 
-        if metatags:
-            valid_labels_list = get_aggregated_classification_report_labels()
-        else:
-            valid_labels_list = get_validation_classification_report_labels()
+            valid_results_micro = Metrics.compute_all_metrics(y_true=valid_y_true, y_pred=valid_y_pred, average='micro')
+            valid_results_macro = Metrics.compute_all_metrics(y_true=valid_y_true, y_pred=valid_y_pred, average='macro')
 
-        assert valid_labels_list is not None
+            if metatags:
+                valid_labels_list = get_aggregated_classification_report_labels()
+            else:
+                # the validation label set is different from training and testing
+                valid_labels_list = get_validation_classification_report_labels()
 
-        valid_averaged = Metrics.compute_averaged_scores(y_true=valid_y_true, y_pred=valid_y_pred,
-                                                   labels=valid_labels_list)
-        print 'Valid MICRO results'
-        print valid_results_micro
+            assert valid_labels_list is not None
 
-        print 'Valid MACRO results'
-        print valid_results_macro
+            if additional_labels:
+                valid_labels_list.extend(additional_labels)
 
-        print 'Valid AVERAGED results'
-        print valid_averaged
+            valid_averaged = Metrics.compute_averaged_scores(y_true=valid_y_true, y_pred=valid_y_pred,
+                                                       labels=valid_labels_list)
+            print 'Valid MICRO results'
+            print valid_results_micro
 
-        if metatags:
-            test_labels_list = get_aggregated_classification_report_labels()
-        else:
-            test_labels_list = get_classification_report_labels()
+            print 'Valid MACRO results'
+            print valid_results_macro
 
-        assert test_labels_list is not None
+            print 'Valid AVERAGED results'
+            print valid_averaged
 
-        test_results_micro = Metrics.compute_all_metrics(y_true=test_y_true, y_pred=test_y_pred, average='micro')
-        test_results_macro = Metrics.compute_all_metrics(y_true=test_y_true, y_pred=test_y_pred, average='macro')
+        if test_y_pred:
 
-        test_averaged = Metrics.compute_averaged_scores(y_true=test_y_true, y_pred=test_y_pred, labels=test_labels_list)
+            assert test_y_true is not None
+            assert test_y_true.__len__() == test_y_pred.__len__()
 
-        print 'Test MICRO results'
-        print test_results_micro
+            test_results_micro = Metrics.compute_all_metrics(y_true=test_y_true, y_pred=test_y_pred, average='micro')
+            test_results_macro = Metrics.compute_all_metrics(y_true=test_y_true, y_pred=test_y_pred, average='macro')
 
-        print 'Test MACRO results'
-        print test_results_macro
+            if metatags:
+                test_labels_list = get_aggregated_classification_report_labels()
+            else:
+                # training and testing have the same labels
+                test_labels_list = get_testing_classification_report_labels()
 
-        print 'Test AVERAGED results'
-        print test_averaged
+            assert test_labels_list is not None
 
-        results_noaverage = Metrics.compute_all_metrics(test_y_true, test_y_pred, labels=test_labels_list, average=None)
+            if additional_labels:
+                test_labels_list.extend(additional_labels)
 
-        print '...Saving no-averaged results to CSV file'
-        df = pd.DataFrame(results_noaverage, index=test_labels_list)
-        df.to_csv(get_output_path('no_average_results_' + str(actual_time) + '.csv'))
+            test_averaged = Metrics.compute_averaged_scores(y_true=test_y_true, y_pred=test_y_pred, labels=test_labels_list)
 
-        print '...Ploting confusion matrix'
-        cm = Metrics.compute_confusion_matrix(test_y_true, test_y_pred, labels=test_labels_list)
-        plot_confusion_matrix(cm, labels=test_labels_list,
-                              output_filename=get_output_path('confusion_matrix_' + str(actual_time) + '.png'))
+            print 'Test MICRO results'
+            print test_results_micro
 
-        print '...Computing classification stats'
-        stats = Metrics.compute_classification_stats(test_y_true, test_y_pred, test_labels_list)
-        df = pd.DataFrame(stats, index=['tp', 'tn', 'fp', 'fn'], columns=test_labels_list).transpose()
-        df.to_csv(get_output_path('classification_stats_' + str(actual_time) + '.csv'))
+            print 'Test MACRO results'
+            print test_results_macro
+
+            print 'Test AVERAGED results'
+            print test_averaged
+
+            results_noaverage = Metrics.compute_all_metrics(test_y_true, test_y_pred, labels=test_labels_list, average=None)
+
+            print '...Saving no-averaged results to CSV file'
+            df = pd.DataFrame(results_noaverage, index=test_labels_list)
+            df.to_csv(get_output_path('no_average_results_' + str(actual_time) + '.csv'))
+
+            print '...Ploting confusion matrix'
+            cm = Metrics.compute_confusion_matrix(test_y_true, test_y_pred, labels=test_labels_list)
+            plot_confusion_matrix(cm, labels=test_labels_list,
+                                  output_filename=get_output_path('confusion_matrix_' + str(actual_time) + '.png'))
+
+            print '...Computing classification stats'
+            stats = Metrics.compute_classification_stats(test_y_true, test_y_pred, test_labels_list)
+            df = pd.DataFrame(stats, index=['tp', 'tn', 'fp', 'fn'], columns=test_labels_list).transpose()
+            df.to_csv(get_output_path('classification_stats_' + str(actual_time) + '.csv'))
 
         def format_averaged_values(results_dict):
             return ' & '.join(map(lambda x: "%0.3f" % x, [results_dict['micro_precision'],
@@ -251,9 +269,16 @@ class Metrics:
         print '\\multirow{2}{*}{\\textbf{Dataset}} &  \\multicolumn{3}{|c|}{\\textbf{Micro}} &  \\multicolumn{3}{|c|}{\\textbf{Macro}} &  \\multicolumn{3}{|c}{\\textbf{NA}} \\\\'
         print ' & \\textbf{Precision} & \\textbf{Recall} & \\textbf{F1} & \\textbf{Precision} & \\textbf{Recall} & \\textbf{F1} & \\textbf{Precision} & \\textbf{Recall} & \\textbf{F1} \\\\'
         print '\\hline'
-        print 'Training & ' + format_averaged_values(train_averaged) + '\\\\'
-        print 'Validation & ' + format_averaged_values(valid_averaged) + '\\\\'
-        print 'Testing & ' + format_averaged_values(test_averaged) + '\\\\'
+
+        if train_y_pred:
+            print 'Training & ' + format_averaged_values(train_averaged) + '\\\\'
+
+        if valid_y_pred:
+            print 'Validation & ' + format_averaged_values(valid_averaged) + '\\\\'
+
+        if test_y_pred:
+            print 'Testing & ' + format_averaged_values(test_averaged) + '\\\\'
+
         print '\\end{tabular}'
         print '\\end{adjustbox}'
         print '\\caption{Caption}'
