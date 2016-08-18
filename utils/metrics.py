@@ -2,6 +2,13 @@ __author__ = 'root'
 from sklearn.metrics import metrics
 from collections import Counter
 import numpy as np
+import time
+import pandas as pd
+
+from data import get_validation_classification_report_labels
+from data import get_aggregated_classification_report_labels
+from data import get_classification_report_labels
+from plot_confusion_matrix import plot_confusion_matrix
 
 class Metrics:
 
@@ -129,3 +136,128 @@ class Metrics:
         results['na_f1'] = na_f1
 
         return results
+
+    @staticmethod
+    def print_metric_results(train_y_true, train_y_pred, valid_y_true, valid_y_pred, test_y_true, test_y_pred,
+                             metatags,
+                             get_output_path):
+
+        actual_time = time.time()
+
+        assert train_y_pred is not None
+        assert train_y_true.__len__() == train_y_pred.__len__()
+
+        assert valid_y_pred is not None
+        assert valid_y_true.__len__() == valid_y_pred.__len__()
+
+        assert test_y_true is not None
+        assert test_y_true.__len__() == test_y_pred.__len__()
+
+        train_results_micro = Metrics.compute_all_metrics(y_true=train_y_true, y_pred=train_y_pred, average='micro')
+        train_results_macro = Metrics.compute_all_metrics(y_true=train_y_true, y_pred=train_y_pred, average='macro')
+
+        if metatags:
+            train_labels_list = get_aggregated_classification_report_labels()
+        else:
+            train_labels_list = get_classification_report_labels()
+
+        assert train_labels_list is not None
+
+        train_averaged = Metrics.compute_averaged_scores(y_true=train_y_true, y_pred=train_y_pred,
+                                                   labels=train_labels_list)
+        print 'Train MICRO results'
+        print train_results_micro
+
+        print 'Train MACRO results'
+        print train_results_macro
+
+        print 'Train AVERAGED results'
+        print train_averaged
+
+        valid_results_micro = Metrics.compute_all_metrics(y_true=valid_y_true, y_pred=valid_y_pred, average='micro')
+        valid_results_macro = Metrics.compute_all_metrics(y_true=valid_y_true, y_pred=valid_y_pred, average='macro')
+
+        if metatags:
+            valid_labels_list = get_aggregated_classification_report_labels()
+        else:
+            valid_labels_list = get_validation_classification_report_labels()
+
+        assert valid_labels_list is not None
+
+        valid_averaged = Metrics.compute_averaged_scores(y_true=valid_y_true, y_pred=valid_y_pred,
+                                                   labels=valid_labels_list)
+        print 'Valid MICRO results'
+        print valid_results_micro
+
+        print 'Valid MACRO results'
+        print valid_results_macro
+
+        print 'Valid AVERAGED results'
+        print valid_averaged
+
+        if metatags:
+            test_labels_list = get_aggregated_classification_report_labels()
+        else:
+            test_labels_list = get_classification_report_labels()
+
+        assert test_labels_list is not None
+
+        test_results_micro = Metrics.compute_all_metrics(y_true=test_y_true, y_pred=test_y_pred, average='micro')
+        test_results_macro = Metrics.compute_all_metrics(y_true=test_y_true, y_pred=test_y_pred, average='macro')
+
+        test_averaged = Metrics.compute_averaged_scores(y_true=test_y_true, y_pred=test_y_pred, labels=test_labels_list)
+
+        print 'Test MICRO results'
+        print test_results_micro
+
+        print 'Test MACRO results'
+        print test_results_macro
+
+        print 'Test AVERAGED results'
+        print test_averaged
+
+        results_noaverage = Metrics.compute_all_metrics(test_y_true, test_y_pred, labels=test_labels_list, average=None)
+
+        print '...Saving no-averaged results to CSV file'
+        df = pd.DataFrame(results_noaverage, index=test_labels_list)
+        df.to_csv(get_output_path('no_average_results_' + str(actual_time) + '.csv'))
+
+        print '...Ploting confusion matrix'
+        cm = Metrics.compute_confusion_matrix(test_y_true, test_y_pred, labels=test_labels_list)
+        plot_confusion_matrix(cm, labels=test_labels_list,
+                              output_filename=get_output_path('confusion_matrix_' + str(actual_time) + '.png'))
+
+        print '...Computing classification stats'
+        stats = Metrics.compute_classification_stats(test_y_true, test_y_pred, test_labels_list)
+        df = pd.DataFrame(stats, index=['tp', 'tn', 'fp', 'fn'], columns=test_labels_list).transpose()
+        df.to_csv(get_output_path('classification_stats_' + str(actual_time) + '.csv'))
+
+        def format_averaged_values(results_dict):
+            return ' & '.join(map(lambda x: "%0.3f" % x, [results_dict['micro_precision'],
+                                                          results_dict['micro_recall'],
+                                                          results_dict['micro_f1'],
+                                                          results_dict['macro_precision'],
+                                                          results_dict['macro_recall'],
+                                                          results_dict['macro_f1'],
+                                                          results_dict['na_precision'],
+                                                          results_dict['na_recall'],
+                                                          results_dict['na_f1']]))
+
+        print '\\todo{Add Caption and Label.}'
+        print '\\begin{table}[h]'
+        print '\\centering'
+        print '\\begin{adjustbox}{width=1\\textwidth}'
+        print '\\begin{tabular}{l|c|c|c|c|c|c|c|c|c}'
+        print '\\multirow{2}{*}{\\textbf{Dataset}} &  \\multicolumn{3}{|c|}{\\textbf{Micro}} &  \\multicolumn{3}{|c|}{\\textbf{Macro}} &  \\multicolumn{3}{|c}{\\textbf{NA}} \\\\'
+        print ' & \\textbf{Precision} & \\textbf{Recall} & \\textbf{F1} & \\textbf{Precision} & \\textbf{Recall} & \\textbf{F1} & \\textbf{Precision} & \\textbf{Recall} & \\textbf{F1} \\\\'
+        print '\\hline'
+        print 'Training & ' + format_averaged_values(train_averaged) + '\\\\'
+        print 'Validation & ' + format_averaged_values(valid_averaged) + '\\\\'
+        print 'Testing & ' + format_averaged_values(test_averaged) + '\\\\'
+        print '\\end{tabular}'
+        print '\\end{adjustbox}'
+        print '\\caption{Caption}'
+        print '\\label{tab:label}'
+        print '\\end{table}'
+
+        return True
