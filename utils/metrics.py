@@ -9,6 +9,7 @@ from data import get_training_classification_report_labels
 from data import get_validation_classification_report_labels
 from data import get_testing_classification_report_labels
 from data import get_aggregated_classification_report_labels
+from data import get_all_classification_report_labels
 from plot_confusion_matrix import plot_confusion_matrix
 
 class Metrics:
@@ -161,11 +162,8 @@ class Metrics:
 
             assert train_labels_list is not None
 
-            if additional_labels:
-                train_labels_list.extend(additional_labels)
-
             train_averaged = Metrics.compute_averaged_scores(y_true=train_y_true, y_pred=train_y_pred,
-                                                       labels=train_labels_list)
+                                                             labels=train_labels_list)
             print 'Train MICRO results'
             print train_results_micro
 
@@ -189,11 +187,8 @@ class Metrics:
 
             assert valid_labels_list is not None
 
-            if additional_labels:
-                valid_labels_list.extend(additional_labels)
-
             valid_averaged = Metrics.compute_averaged_scores(y_true=valid_y_true, y_pred=valid_y_pred,
-                                                       labels=valid_labels_list)
+                                                             labels=valid_labels_list)
             print 'Valid MICRO results'
             print valid_results_micro
 
@@ -218,10 +213,8 @@ class Metrics:
 
             assert test_labels_list is not None
 
-            if additional_labels:
-                test_labels_list.extend(additional_labels)
-
-            test_averaged = Metrics.compute_averaged_scores(y_true=test_y_true, y_pred=test_y_pred, labels=test_labels_list)
+            test_averaged = Metrics.compute_averaged_scores(y_true=test_y_true, y_pred=test_y_pred,
+                                                            labels=test_labels_list)
 
             print 'Test MICRO results'
             print test_results_micro
@@ -232,20 +225,24 @@ class Metrics:
             print 'Test AVERAGED results'
             print test_averaged
 
-            results_noaverage = Metrics.compute_all_metrics(test_y_true, test_y_pred, labels=test_labels_list, average=None)
+            all_labels = get_all_classification_report_labels() + additional_labels
+
+            # no-average results are computed against all report labels, although it can only have training labels.
+            results_noaverage = Metrics.compute_all_metrics(test_y_true, test_y_pred,
+                                                            labels=all_labels, average=None)
 
             print '...Saving no-averaged results to CSV file'
-            df = pd.DataFrame(results_noaverage, index=test_labels_list)
+            df = pd.DataFrame(results_noaverage, index=all_labels)
             df.to_csv(get_output_path('no_average_results_' + str(actual_time) + '.csv'))
 
             print '...Ploting confusion matrix'
-            cm = Metrics.compute_confusion_matrix(test_y_true, test_y_pred, labels=test_labels_list)
-            plot_confusion_matrix(cm, labels=test_labels_list,
+            cm = Metrics.compute_confusion_matrix(test_y_true, test_y_pred, labels=test_labels_list+additional_labels)
+            plot_confusion_matrix(cm, labels=test_labels_list+additional_labels,
                                   output_filename=get_output_path('confusion_matrix_' + str(actual_time) + '.png'))
 
             print '...Computing classification stats'
-            stats = Metrics.compute_classification_stats(test_y_true, test_y_pred, test_labels_list)
-            df = pd.DataFrame(stats, index=['tp', 'tn', 'fp', 'fn'], columns=test_labels_list).transpose()
+            stats = Metrics.compute_classification_stats(test_y_true, test_y_pred, all_labels)
+            df = pd.DataFrame(stats, index=['tp', 'tn', 'fp', 'fn'], columns=all_labels).transpose()
             df.to_csv(get_output_path('classification_stats_' + str(actual_time) + '.csv'))
 
         def format_averaged_values(results_dict):
