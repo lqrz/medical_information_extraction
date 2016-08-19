@@ -237,8 +237,10 @@ class Metrics:
 
             print '...Ploting confusion matrix'
             cm = Metrics.compute_confusion_matrix(test_y_true, test_y_pred, labels=test_labels_list+additional_labels)
+            # plot_confusion_matrix(cm, labels=test_labels_list+additional_labels,
+            #                       output_filename=get_output_path('confusion_matrix_' + str(actual_time) + '.png'))
             plot_confusion_matrix(cm, labels=test_labels_list+additional_labels,
-                                  output_filename=get_output_path('confusion_matrix_' + str(actual_time) + '.png'))
+                                  output_filename=get_output_path('confusion_matrix_' + str(actual_time) + '_ggplot.png'))
 
             print '...Computing classification stats'
             stats = Metrics.compute_classification_stats(test_y_true, test_y_pred, all_labels)
