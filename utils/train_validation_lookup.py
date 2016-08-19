@@ -118,7 +118,7 @@ if __name__ == '__main__':
                                  test_y_true=testing_true, test_y_pred=test_pred,
                                  metatags=False,
                                  get_output_path=get_lookup_path,
-                                 additional_labels=[default_tag])
+                                 additional_labels=[default_tag] if default_tag else [])
 
     # train_averaged = Metrics.compute_averaged_scores(y_true=training_true, y_pred=train_pred,
     #                                                  labels=get_all_classification_report_labels())
