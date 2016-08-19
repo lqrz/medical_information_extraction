@@ -24,7 +24,7 @@ import sys
 #     #use bbox_inches='tight' for matplotlib to remove margins in image.
 #     ggsave_lqrz(output_filename, plot, dpi=100, bbox_inches='tight')
 
-def plot_confusion_matrix_ggplot(confusion_matrix, labels, output_filename, title=None):
+def plot_confusion_matrix(confusion_matrix, labels, output_filename, title=None):
     import rpy2.robjects as robj
     import rpy2.robjects.pandas2ri  # for dataframe conversion
     from rpy2.robjects.packages import importr
