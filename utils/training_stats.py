@@ -65,7 +65,8 @@ def feature_is_capitalized():
                 geom_bar(stat="identity", aes(y=prob, fill=measure), position="stack") +
                 #geom_bar(stat="identity", aes(y=p_cap)) +
                 labs(x='Label', y='Probability', title=title) +
-                theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+                theme(axis.text.x = element_text(angle=90, hjust=1, vjust=0.5),
+                    axis.ticks = element_blank()) +
                 scale_fill_discrete(name="Measure", breaks=c("p_cap", "p_lab_cap"),
                     labels=c("p(cap(w)|label)", "p(label|cap(w))"))
 
@@ -102,7 +103,8 @@ def feature_is_capitalized():
                     geom_bar(stat="identity", aes(y=prob)) +
                     facet_grid(type2 ~ .) +
                     labs(x='Label', y='Probability', title=title) +
-                    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+                    theme(axis.text.x = element_text(angle=90, hjust=1, vjust=0.5),
+                        axis.ticks = element_blank()) +
                     ylim(0,1)
 
                 print(p)
@@ -158,7 +160,8 @@ def feature_is_digit():
                 geom_bar(stat="identity", aes(y=prob, fill=measure), position="stack") +
                 #geom_bar(stat="identity", aes(y=p_dig)) +
                 labs(x='Label', y='Probability', title=title) +
-                theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+                theme(axis.text.x = element_text(angle=90, hjust=1, vjust=0.5),
+                    axis.ticks = element_blank()) +
                 scale_fill_discrete(name="Measure", breaks=c("p_dig", "p_lab_dig"),
                     labels=c("p(dig(w)|label)", "p(label|dig(w))"))
 
@@ -195,7 +198,8 @@ def feature_is_digit():
                     geom_bar(stat="identity", aes(y=prob)) +
                     facet_grid(type2 ~ .) +
                     labs(x='Label', y='Probability', title=title) +
-                    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+                    theme(axis.text.x = element_text(angle=90, hjust=1, vjust=0.5),
+                        axis.ticks = element_blank()) +
                     ylim(0,1)
 
                 print(p)
@@ -250,7 +254,8 @@ def feature_is_stopword():
                 geom_bar(stat="identity", aes(y=prob, fill=measure), position="stack") +
                 #geom_bar(stat="identity", aes(y=p_stop)) +
                 labs(x='Label', y='Probability', title=title) +
-                theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+                theme(axis.text.x = element_text(angle=90, hjust=1, vjust=0.5),
+                    axis.ticks = element_blank()) +
                 scale_fill_discrete(name="Measure", breaks=c("p_stop", "p_lab_stop"),
                     labels=c("p(stop(w)|label)", "p(label|stop(w))"))
 
@@ -287,7 +292,8 @@ def feature_is_stopword():
                         geom_bar(stat="identity", aes(y=prob)) +
                         facet_grid(type2 ~ .) +
                         labs(x='Label', y='Probability', title=title) +
-                        theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+                        theme(axis.text.x = element_text(angle=90, hjust=1, vjust=0.5),
+                            axis.ticks = element_blank()) +
                         ylim(0,1)
 
                     print(p)
@@ -518,7 +524,8 @@ def feature_tag_in_document():
                         p <- ggplot(df, aes(x=Label)) +
                             geom_bar(stat="identity", aes(y=prob)) +
                             labs(x='Labels', y='Probability', title='Label document probability') +
-                            theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+                            theme(axis.text.x = element_text(angle=90, hjust=1, vjust=0.5),
+                                axis.ticks = element_blank()) +
                             ylim(0,1)
 
                         print(p)
@@ -570,18 +577,18 @@ def feature_tag_contiguity():
             str(df)
 
             p <- ggplot(df, aes(x=tag2, y=tag1, fill=prob)) +
-                geom_tile() +
+                geom_tile(colour='gray92') +
                 scale_fill_gradient(low='white', high='steelblue', guide = guide_legend(title = "Probability")) +
                 labs(x='Contiguous label', y='Label', title='Label contiguity') +
                 theme(panel.grid.major = element_blank(),
                     panel.border = element_blank(),
                     panel.background = element_blank(),
                     axis.ticks = element_blank(),
-                    axis.text.x = element_text(angle = 90, hjust = 1))
+                    axis.text.x = element_text(angle=90, hjust=1, vjust=0.5))
 
             print(p)
 
-            ggsave(output_filename, plot=p, height=11, width=11)
+            ggsave(output_filename, plot=p, height=11, width=11, dpi=120)
 
             }
         """)
