@@ -4,43 +4,51 @@ import os
 import sys
 sys.path.append(os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
 
-from data.dataset import Dataset
 from itertools import chain
 from nltk import FreqDist
 import numpy as np
+
+from data.dataset import Dataset
 from utils.metrics import Metrics
+from trained_models import get_random_baseline_path
+
+def generate_predictions(dataset_tags, tag_index, probs):
+    random_predictions = []
+
+    for _ in dataset_tags:
+        p = np.random.random()
+        random_predictions.append(tag_index[np.where(p < np.cumsum(probs))[0][0]])
+
+    assert random_predictions.__len__() == dataset_tags.__len__()
+
+    return random_predictions
 
 if __name__ == '__main__':
-    training_data_filename = 'handoverdata.zip'
-    testing_data_filename = 'handover-set2.zip'
+    _, _, _, train_document_sentence_tags = Dataset.get_clef_training_dataset(lowercase=True)
+    _, _, _, valid_document_sentence_tags = Dataset.get_clef_validation_dataset(lowercase=True)
+    _, _, _, test_document_sentence_tags = Dataset.get_clef_testing_dataset(lowercase=True)
 
-    _, _, _, training_document_sentence_tags = \
-        Dataset.get_crf_training_data_by_sentence(training_data_filename)
+    train_tags = list(chain(*chain(*train_document_sentence_tags.values())))
 
-    _, _, _, testing_document_sentence_tags = \
-        Dataset.get_crf_training_data_by_sentence(testing_data_filename,
-                                                  Dataset.TESTING_FEATURES_PATH+'test',
-                                                  Dataset.TESTING_FEATURES_EXTENSION)
-
-    training_tags = list(chain(*chain(*training_document_sentence_tags.values())))
-
-    fd = FreqDist(training_tags)
+    fd = FreqDist(train_tags)
 
     tag_index = fd.keys()
 
     total_count = np.sum(fd.values())
     probs = [count/float(total_count) for count in fd.values()]
 
-    testing_tags = list(chain(*chain(*testing_document_sentence_tags.values())))
+    valid_tags = list(chain(*chain(*valid_document_sentence_tags.values())))
+    test_tags = list(chain(*chain(*test_document_sentence_tags.values())))
 
-    random_predictions = []
-    for test_tag in testing_tags:
-        p = np.random.random()
-        random_predictions.append(tag_index[np.where(p<np.cumsum(probs))[0][0]])
+    train_predictions = generate_predictions(train_tags, tag_index, probs)
+    valid_predictions = generate_predictions(valid_tags, tag_index, probs)
+    test_predictions = generate_predictions(test_tags, tag_index, probs)
 
-    assert random_predictions.__len__()==testing_tags.__len__()
-
-    print 'MACRO results'
-    print Metrics.compute_all_metrics(testing_tags, random_predictions, average='macro')
+    Metrics.print_metric_results(train_y_true=train_tags, train_y_pred=train_predictions,
+                                 valid_y_true=valid_tags, valid_y_pred=valid_predictions,
+                                 test_y_true=test_tags, test_y_pred=test_predictions,
+                                 metatags=False,
+                                 get_output_path=get_random_baseline_path,
+                                 additional_labels=[])
 
     print 'End'
