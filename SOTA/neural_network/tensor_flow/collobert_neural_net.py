@@ -8,6 +8,8 @@ from data.dataset import Dataset
 import time
 import tensorflow as tf
 import numpy as np
+from itertools import repeat
+from itertools import chain
 
 class Collobert_neural_net(A_neural_network):
 
@@ -24,8 +26,12 @@ class Collobert_neural_net(A_neural_network):
 
         self.graph = tf.Graph()
 
+        # TODO: make param
+        self.position_embedding_size = 100
+
         # parameters
-        self.w1_w2v = None
+        self.w1_w2v = None  #sentence-word embeddings
+        self.w1_word_position = None    #sentence-word position nr embeddings
         self.w1_pos = None
         self.w1_ner = None
         self.w1_sent_nr = None
@@ -90,29 +96,46 @@ class Collobert_neural_net(A_neural_network):
 
         self.initialize_plotting_lists()
 
+        self.x_train_word_positions, self.x_valid_word_positions, self.x_test_word_positions = \
+            self.get_word_position_data(training=True, validation=True, testing=True, add_words=['<PAD>'], lowercase=True)
+
+        self.x_train_sentence, self.y_train_sentence, \
+        self.x_valid_sentence, self.y_valid_sentence, \
+        self.x_test_sentence, self.y_test_sentence = self.__class__.get_data_by_sentence(
+            clef_training=True, clef_validation=True, clef_testing=True,
+            add_words=['<PAD>'], add_tags=[], add_feats=[], x_idx=None, n_window=self.n_window, feat_positions=None,
+            lowercase=True)
+
         self.pad_word = pad_word
         self.pad_tag = pad_tag
 
+        self.sentence_len = None  #instantiated in the pad_datasets() function
         self.pad_datasets()
 
     def pad_datasets(self):
 
-        self.x_train = self.pad_sentences(self.x_train)
-        self.y_train = self.pad_sentences(self.y_train)
+        self.sentence_len = \
+        sorted(self.x_train_sentence + self.x_valid_sentence + self.x_test_sentence, key=lambda x: x.__len__(),
+               reverse=True)[0].__len__()
 
-        self.x_valid = self.pad_sentences(self.x_valid)
-        self.y_valid = self.pad_sentences(self.y_valid)
+        self.x_train_sentence = np.array(
+            map(lambda x: list(x) + list(repeat(self.pad_word, self.sentence_len - x.__len__())), self.x_train_sentence))
+        self.y_train_sentence = np.array(
+            map(lambda x: list(x) + list(repeat(self.pad_word, self.sentence_len - x.__len__())), self.y_train_sentence))
 
-        self.x_test = self.pad_sentences(self.x_test)
-        self.y_test = self.pad_sentences(self.y_test)
+        self.x_valid_sentence = np.array(
+            map(lambda x: list(x) + list(repeat(self.pad_word, self.sentence_len - x.__len__())), self.x_valid_sentence))
+        self.y_valid_sentence = np.array(
+            map(lambda x: list(x) + list(repeat(self.pad_word, self.sentence_len - x.__len__())), self.y_valid_sentence))
+
+        self.x_test_sentence = np.array(
+            map(lambda x: list(x) + list(repeat(self.pad_word, self.sentence_len - x.__len__())), self.x_test_sentence))
+
+        if not None in self.y_test_sentence:
+            self.y_test_sentence = np.array(
+                map(lambda x: list(x) + list(repeat(self.pad_word, self.sentence_len - x.__len__())), self.y_test_sentence))
 
         return True
-
-    def pad_sentences(self, dataset):
-        from itertools import repeat
-        return np.array(map(lambda x: list(x) + list(
-            repeat(self.pad_word, sorted(dataset, key=lambda x: x.__len__(), reverse=True)[0].__len__() - x.__len__())),
-                   dataset))
 
     def parse_features_to_use(self, cnn_features):
         features_to_use = cnn_features.keys()
@@ -140,7 +163,7 @@ class Collobert_neural_net(A_neural_network):
         return positions
 
     def determine_hidden_layer_size(self):
-        size = 0
+        size = self.position_embedding_size
 
         for desc in self.features_to_use.values():
 
@@ -246,6 +269,9 @@ class Collobert_neural_net(A_neural_network):
         # w2 dense layer
         self.epoch_l2_w2_list = []
 
+        # word position embeddings
+        self.epoch_l2_word_position_list = []
+
         return
 
     def train(self, static, batch_size, **kwargs):
@@ -266,6 +292,14 @@ class Collobert_neural_net(A_neural_network):
 
     def initialize_parameters(self, static):
         with self.graph.as_default():
+
+            self.w1_word_position = tf.Variable(initial_value=np.eye(N=self.sentence_len, M=self.position_embedding_size),
+                                                dtype=tf.float32,
+                                                trainable=not static,
+                                                name='w1_word_position')
+
+            self.regularizables.append(self.w1_word_position)
+            self.training_params.append(self.w1_word_position)
 
             if self.using_w2v_convolution_maxpool_feature():
                 self.w1_w2v = tf.Variable(initial_value=self.pretrained_embeddings, dtype=tf.float32,
@@ -404,7 +438,7 @@ class Collobert_neural_net(A_neural_network):
             conv = tf.nn.conv2d(input=input, filter=filter_w, strides=[1, 1, 1, 1], padding='VALID')
             a = tf.nn.bias_add(conv, filter_b)
             h = tf.nn.relu(a)
-            pooled = tf.nn.max_pool(value=h, ksize=[1, self.n_window - filter_size + 1, 1, 1], strides=[1, 1, 1, 1],
+            pooled = tf.nn.max_pool(value=h, ksize=[1, self.sentence_len - filter_size + 1, 1, 1], strides=[1, 1, 1, 1],
                                     padding='VALID')
             pooled_out.append(pooled)
 
@@ -482,12 +516,14 @@ class Collobert_neural_net(A_neural_network):
 
         return h_pooled_flat
 
-    def perform_embeddings_lookup(self, w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs):
+    def perform_embeddings_lookup(self, w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, word_position_idxs):
         w1_x_expanded = None
         w1_pos_expanded = None
         w1_ner_expanded = None
         w1_sent_nr_expanded = None
         w1_tense_expanded = None
+
+        w1_position = tf.nn.embedding_lookup(self.w1_word_position, word_position_idxs)
 
         if self.using_w2v_convolution_maxpool_feature():
             w1_w2v_x = tf.nn.embedding_lookup(self.w1_w2v, w2v_idxs)
@@ -509,19 +545,24 @@ class Collobert_neural_net(A_neural_network):
             w1_tense_x = tf.nn.embedding_lookup(self.w1_tense, tense_idxs)
             w1_tense_expanded = tf.expand_dims(w1_tense_x, -1)
 
-        return w1_x_expanded, w1_pos_expanded, w1_ner_expanded, w1_sent_nr_expanded, w1_tense_expanded
+        return w1_x_expanded, w1_pos_expanded, w1_ner_expanded, w1_sent_nr_expanded, w1_tense_expanded, w1_position
 
-    def hidden_activations(self, w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs):
+    def hidden_activations(self, w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, word_position_idxs):
 
-        w1_x_expanded, w1_pos_expanded, w1_ner_expanded, w1_sent_nr_expanded, w1_tense_expanded = \
-            self.perform_embeddings_lookup(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
+        w1_x_expanded, w1_pos_expanded, w1_ner_expanded, w1_sent_nr_expanded, w1_tense_expanded, w1_position = \
+            self.perform_embeddings_lookup(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, word_position_idxs)
 
-        return self.perform_convolutions(w1_x_expanded, w1_pos_expanded, w1_ner_expanded,
+        flat_convolution_layer = self.perform_convolutions(w1_x_expanded, w1_pos_expanded, w1_ner_expanded,
                                                   w1_sent_nr_expanded, w1_tense_expanded)
 
-    def forward_pass(self, w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, keep_prob):
+        hidden_layer_activations = tf.nn.relu(tf.concat(1, [flat_convolution_layer, w1_position]))
 
-        h_pooled_flat = self.hidden_activations(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
+        return hidden_layer_activations
+
+    def forward_pass(self, w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, keep_prob, word_position_idxs):
+
+        h_pooled_flat = self.hidden_activations(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs,
+                                                word_position_idxs)
 
         h_dropout = tf.nn.dropout(h_pooled_flat, keep_prob)
 
@@ -547,7 +588,8 @@ class Collobert_neural_net(A_neural_network):
             # ner_idxs = tf.placeholder(tf.int32, shape=[None, self.n_window], name='ner_idxs')
             # sent_nr_idxs = tf.placeholder(tf.int32, shape=[None, self.n_window], name='sent_nr_idxs')
             # tense_idxs = tf.placeholder(tf.int32, shape=[None, self.n_window], name='tense_idxs')
-            w2v_idxs = tf.placeholder(tf.int32, shape=None, name='w2v_idxs')
+            w2v_idxs = tf.placeholder(tf.int32, shape=[None, self.sentence_len], name='w2v_idxs')
+            word_position_idxs = tf.placeholder(tf.int32, shape=[None], name='word_position_idxs')
             pos_idxs = tf.placeholder(tf.int32, shape=None, name='pos_idxs')
             ner_idxs = tf.placeholder(tf.int32, shape=None, name='ner_idxs')
             sent_nr_idxs = tf.placeholder(tf.int32, shape=None, name='sent_nr_idxs')
@@ -556,7 +598,17 @@ class Collobert_neural_net(A_neural_network):
             labels = tf.placeholder(tf.int32, name='labels')
             keep_prob = tf.placeholder(tf.float32, name="dropout_keep_prob")
 
-            out_logits = self.forward_pass(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, keep_prob)
+            w1_x_expanded, w1_pos_expanded, w1_ner_expanded, w1_sent_nr_expanded, w1_tense_expanded, w1_position = \
+                self.perform_embeddings_lookup(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs,
+                                               word_position_idxs)
+
+            flat_convolution_layer = self.perform_convolutions(w1_x_expanded, w1_pos_expanded, w1_ner_expanded,
+                                                               w1_sent_nr_expanded, w1_tense_expanded)
+
+            hidden_layer_activations = tf.nn.relu(tf.concat(1, [flat_convolution_layer, w1_position]))
+
+            out_logits = self.forward_pass(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, keep_prob,
+                                           word_position_idxs)
 
             l2 = tf.add_n([tf.nn.l2_loss(param) for param in self.regularizables])
 
@@ -570,36 +622,33 @@ class Collobert_neural_net(A_neural_network):
 
         with tf.Session(graph=self.graph) as session:
             session.run(tf.initialize_all_variables())
-            n_batches = np.int(np.ceil(self.x_train.shape[0] / minibatch_size))
             for epoch_ix in range(max_epochs):
                 start = time.time()
-                train_cost = 0
-                train_xentropy = 0
-                train_errors = 0
-                for batch_ix in range(n_batches):
-                    feed_dict = self.get_feed_dict(batch_ix, minibatch_size,
-                                                   w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs,
-                                                   labels, keep_prob, keep_prob_val=.5, dataset='train')
-                    _, cost_val, xentropy, errors = session.run([optimizer, cost, cross_entropy, n_errors], feed_dict=feed_dict)
-                    train_cost += cost_val
-                    train_xentropy += xentropy
-                    train_errors += errors
+                train_cost, train_xentropy, train_errors = self.iterate_train_minibatch(
+                    session, minibatch_size,
+                    w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, word_position_idxs,
+                    labels, keep_prob,
+                    optimizer, cost, cross_entropy, n_errors
+                    )
 
-                feed_dict = self.get_feed_dict(None, minibatch_size,
-                                               w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs,
-                                               labels, keep_prob, keep_prob_val=1., dataset='valid')
-                valid_cost, valid_xentropy, pred, valid_errors = session.run([cost, cross_entropy, predictions, n_errors], feed_dict=feed_dict)
+                valid_cost, valid_xentropy, valid_errors, valid_predictions = self.iterate_valid_minibatch(
+                    session, minibatch_size,
+                    w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, word_position_idxs,
+                    labels, keep_prob,
+                    cost, cross_entropy, n_errors, predictions
+                    )
 
-                precision, recall, f1_score = self.compute_scores(self.y_valid, pred)
+                precision, recall, f1_score = self.compute_scores(self.y_valid, valid_predictions)
 
                 if plot:
-                    l2_w1_w2v, l2_w1_pos, l2_w1_ner, l2_w1_sent_nr, l2_w1_tense, l2_w2, \
-                    w2v_filters_sum, pos_filters_sum, ner_filters_sum, sent_nr_filters_sum, tense_filters_sum = \
-                        self.compute_parameters_sum()
+                    l2_w1_w2v, l2_w1_pos, l2_w1_ner, l2_w1_sent_nr, l2_w1_tense, l2_w2, l2_word_position, \
+                    w2v_filters_sum, pos_filters_sum, ner_filters_sum, sent_nr_filters_sum, tense_filters_sum, \
+                     = self.compute_parameters_sum()
 
                     self.update_monitoring_lists(train_cost, train_xentropy, train_errors,
                                                  valid_cost, valid_xentropy, valid_errors,
                                                  l2_w1_w2v, l2_w1_pos, l2_w1_ner, l2_w1_sent_nr, l2_w1_tense, l2_w2,
+                                                 l2_word_position,
                                                  w2v_filters_sum, pos_filters_sum, ner_filters_sum, sent_nr_filters_sum,
                                                  tense_filters_sum,
                                                  precision, recall, f1_score)
@@ -615,8 +664,95 @@ class Collobert_neural_net(A_neural_network):
             print 'Making plots'
             self.make_plots()
 
+    def iterate_train_minibatch(self, session, minibatch_size,
+                                w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, word_position_idxs,
+                                labels, keep_prob,
+                                optimizer, cost, cross_entropy, n_errors
+                                ):
+
+        cost_result = 0
+        xentropy_result = 0
+        error_result = 0
+
+        n_batches = np.int(np.ceil(self.x_train_sentence.shape[0] / float(minibatch_size)))
+
+        for batch_ix in range(n_batches):
+
+            feed_dict = self.get_feed_dict(batch_ix, minibatch_size,
+                                           w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, word_position_idxs,
+                                           labels, keep_prob, keep_prob_val=.5, dataset='train')
+
+            _, batch_cost, batch_xentropy, batch_errors = \
+                session.run([optimizer, cost, cross_entropy, n_errors], feed_dict=feed_dict)
+
+            cost_result += batch_cost
+            xentropy_result += batch_xentropy
+            error_result += batch_errors
+
+        return cost_result, xentropy_result, error_result
+
+    def iterate_valid_minibatch(self, session, minibatch_size,
+                                w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, word_position_idxs,
+                                labels, keep_prob,
+                                cost, cross_entropy, n_errors, predictions):
+
+        cost_result = 0
+        xentropy_result = 0
+        error_result = 0
+        prediction_results = []
+
+        n_batches = np.int(np.ceil(self.x_valid_sentence.shape[0] / float(minibatch_size)))
+
+        for batch_ix in range(n_batches):
+
+            feed_dict = self.get_feed_dict(batch_ix, minibatch_size,
+                                           w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, word_position_idxs,
+                                           labels, keep_prob, keep_prob_val=1., dataset='valid')
+
+            batch_cost, batch_xentropy, batch_errors, batch_predictions = \
+                session.run([cost, cross_entropy, n_errors, predictions], feed_dict=feed_dict)
+
+            cost_result += batch_cost
+            xentropy_result += batch_xentropy
+            error_result += batch_errors
+            prediction_results += list(batch_predictions)
+
+        return cost_result, xentropy_result, error_result, prediction_results
+
+    def iterate_test_minibatch(self, session, minibatch_size,
+                                w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, word_position_idxs,
+                                keep_prob,
+                                predictions, dataset_name):
+
+            prediction_results = []
+
+            n_batches = None
+
+            if dataset_name == 'train':
+                n_batches = np.int(np.ceil(self.x_train_sentence.shape[0] / float(minibatch_size)))
+            elif dataset_name == 'valid':
+                n_batches = np.int(np.ceil(self.x_valid_sentence.shape[0] / float(minibatch_size)))
+            elif dataset_name == 'test':
+                n_batches = np.int(np.ceil(self.x_test_sentence.shape[0] / float(minibatch_size)))
+            else:
+                raise Exception()
+
+            assert n_batches is not None
+
+            for batch_ix in range(n_batches):
+                feed_dict = self.get_feed_dict(batch_ix, minibatch_size,
+                                               w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs,
+                                               word_position_idxs,
+                                               None, keep_prob, keep_prob_val=1., dataset=dataset_name)
+
+                batch_predictions = session.run(predictions, feed_dict=feed_dict)
+
+                prediction_results += list(batch_predictions)
+
+            return prediction_results
+
     def get_feed_dict(self, batch_ix, minibatch_size,
-                      w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs,
+                      w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, word_position_idxs,
                       labels,
                       keep_prob, keep_prob_val,
                       dataset):
@@ -624,21 +760,24 @@ class Collobert_neural_net(A_neural_network):
         feed_dict = dict()
 
         if dataset == 'train':
-            x_w2v = self.x_train
+            x_w2v = self.x_train_sentence
+            x_word_positions = self.x_train_word_positions
             x_pos = self.train_pos_feats
             x_ner = self.train_ner_feats
             x_sent_nr = self.train_sent_nr_feats
             x_tense = self.train_tense_feats
             y = self.y_train
         elif dataset == 'valid':
-            x_w2v = self.x_valid
+            x_w2v = self.x_valid_sentence
+            x_word_positions = self.x_valid_word_positions
             x_pos = self.valid_pos_feats
             x_ner = self.valid_ner_feats
             x_sent_nr = self.valid_sent_nr_feats
             x_tense = self.valid_tense_feats
             y = self.y_valid
         elif dataset == 'test':
-            x_w2v = self.x_test
+            x_w2v = self.x_test_sentence
+            x_word_positions = self.x_test_word_positions
             x_pos = self.test_pos_feats
             x_ner = self.test_ner_feats
             x_sent_nr = self.test_sent_nr_feats
@@ -646,6 +785,9 @@ class Collobert_neural_net(A_neural_network):
             y = self.y_test
         else:
             raise Exception('Invalid param for dataset')
+
+        feed_dict[word_position_idxs] = x_word_positions[batch_ix * minibatch_size: (batch_ix + 1) * minibatch_size] \
+                if batch_ix is not None else x_word_positions
 
         if self.using_w2v_convolution_maxpool_feature():
             feed_dict[w2v_idxs] = x_w2v[batch_ix * minibatch_size: (batch_ix + 1) * minibatch_size] \
@@ -715,12 +857,15 @@ class Collobert_neural_net(A_neural_network):
 
         w2_sum = tf.reduce_sum(tf.square(self.w2)).eval()
 
-        return w1_w2v_sum, w1_pos_sum, w1_ner_sum, w1_sent_nr_sum, w1_tense_sum, w2_sum, \
+        w1_word_position_sum = tf.reduce_sum(tf.square(self.w1_word_position)).eval()
+
+        return w1_w2v_sum, w1_pos_sum, w1_ner_sum, w1_sent_nr_sum, w1_tense_sum, w2_sum, w1_word_position_sum, \
                w2v_filters_sum, pos_filters_sum, ner_filters_sum, sent_nr_filters_sum, tense_filters_sum
 
     def update_monitoring_lists(self, train_cost, train_xentropy, train_errors,
                                 valid_cost, valid_xentropy, valid_errors,
                                 l2_w1_w2v, l2_w1_pos, l2_w1_ner, l2_w1_sent_nr, l2_w1_tense, l2_w2,
+                                l2_word_position,
                                 w2v_filters_sum, pos_filters_sum, ner_filters_sum, sent_nr_filters_sum,
                                 tense_filters_sum,
                                 precision, recall, f1_score):
@@ -742,6 +887,7 @@ class Collobert_neural_net(A_neural_network):
         self.epoch_l2_sent_nr_weight_list.append(l2_w1_sent_nr)
         self.epoch_l2_tense_weight_list.append(l2_w1_tense)
         self.epoch_l2_w2_list.append(l2_w2)
+        self.epoch_l2_word_position_list.append(l2_word_position)
 
         # filters sum
         self.epoch_l2_w2v_c_mp_filters_list.append(w2v_filters_sum)
@@ -779,7 +925,8 @@ class Collobert_neural_net(A_neural_network):
             'ner_c_mp_filters': self.epoch_l2_ner_filters_list,
             'sent_nr_c_mp_filters': self.epoch_l2_sent_nr_filters_list,
             'tense_c_mp_filters': self.epoch_l2_tense_filters_list,
-            'w2': self.epoch_l2_w2_list
+            'w2': self.epoch_l2_w2_list,
+            'word_position_emb': self.epoch_l2_word_position_list
         }
         self.plot_penalties_general(plot_data_dict, actual_time=actual_time)
 
@@ -813,26 +960,27 @@ class Collobert_neural_net(A_neural_network):
         results = dict()
 
         if on_training_set:
-            dataset = 'train'
+            dataset_name = 'train'
             y_test = self.y_train
         elif on_validation_set:
-            dataset = 'valid'
+            dataset_name = 'valid'
             y_test = self.y_valid
         elif on_testing_set:
-            dataset = 'test'
+            dataset_name = 'test'
             y_test = self.y_test
         else:
             raise Exception
 
         with self.graph.as_default():
             w2v_idxs = self.graph.get_tensor_by_name(name='w2v_idxs:0')
+            word_position_idxs = self.graph.get_tensor_by_name(name='word_position_idxs:0')
             pos_idxs = self.graph.get_tensor_by_name(name='pos_idxs:0')
             ner_idxs = self.graph.get_tensor_by_name(name='ner_idxs:0')
             sent_nr_idxs = self.graph.get_tensor_by_name(name='sent_nr_idxs:0')
             tense_idxs = self.graph.get_tensor_by_name(name='tense_idxs:0')
             keep_prob = self.graph.get_tensor_by_name(name='dropout_keep_prob:0')
 
-            out_logits = self.forward_pass(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, keep_prob)
+            out_logits = self.forward_pass(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, keep_prob, word_position_idxs)
 
             predictions = self.compute_predictions(out_logits)
 
@@ -841,14 +989,14 @@ class Collobert_neural_net(A_neural_network):
 
             self.saver.restore(session, self.get_output_path('params.model'))
 
-            feed_dict = self.get_feed_dict(None, None,
-                                           w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs,
-                                           None, keep_prob, keep_prob_val=1., dataset=dataset)
+            test_predictions = self.iterate_test_minibatch(session, 512,
+                                w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, word_position_idxs,
+                                keep_prob,
+                                predictions, dataset_name)
 
-            pred = session.run(predictions, feed_dict=feed_dict)
 
         results['flat_trues'] = y_test
-        results['flat_predictions'] = pred
+        results['flat_predictions'] = test_predictions
 
         return results
 
@@ -898,13 +1046,14 @@ class Collobert_neural_net(A_neural_network):
 
         with self.graph.as_default():
             w2v_idxs = self.graph.get_tensor_by_name(name='w2v_idxs:0')
+            word_position_idxs = self.graph.get_tensor_by_name(name='word_position_idxs:0')
             pos_idxs = self.graph.get_tensor_by_name(name='pos_idxs:0')
             ner_idxs = self.graph.get_tensor_by_name(name='ner_idxs:0')
             sent_nr_idxs = self.graph.get_tensor_by_name(name='sent_nr_idxs:0')
             tense_idxs = self.graph.get_tensor_by_name(name='tense_idxs:0')
             keep_prob = self.graph.get_tensor_by_name(name='dropout_keep_prob:0')
 
-            h = self.hidden_activations(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
+            h = self.hidden_activations(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, word_position_idxs)
 
         with tf.Session(graph=self.graph) as session:
             # init.run()
@@ -912,7 +1061,7 @@ class Collobert_neural_net(A_neural_network):
             self.saver.restore(session, self.get_output_path('params.model'))
 
             feed_dict = self.get_feed_dict(None, None,
-                                           w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs,
+                                           w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, word_position_idxs,
                                            None, keep_prob, keep_prob_val=1., dataset=dataset)
 
             hidden_activations = session.run(h, feed_dict=feed_dict)
@@ -934,13 +1083,14 @@ class Collobert_neural_net(A_neural_network):
 
         with self.graph.as_default():
             w2v_idxs = self.graph.get_tensor_by_name(name='w2v_idxs:0')
+            word_position_idxs = self.graph.get_tensor_by_name(name='word_position_idxs:0')
             pos_idxs = self.graph.get_tensor_by_name(name='pos_idxs:0')
             ner_idxs = self.graph.get_tensor_by_name(name='ner_idxs:0')
             sent_nr_idxs = self.graph.get_tensor_by_name(name='sent_nr_idxs:0')
             tense_idxs = self.graph.get_tensor_by_name(name='tense_idxs:0')
             keep_prob = self.graph.get_tensor_by_name(name='dropout_keep_prob:0')
 
-            out_logits = self.forward_pass(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, keep_prob)
+            out_logits = self.forward_pass(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, keep_prob, word_position_idxs)
 
         with tf.Session(graph=self.graph) as session:
             # init.run()
@@ -948,12 +1098,38 @@ class Collobert_neural_net(A_neural_network):
             self.saver.restore(session, self.get_output_path('params.model'))
 
             feed_dict = self.get_feed_dict(None, None,
-                                           w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs,
+                                           w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, word_position_idxs,
                                            None, keep_prob, keep_prob_val=1., dataset=dataset)
 
             output_logits = session.run(out_logits, feed_dict=feed_dict)
 
         return output_logits
+
+    def get_word_position_data(self, training=True, validation=False, testing=False,
+                               add_words=['<PAD>'], lowercase=True):
+
+        assert training or validation or testing
+
+        x_train = None
+        x_valid = None
+        x_test = None
+
+        #TODO: but if im padding at the sentence level, whats gonna happen to those positions?
+
+        if training:
+            _, _, document_word, _ = Dataset.get_clef_training_dataset(lowercase=lowercase)
+            x_train = [ix for words in list(chain(*document_word.values())) for ix,_ in enumerate(words)]
+
+        if validation:
+            _, _, document_word, _ = Dataset.get_clef_validation_dataset(lowercase=lowercase)
+            x_valid = [ix for words in list(chain(*document_word.values())) for ix,_ in enumerate(words)]
+
+        if testing:
+            _, _, document_word, _ = Dataset.get_clef_testing_dataset(lowercase=lowercase)
+            x_test = [ix for words in list(chain(*document_word.values())) for ix, _ in enumerate(words)]
+
+        return x_train, x_valid, x_test
+
 
     @classmethod
     def get_data_by_sentence(cls, clef_training=True, clef_validation=False, clef_testing=False, add_words=[], add_tags=[],
@@ -967,15 +1143,15 @@ class Collobert_neural_net(A_neural_network):
         :return:
         """
 
-        x_train_feats = None
-        x_valid_feats = None
-        x_test_feats = None
-        features_indexes = None
+        # x_train_feats = None
+        # x_valid_feats = None
+        # x_test_feats = None
+        # features_indexes = None
 
         if not clef_training and not clef_validation and not clef_testing:
             raise Exception('At least one dataset must be loaded')
 
-        use_context_window = False
+        # use_context_window = False
 
         document_sentence_words = []
         document_sentence_tags = []
@@ -998,69 +1174,48 @@ class Collobert_neural_net(A_neural_network):
             document_sentence_words.extend(test_document_sentence_words.values())
 
         word2index, index2word = cls._construct_index(add_words, document_sentence_words)
-        label2index, index2label = cls._construct_index(add_tags, document_sentence_tags)
+        # label2index, index2label = cls._construct_index(add_tags, document_sentence_tags)
+
+        x_train = None
+        y_train = None
+        x_valid = None
+        y_valid = None
+        x_test = None
+        y_test = None
 
         if clef_training:
-            x_train, y_train = cls.get_partitioned_data_by_sentence(x_idx=x_idx,
-                                                        document_sentences_words=train_document_sentence_words,
-                                                        document_sentences_tags=train_document_sentence_tags,
-                                                        word2index=word2index,
-                                                        label2index=label2index,
-                                                        use_context_window=use_context_window,
-                                                        n_window=n_window)
+            x_train = []
+
+            for doc in train_document_sentence_words.values():
+                for sent in doc:
+                    x_train.extend([map(lambda x: word2index[x], sent)] * sent.__len__())
+
+            y_train = list(chain(*chain(*train_document_sentence_tags.values())))
+
+            assert x_train.__len__() == y_train.__len__()
 
         if clef_validation:
-            x_valid, y_valid = cls.get_partitioned_data_by_sentence(x_idx=x_idx,
-                                                        document_sentences_words=valid_document_sentence_words,
-                                                        document_sentences_tags=valid_document_sentence_tags,
-                                                        word2index=word2index,
-                                                        label2index=label2index,
-                                                        use_context_window=use_context_window,
-                                                        n_window=n_window)
+            x_valid = []
+
+            for doc in valid_document_sentence_words.values():
+                for sent in doc:
+                    x_valid.extend([map(lambda x: word2index[x], sent)] * sent.__len__())
+
+            y_valid = list(chain(*chain(*valid_document_sentence_tags.values())))
+
+            assert x_valid.__len__() == y_valid.__len__()
 
         if clef_testing:
-            x_test, y_test = cls.get_partitioned_data_by_sentence(x_idx=x_idx,
-                                                      document_sentences_words=test_document_sentence_words,
-                                                      document_sentences_tags=test_document_sentence_tags,
-                                                      word2index=word2index,
-                                                      label2index=label2index,
-                                                      use_context_window=use_context_window,
-                                                      n_window=n_window)
+            x_test = []
 
-        return x_train, y_train, x_train_feats, \
-               x_valid, y_valid, x_valid_feats, \
-               x_test, y_test, x_test_feats, \
-               word2index, index2word, \
-               label2index, index2label, \
-               features_indexes
+            for doc in test_document_sentence_words.values():
+                for sent in doc:
+                    x_test.extend([map(lambda x: word2index[x], sent)] * sent.__len__())
 
-    @classmethod
-    def get_partitioned_data_by_sentence(cls, x_idx, document_sentences_words, document_sentences_tags,
-                             word2index, label2index, use_context_window=False, n_window=None, **kwargs):
-        """
-        this is at sentence level.
-        it partitions the training data according to the x_idx doc_nrs used for training and y_idx doc_nrs used for
-        testing while cross-validating.
+            y_test = list(chain(*chain(*test_document_sentence_tags.values())))
 
-        :param x_idx:
-        :param y_idx:
-        :return:
-        """
-        x = []
-        y = []
+            assert x_test.__len__() == y_test.__len__()
 
-        for doc_nr, doc_sentences in document_sentences_words.iteritems():
-            if (not x_idx) or (doc_nr in x_idx):
-                # training set
-                if use_context_window:
-                    raise NotImplementedError
-                    # x_doc = cls._get_partitioned_data_with_context_window(doc_sentences, n_window, word2index)
-                else:
-                    x_doc = cls._get_partitioned_data_without_context_window_by_sentence(doc_sentences, word2index)
-
-                y_doc = [map(lambda x: label2index[x] if x else None, sent) for sent in document_sentences_tags[doc_nr]]
-
-                x.extend(x_doc)
-                y.extend(y_doc)
-
-        return x, y
+        return x_train, y_train, \
+               x_valid, y_valid, \
+               x_test, y_test
