@@ -13,15 +13,13 @@ from collections import defaultdict
 from functools import wraps
 import argparse
 import cPickle as pickle
-from collections import OrderedDict
+from collections import OrderedDict, Counter
 from itertools import chain
 import pandas as pd
 from scipy import spatial
 from scipy import stats
 import time
 
-from data import get_classification_report_labels
-from utils.plot_confusion_matrix import plot_confusion_matrix
 from utils import utils
 from utils.metrics import Metrics
 from trained_models import get_pycrf_customfeats_folder, get_pycrf_originalfeats_folder
@@ -33,7 +31,7 @@ from data import get_w2v_training_data_vectors
 from utils import features_distributions
 from utils import get_word_tenses
 from data import get_hierarchical_mapping
-from data import get_aggregated_classification_report_labels
+from crf_constraints import CRF_Constraints
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -45,6 +43,7 @@ logger = logging.getLogger(__name__)
 # logger_predictions.setLevel(logging.INFO)
 
 np.random.seed(1234)
+
 
 def memoize(func):
 
@@ -64,9 +63,12 @@ def memoize(func):
 
     return wrapper
 
+
 class CRF:
 
-    def __init__(self, training_data,
+    def __init__(self,
+                 training_data,
+                 validation_data,
                  testing_data,
                  output_model_filename,
                  sent_nr_mode,
@@ -91,7 +93,7 @@ class CRF:
                  **kwargs):
 
         self.training_data = training_data
-
+        self.validation_data = validation_data
         self.testing_data = testing_data
 
         self.output_model_filename = output_model_filename
@@ -949,8 +951,23 @@ class CRF:
 
         return log
 
-    def predict(self, x_test):
+    def predict(self, testing_data, crf_model, feature_function, metatags):
+        '''
+        Default pycrfsuite Viterbi inference.
+        Predicts at sentence level.
+        '''
+
         predictions = []
+
+        # get testing features
+        x = crf_model.get_features_from_crf_training_data(testing_data, feature_function)
+        y = crf_model.get_labels_from_crf_training_data(testing_data)
+
+        x_test = list(chain(*x.values()))
+        y_test = list(chain(*y.values()))
+
+        if metatags:
+            y_test = convert_metatags(y_test)
 
         tagger = pycrfsuite.Tagger()
         tagger.open(self.output_model_filename)
@@ -959,7 +976,131 @@ class CRF:
             # print tagger.tag(sent)
             predictions.extend(tagger.tag(sent))
 
-        return predictions
+        y_test_flat = list(chain(*y_test))
+
+        return y_test_flat, predictions
+
+    def predict_lqrz(self, testing_data, crf_model, feature_function, metatags):
+        '''
+        My own Viterbi inference.
+        Enforces constraints at document level.
+        '''
+
+        predictions = []
+        original_predictions = []
+
+        # instantiate constraints
+        crf_constraints = CRF_Constraints.Instance(n_sections=6, min_prob=1e-8)
+
+        # get testing features
+        x = crf_model.get_features_from_crf_training_data(testing_data, feature_function)
+        y = crf_model.get_labels_from_crf_training_data(testing_data)
+
+        x_test = list(x.values())
+        y_test = list(y.values())
+
+        if metatags:
+            y_test = convert_metatags(y_test)
+
+        y_test_flat = list(chain(*chain(*y_test)))
+
+        tagger = pycrfsuite.Tagger()
+        tagger.open(self.output_model_filename)
+
+        label2index = dict(zip(tagger.labels(), range(tagger.labels().__len__())))
+        index2label = dict(zip(range(tagger.labels().__len__()), tagger.labels()))
+
+        state_features = tagger.info().state_features
+        transition_features = tagger.info().transitions
+
+        def feature_to_weight(x):
+            try:
+                return state_features[x]
+            except KeyError:
+                return 0.
+
+        def state_scores(x_item, tagger, position):
+            scores_t = []
+            attributes = map(lambda x: ':'.join([str(x[0]), str(x[1])]), x_item[position].iteritems())
+            for candidate_label in tagger.labels():
+                features = map(lambda x: (x, candidate_label), attributes)
+                weights = map(feature_to_weight, features)
+                scores_t.append(np.sum(weights))
+
+            return np.array(scores_t)
+
+        def transition_scores(to_state, transition_features, tagger):
+            scores = []
+            for candidate_label in tagger.labels():
+                try:
+                    score = transition_features[(candidate_label, to_state)]
+                except KeyError:
+                    score = 0.
+                scores.append(score)
+
+            return np.array(scores)
+
+        for test_doc in x_test:
+            used_tags = Counter()
+            doc_sent_len = test_doc.__len__()
+            doc_token_len = list(chain(*test_doc)).__len__()
+            for sentence_ix, test_sent in enumerate(test_doc):
+                '''
+                I need to have a notion of where the doc starts and ends.
+                How to integrate the constraints?
+                '''
+
+                section_nr = crf_constraints.get_section_nr(sentence_ix, doc_token_len)
+
+                # set the x_seq
+                tagger.set(test_sent)
+
+                trellis = np.zeros((tagger.labels().__len__(), test_sent.__len__()))
+                back_pointers = np.ones((tagger.labels().__len__(), test_sent.__len__()), 'int32') * -1
+
+                # score of the labels at timestep 0
+                trellis[:, 0] = np.exp(state_scores(test_sent, tagger, 0))
+
+                for i in xrange(1, test_sent.__len__()):
+                    # score of the labels at timestep t
+                    scores_t = np.exp(state_scores(test_sent, tagger, i))
+
+                    for candidate_label in tagger.labels():
+                        # transition score from all labels to the candidate_label
+                        transition_weights = np.exp(transition_scores(candidate_label, transition_features, tagger))
+                        # max-term of the Viterbi recursion
+                        max_score = np.max(trellis[:, i-1] * transition_weights)
+                        back_pointer = np.argmax(trellis[:, i-1] * transition_weights)
+
+                        candidate_score = scores_t[label2index[candidate_label]] * max_score
+
+                        # probability of seeing this label in this section
+                        # tag_section_nr_prob = crf_constraints.get_tag_section_nr_probability(candidate_label, section_nr)
+                        # candidate_score *= tag_section_nr_prob
+
+                        # probability of duplicating this label in the document
+
+                        # not all NA
+
+                        trellis[label2index[candidate_label], i] = candidate_score
+                        back_pointers[label2index[candidate_label], i] = back_pointer
+
+                predictions_ixs = []
+                last_prediction = trellis[:, -1].argmax()
+                predictions_ixs.append(last_prediction)
+                for i in xrange(test_sent.__len__()-1, 0, -1):
+                    last_prediction = back_pointers[last_prediction, i]
+                    predictions_ixs.append(last_prediction)
+
+                sentence_predictions = map(lambda x: index2label[x], predictions_ixs[::-1])
+                predictions.extend(sentence_predictions)
+
+
+
+                # This is the original pycrfsuite prediction
+                original_predictions.extend(tagger.tag(test_sent))
+
+        return y_test_flat, predictions
 
     def filter_by_doc_nr(self, x_train, y_train, x_idx):
         x_features = []
@@ -1259,8 +1400,10 @@ def convert_metatags(y_dataset):
 
     return mapped_dataset
 
-def use_testing_dataset(testing_data, crf_model, feature_function, metatags, **kwargs):
+def use_testing_dataset(testing_data, validation_data, crf_model, feature_function, metatags, predict_function, **kwargs):
 
+    # set the validation_data attribute of the model
+    crf_model.validation_data = validation_data
     # set the testing_data attribute of the model
     crf_model.testing_data = testing_data
 
@@ -1279,26 +1422,21 @@ def use_testing_dataset(testing_data, crf_model, feature_function, metatags, **k
     crf_model.token_tenses = list(chain(*get_word_tenses.get_validation_set_tenses().values()))
     crf_model.token_nr = 0
 
-    # get testing features
-    x = crf_model.get_features_from_crf_training_data(crf_model.testing_data, feature_function)
-    y = crf_model.get_labels_from_crf_training_data(crf_model.testing_data)
-
-    x_test = list(chain(*x.values()))
-    y_test = list(chain(*y.values()))
-
     if metatags:
         y_train = convert_metatags(y_train)
-        y_test = convert_metatags(y_test)
 
     logger.info('Training the model')
     log = crf_model.train(x_train, y_train, verbose=crf_model.verbose)
 
-    logger.info('Predicting')
-    predicted_tags = crf_model.predict(x_test)
+    logger.info('Predicting on training set')
+    y_train_flat, train_predicted_tags = predict_function(crf_model.training_data, crf_model, feature_function, metatags)
+    logger.info('Predicting on validation set')
+    y_valid_flat, valid_predicted_tags = predict_function(crf_model.validation_data, crf_model, feature_function, metatags)
+    logger.info('Predicting on testing set')
+    y_test_flat, test_predicted_tags = predict_function(crf_model.testing_data, crf_model, feature_function, metatags)
+    # predicted_tags = predict_function(x_test)
 
-    y_test_flat = list(chain(*y_test))
-
-    return log, predicted_tags, y_test_flat
+    return log, y_train_flat, train_predicted_tags, y_valid_flat, valid_predicted_tags, y_test_flat, test_predicted_tags
 
 def pickle_results(prediction_results,
                    incl_metamap=False,
@@ -1428,6 +1566,7 @@ if __name__ == '__main__':
 
     #TODO: im setting output_model_filename to None. Im not using it, currently.
     crf_model = CRF(training_data,
+                    validation_data=None,
                     testing_data=None,
                     output_model_filename=get_output_path('pycrfsuite.model'),
                     **args)
@@ -1453,49 +1592,36 @@ if __name__ == '__main__':
     else:
         # train on 101 training documents, and predict on 100 validation documents.
         validation_data, _, _, validation_tags = Dataset.get_clef_validation_dataset(lowercase=False)
+        testing_data, _, _, testing_tags = Dataset.get_clef_testing_dataset(lowercase=False)
         # testing_data, testing_texts, _, _ = \
         #     Dataset.get_crf_training_data_by_sentence(file_name=test_data_filename,
         #                                               path=Dataset.TESTING_FEATURES_PATH+'test',
         #                                               extension=Dataset.TESTING_FEATURES_EXTENSION)
 
-        train_log, valid_y_pred, valid_y_true = use_testing_dataset(validation_data, crf_model, feature_function, **args)
+        # train_log, valid_y_pred, valid_y_true = use_testing_dataset(validation_data,
+        #                                                                      crf_model,
+        #                                                                      feature_function,
+        #                                                                      predict_function=crf_model.predict,
+        #                                                                      **args)
+        train_log, train_y_true, train_y_pred, valid_y_true, valid_y_pred, test_y_true, test_y_pred = \
+            use_testing_dataset(
+            testing_data,
+            validation_data,
+            crf_model,
+            feature_function,
+            # predict_function=crf_model.predict_lqrz,
+            predict_function=crf_model.predict,
+            **args)
 
         print train_log[-1]
 
     # valid_y_true = list(chain(*chain(*validation_tags.values())))
 
-    assert valid_y_pred is not None
-    assert valid_y_true.__len__() == valid_y_pred.__len__()
-
-    results_macro = Metrics.compute_all_metrics(y_true=valid_y_true, y_pred=valid_y_pred, average='macro')
-    results_micro = Metrics.compute_all_metrics(y_true=valid_y_true, y_pred=valid_y_pred, average='micro')
-
-    print 'MICRO results'
-    print results_micro
-
-    print 'MACRO results'
-    print results_macro
-
-    if args['metatags']:
-        labels_list = get_aggregated_classification_report_labels()
-    else:
-        labels_list = get_classification_report_labels()
-    assert labels_list is not None
-
-    results_noaverage = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, labels=labels_list, average=None)
-
-    print '...Saving no-averaged results to CSV file'
-    df = pd.DataFrame(results_noaverage, index=labels_list)
-    df.to_csv(get_output_path('no_average_results_'+str(actual_time)+'.csv'))
-
-    print '...Ploting confusion matrix'
-    cm = Metrics.compute_confusion_matrix(valid_y_true, valid_y_pred, labels=labels_list)
-    plot_confusion_matrix(cm, labels=labels_list, output_filename=get_output_path('confusion_matrix_'+str(actual_time)+'.png'))
-
-    print '...Computing classification stats'
-    stats = Metrics.compute_classification_stats(valid_y_true, valid_y_pred, labels_list)
-    df = pd.DataFrame(stats, index=['tp', 'tn', 'fp', 'fn'], columns=labels_list).transpose()
-    df.to_csv(get_output_path('classification_stats_'+str(actual_time)+'.csv'))
+    Metrics.print_metric_results(train_y_true=train_y_true, train_y_pred=train_y_pred,
+                                 valid_y_true=valid_y_true, valid_y_pred=valid_y_pred,
+                                 test_y_true=test_y_true, test_y_pred=test_y_pred,
+                                 metatags=args['metatags'],
+                                 get_output_path=get_output_path)
 
     print '...Pickling results'
-    pickle_results(valid_y_pred, get_output_path=get_output_path, **args)
+    pickle_results(test_y_pred, get_output_path=get_output_path, **args)
