@@ -31,7 +31,7 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
                  hidden_activation_f,
                  out_activation_f,
                  tag_dim,
-                 regularization,
+                 # regularization,
                  pad_tag,
                  unk_tag,
                  pad_word,
@@ -42,7 +42,7 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
         self.hidden_activation_f = hidden_activation_f
         self.out_activation_f = out_activation_f
 
-        self.regularization = regularization
+        # self.regularization = regularization
 
         self.tag_dim = tag_dim
         self.pad_tag = pad_tag
@@ -54,6 +54,8 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
 
         self.params = OrderedDict()
 
+        self.forward_pass_function = None
+
     def train(self, **kwargs):
         if kwargs['batch_size']:
             # train with minibatch
@@ -64,9 +66,11 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
             if kwargs['n_hidden']:
                 logger.info('Training with SGD two hidden layer')
                 self.train_with_sgd_two_layers(**kwargs)
+                self.forward_pass_function = self.sgd_forward_pass_two_layers
             else:
                 logger.info('Training with SGD one hidden layer')
                 self.train_with_sgd_one_layer(**kwargs)
+                self.forward_pass_function = self.sgd_forward_pass
 
         return True
 
@@ -169,26 +173,26 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
         self.params['w_t'] = w_t
 
         #TODO: with regularization??
-        if self.regularization:
+        # if self.regularization:
             # symbolic Theano variable that represents the L1 regularization term
             # L1 = T.sum(abs(w1)) + T.sum(abs(w2))
 
             # symbolic Theano variable that represents the squared L2 term
-            L2_w1 = T.sum(w1 ** 2)
-            L2_w_x = T.sum(w_x ** 2)
-            L2_w2 = T.sum(w2 ** 2)
-            L2_wt = T.sum(wt ** 2)
-            L2_w_t = T.sum(w_t ** 2)
+        L2_w1 = T.sum(w1 ** 2)
+        L2_w_x = T.sum(w_x ** 2)
+        L2_w2 = T.sum(w2 ** 2)
+        L2_wt = T.sum(wt ** 2)
+        L2_w_t = T.sum(w_t ** 2)
 
-            L2 = L2_w_x + L2_w2 + L2_w_t
+        L2 = L2_w_x + L2_w2 + L2_w_t
 
         mean_cross_entropy = T.mean(T.nnet.categorical_crossentropy(out, y))
 
-        if self.regularization:
+        # if self.regularization:
             # TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
-            cost = mean_cross_entropy + alpha_L2_reg * L2
-        else:
-            cost = mean_cross_entropy
+        cost = mean_cross_entropy + alpha_L2_reg * L2
+        # else:
+        #     cost = mean_cross_entropy
 
         y_predictions = T.argmax(out, axis=1)
 
@@ -331,10 +335,10 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
                                                 n_tokens: 1
                                             })
 
-        if self.regularization:
-            train_l2_penalty = theano.function(inputs=[],
-                                               outputs=[L2_w1, L2_w2, L2_wt],
-                                               givens=[])
+        # if self.regularization:
+        train_l2_penalty = theano.function(inputs=[],
+                                           outputs=[L2_w1, L2_w2, L2_wt],
+                                           givens=[])
 
         flat_true = list(chain(*self.y_valid))
 
@@ -376,11 +380,11 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
                     epoch_errors += errors_output
                     train_cross_entropy += get_cross_entropy(word_cw, [word_tag])
 
-            if self.regularization:
-                l2_w1, l2_w2, l2_wt = train_l2_penalty()
-                epoch_l2_w1 += l2_w1
-                epoch_l2_w2 += l2_w2
-                epoch_l2_wt += l2_wt
+            # if self.regularization:
+            l2_w1, l2_w2, l2_wt = train_l2_penalty()
+            epoch_l2_w1 += l2_w1
+            epoch_l2_w2 += l2_w2
+            epoch_l2_wt += l2_wt
 
             valid_error = 0
             valid_cost = 0
@@ -496,26 +500,26 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
         self.params['w_t'] = w_t
 
         #TODO: with regularization??
-        if self.regularization:
+        # if self.regularization:
             # symbolic Theano variable that represents the L1 regularization term
             # L1 = T.sum(abs(w1)) + T.sum(abs(w2))
 
-            # symbolic Theano variable that represents the squared L2 term
-            L2_w1 = T.sum(w1 ** 2)
-            L2_w_x = T.sum(w_x ** 2)
-            L2_w2 = T.sum(w2 ** 2)
-            L2_wt = T.sum(wt ** 2)
-            L2_w_t = T.sum(w_t ** 2)
+        # symbolic Theano variable that represents the squared L2 term
+        L2_w1 = T.sum(w1 ** 2)
+        L2_w_x = T.sum(w_x ** 2)
+        L2_w2 = T.sum(w2 ** 2)
+        L2_wt = T.sum(wt ** 2)
+        L2_w_t = T.sum(w_t ** 2)
 
-            L2 = L2_w_x + L2_w2 + L2_w_t
+        L2 = L2_w_x + L2_w2 + L2_w_t
 
         mean_cross_entropy = T.mean(T.nnet.categorical_crossentropy(out, y))
 
-        if self.regularization:
+        # if self.regularization:
             # TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
-            cost = mean_cross_entropy + alpha_L2_reg * L2
-        else:
-            cost = mean_cross_entropy
+        cost = mean_cross_entropy + alpha_L2_reg * L2
+        # else:
+        #     cost = mean_cross_entropy
 
         y_predictions = T.argmax(out, axis=1)
 
@@ -607,10 +611,10 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
                                                 n_tokens: 1
                                             })
 
-        if self.regularization:
-            train_l2_penalty = theano.function(inputs=[],
-                                               outputs=[L2_w1, L2_w2, L2_wt],
-                                               givens=[])
+        # if self.regularization:
+        train_l2_penalty = theano.function(inputs=[],
+                                           outputs=[L2_w1, L2_w2, L2_wt],
+                                           givens=[])
 
         flat_true = list(chain(*self.y_valid))
 
@@ -652,11 +656,11 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
                     epoch_errors += errors_output
                     train_cross_entropy += get_cross_entropy(word_cw, [word_tag])
 
-            if self.regularization:
-                l2_w1, l2_w2, l2_wt = train_l2_penalty()
-                epoch_l2_w1 += l2_w1
-                epoch_l2_w2 += l2_w2
-                epoch_l2_wt += l2_wt
+            # if self.regularization:
+            l2_w1, l2_w2, l2_wt = train_l2_penalty()
+            epoch_l2_w1 += l2_w1
+            epoch_l2_w2 += l2_w2
+            epoch_l2_wt += l2_wt
 
             valid_error = 0
             valid_cost = 0
@@ -750,7 +754,7 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
         self.prev_preds = theano.shared(value=np.array([self.unk_tag]*self.n_window, dtype=INT),
                                         name='previous_predictions', borrow=True)
 
-        pred, _, _, next_preds, _, _ = self.sgd_forward_pass(test_idxs,n_tokens)
+        pred, _, _, next_preds, _, _ = self.forward_pass_function(test_idxs,n_tokens)
 
         perform_prediction = theano.function(inputs=[test_idxs],
                                              outputs=[pred, next_preds],
@@ -865,6 +869,7 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
             _, _, test_document_sentence_words, test_document_sentence_tags = Dataset.get_clef_testing_dataset()
 
             document_sentence_words.extend(test_document_sentence_words.values())
+            document_sentence_tags.extend(test_document_sentence_tags.values())
 
         word2index, index2word = cls._construct_index(add_words, document_sentence_words)
         label2index, index2label = cls._construct_index(add_tags, document_sentence_tags)
@@ -903,3 +908,15 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
                word2index, index2word, \
                label2index, index2label, \
                features_indexes
+
+    @classmethod
+    def get_features_crf_position(cls, features):
+        return []
+
+    def get_hidden_activations(self, on_training_set, on_validation_set, on_testing_set):
+        # not implemented
+        return []
+
+    def get_output_logits(self, on_training_set, on_validation_set, on_testing_set):
+        # not implemented
+        return []
