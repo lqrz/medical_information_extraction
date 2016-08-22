@@ -708,6 +708,7 @@ def use_testing_dataset(nn_class,
 
     logger.info('Predicting on Training set')
     nnet_results = nn_trainer.predict(on_training_set=True, **kwargs)
+    train_flat_true = nnet_results['flat_trues']
     train_flat_predictions = nnet_results['flat_predictions']
 
     logger.info('Predicting on Validation set')
@@ -717,16 +718,24 @@ def use_testing_dataset(nn_class,
 
     logger.info('Predicting on Testing set')
     nnet_results = nn_trainer.predict(on_testing_set=True, **kwargs)
+    test_flat_true = nnet_results['flat_trues']
     test_flat_predictions = nnet_results['flat_predictions']
 
-    assert valid_flat_true.__len__() == valid_flat_predictions.__len__()
+    assert train_flat_true.__len__() == train_flat_predictions.__len__()
+    train_flat_true = map(lambda x: index2label[x], train_flat_true)
+    train_flat_predictions = map(lambda x: index2label[x], train_flat_predictions)
 
+    assert valid_flat_true.__len__() == valid_flat_predictions.__len__()
     valid_flat_true = map(lambda x: index2label[x], valid_flat_true)
     valid_flat_predictions = map(lambda x: index2label[x], valid_flat_predictions)
-    train_flat_predictions = map(lambda x: index2label[x], train_flat_predictions)
+
+    assert test_flat_true.__len__() == test_flat_predictions.__len__()
+    test_flat_true = map(lambda x: index2label[x], test_flat_true)
     test_flat_predictions = map(lambda x: index2label[x], test_flat_predictions)
 
-    results[0] = (valid_flat_true, valid_flat_predictions, train_flat_predictions, test_flat_predictions)
+    results[0] = (train_flat_true, train_flat_predictions,
+                  valid_flat_true, valid_flat_predictions,
+                  test_flat_true, test_flat_predictions)
 
     cPickle.dump(pretrained_embeddings, open(get_output_path('original_vectors.p'), 'wb'))
     try:
@@ -751,6 +760,14 @@ def use_testing_dataset(nn_class,
     validation_output_logits = nn_trainer.get_output_logits(
         on_training_set=False, on_validation_set=True, on_testing_set=False)
     cPickle.dump(validation_output_logits, open(get_output_path('validation_output_logits.p'), 'wb'))
+
+    testing_hidden_activations = nn_trainer.get_hidden_activations(
+        on_training_set=False, on_validation_set=False, on_testing_set=True)
+    cPickle.dump(testing_hidden_activations, open(get_output_path('testing_hidden_activations.p'), 'wb'))
+
+    testing_output_logits = nn_trainer.get_output_logits(
+        on_training_set=False, on_validation_set=False, on_testing_set=True)
+    cPickle.dump(testing_output_logits, open(get_output_path('testing_output_logits.p'), 'wb'))
 
     return results, index2label
 
@@ -930,51 +947,61 @@ if __name__ == '__main__':
     cPickle.dump(results, open(get_output_path('prediction_results.p'),'wb'))
     cPickle.dump(index2label, open(get_output_path('index2labels.p'),'wb'))
 
-    valid_y_true = list(chain(*[true for true, _, _, _ in results.values()]))
-    valid_y_pred = list(chain(*[pred for _, pred, _, _ in results.values()]))
-    train_y_pred = list(chain(*[pred for _, _, pred, _ in results.values()]))
-    test_y_pred = list(chain(*[pred for _, _, _, pred in results.values()]))
+    train_y_true = list(chain(*[train_true for train_true, train_pred, valid_true, valid_pred, test_true, test_pred in results.values()]))
+    train_y_pred = list(chain(*[train_pred for train_true, train_pred, valid_true, valid_pred, test_true, test_pred in results.values()]))
 
-    if args['meta_tags']:
-        labels_list = get_aggregated_classification_report_labels()
-    else:
-        if args['tags']:
-            labels_list = list(set(valid_y_true))
-        else:
-            labels_list = get_classification_report_labels()
+    valid_y_true = list(chain(*[valid_true for train_true, train_pred, valid_true, valid_pred, test_true, test_pred in results.values()]))
+    valid_y_pred = list(chain(*[valid_pred for train_true, train_pred, valid_true, valid_pred, test_true, test_pred in results.values()]))
 
-    if labels_list.__len__() > 2:
-        results_micro = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, average='micro')
-        results_macro = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, average='macro')
+    test_y_true = list(chain(*[test_true for train_true, train_pred, valid_true, valid_pred, test_true, test_pred in results.values()]))
+    test_y_pred = list(chain(*[test_pred for train_true, train_pred, valid_true, valid_pred, test_true, test_pred in results.values()]))
 
-        print 'MICRO results'
-        print results_micro
-
-        print 'MACRO results'
-        print results_macro
-
-    assert labels_list is not None
-
-    results_noaverage = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, labels=labels_list, average=None)
-
-    print '...Saving no-averaged results to CSV file'
-    df = pd.DataFrame(results_noaverage, index=labels_list)
-    df.to_csv(get_output_path('no_average_results.csv'))
-
-    print 'No-average results'
-    print results_noaverage
-
-    if args['plot']:
-        cm = Metrics.compute_confusion_matrix(valid_y_true, valid_y_pred, labels=labels_list)
-        plot_confusion_matrix(cm, labels=labels_list, output_filename=get_output_path('confusion_matrix.png'))
-
-    print '...Saving predictions to file'
-    save_predictions_to_file(train_y_pred, valid_y_pred, test_y_pred, get_output_path)
-
-    print '...Computing classification stats'
-    stats = Metrics.compute_classification_stats(valid_y_true, valid_y_pred, labels_list)
-    df = pd.DataFrame(stats, index=['tp', 'tn', 'fp', 'fn'], columns=labels_list).transpose()
-    df.to_csv(get_output_path('classification_stats.csv'))
+    Metrics.print_metric_results(train_y_true=train_y_true, train_y_pred=train_y_pred,
+                                 valid_y_true=valid_y_true, valid_y_pred=valid_y_pred,
+                                 test_y_true=test_y_true, test_y_pred=test_y_pred,
+                                 metatags=args['meta_tags'],
+                                 get_output_path=get_output_path,
+                                 additional_labels=[])
+    # if args['meta_tags']:
+    #     labels_list = get_aggregated_classification_report_labels()
+    # else:
+    #     if args['tags']:
+    #         labels_list = list(set(valid_y_true))
+    #     else:
+    #         labels_list = get_classification_report_labels()
+    #
+    # if labels_list.__len__() > 2:
+    #     results_micro = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, average='micro')
+    #     results_macro = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, average='macro')
+    #
+    #     print 'MICRO results'
+    #     print results_micro
+    #
+    #     print 'MACRO results'
+    #     print results_macro
+    #
+    # assert labels_list is not None
+    #
+    # results_noaverage = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, labels=labels_list, average=None)
+    #
+    # print '...Saving no-averaged results to CSV file'
+    # df = pd.DataFrame(results_noaverage, index=labels_list)
+    # df.to_csv(get_output_path('no_average_results.csv'))
+    #
+    # print 'No-average results'
+    # print results_noaverage
+    #
+    # if args['plot']:
+    #     cm = Metrics.compute_confusion_matrix(valid_y_true, valid_y_pred, labels=labels_list)
+    #     plot_confusion_matrix(cm, labels=labels_list, output_filename=get_output_path('confusion_matrix.png'))
+    #
+    # print '...Saving predictions to file'
+    # save_predictions_to_file(train_y_pred, valid_y_pred, test_y_pred, get_output_path)
+    #
+    # print '...Computing classification stats'
+    # stats = Metrics.compute_classification_stats(valid_y_true, valid_y_pred, labels_list)
+    # df = pd.DataFrame(stats, index=['tp', 'tn', 'fp', 'fn'], columns=labels_list).transpose()
+    # df.to_csv(get_output_path('classification_stats.csv'))
 
     print 'Elapsed time: ', time.time()-start
 
