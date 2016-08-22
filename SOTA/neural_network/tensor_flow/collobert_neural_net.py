@@ -913,18 +913,18 @@ class Collobert_neural_net(A_neural_network):
 
         plot_data_dict = {
             'w2v_emb': self.epoch_l2_w2v_c_mp_weight_list,
-            'pos_emb': self.epoch_l2_pos_weight_list,
-            'ner_emb': self.epoch_l2_ner_weight_list,
-            'sent_nr_emb': self.epoch_l2_sent_nr_weight_list,
-            'tense_emb': self.epoch_l2_tense_weight_list,
+            # 'pos_emb': self.epoch_l2_pos_weight_list,
+            # 'ner_emb': self.epoch_l2_ner_weight_list,
+            # 'sent_nr_emb': self.epoch_l2_sent_nr_weight_list,
+            # 'tense_emb': self.epoch_l2_tense_weight_list,
             'w2v_c_mp_filters': self.epoch_l2_w2v_c_mp_filters_list,
             # 'w2v_c_mp_emb': self.epoch_l2_,
             # 'w2v_c_nmp_filters': epoch_l2_w2v_c_nmp_filters_list,
             # 'w2v_c_nmp_emb': epoch_l2_w2v_c_nmp_weight_list,
-            'pos_c_mp_filters': self.epoch_l2_pos_filters_list,
-            'ner_c_mp_filters': self.epoch_l2_ner_filters_list,
-            'sent_nr_c_mp_filters': self.epoch_l2_sent_nr_filters_list,
-            'tense_c_mp_filters': self.epoch_l2_tense_filters_list,
+            # 'pos_c_mp_filters': self.epoch_l2_pos_filters_list,
+            # 'ner_c_mp_filters': self.epoch_l2_ner_filters_list,
+            # 'sent_nr_c_mp_filters': self.epoch_l2_sent_nr_filters_list,
+            # 'tense_c_mp_filters': self.epoch_l2_tense_filters_list,
             'w2': self.epoch_l2_w2_list,
             'word_position_emb': self.epoch_l2_word_position_list
         }
@@ -1032,6 +1032,9 @@ class Collobert_neural_net(A_neural_network):
         print '[Tensorflow] Convolutional neural network'
 
     def get_hidden_activations(self, on_training_set=False, on_validation_set=False, on_testing_set=False):
+
+        #TODO: i need to fix the iteration. Out of memory.
+        return []
 
         hidden_activations = None
 
