@@ -91,36 +91,27 @@ class Metrics:
             fn = float(stats[label][3])
 
             if label == 'NA':
-                na_precision = tp / (tp + fp)
-                na_recall = tp / (tp + fn)
-                na_f1 = 2 * na_precision * na_recall / (na_precision + na_recall)
+                na_precision = tp / (tp + fp) if (tp + fp) > 0 else 0.
+                na_recall = tp / (tp + fn) if (tp + fn) > 0 else 0.
+                na_f1 = 2 * na_precision * na_recall / (na_precision + na_recall) if (na_precision + na_recall) > 0 else 0.
             else:
 
                 acc_tp += tp
                 acc_fp += fp
                 acc_fn += fn
 
-                try:
-                    precision = tp / (tp + fp)
-                except ZeroDivisionError:
-                    precision = 0.
-                try:
-                    recall = tp / (tp + fn)
-                except ZeroDivisionError:
-                    recall = 0.
-                try:
-                    f1 = 2 * precision * recall / (precision + recall)
-                except ZeroDivisionError:
-                    f1 = 0.
+                precision = tp / (tp + fp) if (tp + fp) > 0 else 0.
+                recall = tp / (tp + fn) if (tp + fn) > 0 else 0.
+                f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.
 
                 precisions.append(precision)
                 recalls.append(recall)
                 f1s.append(f1)
 
         # MICRO (without NA)
-        micro_precision = acc_tp / (acc_tp + acc_fp)
-        micro_recall = acc_tp / (acc_tp + acc_fn)
-        micro_f1 = 2 * micro_precision * micro_recall / (micro_precision + micro_recall)
+        micro_precision = acc_tp / (acc_tp + acc_fp) if (acc_tp + acc_fp) > 0 else 0.
+        micro_recall = acc_tp / (acc_tp + acc_fn) if (acc_tp + acc_fn) > 0 else 0.
+        micro_f1 = 2 * micro_precision * micro_recall / (micro_precision + micro_recall) if (micro_precision + micro_recall) > 0 else 0.
 
         # MACRO (without NA)
         macro_precision = np.mean(precisions)
