@@ -508,10 +508,11 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
         L2_w1 = T.sum(w1 ** 2)
         L2_w_x = T.sum(w_x ** 2)
         L2_w2 = T.sum(w2 ** 2)
+        L2_w3 = T.sum(w3 ** 2)
         L2_wt = T.sum(wt ** 2)
         L2_w_t = T.sum(w_t ** 2)
 
-        L2 = L2_w_x + L2_w2 + L2_w_t
+        L2 = L2_w_x + L2_w2 + L2_w_t + L2_w3
 
         mean_cross_entropy = T.mean(T.nnet.categorical_crossentropy(out, y))
 
@@ -613,7 +614,7 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
 
         # if self.regularization:
         train_l2_penalty = theano.function(inputs=[],
-                                           outputs=[L2_w1, L2_w2, L2_wt],
+                                           outputs=[L2_w1, L2_w2, L2_wt, L2_w3],
                                            givens=[])
 
         flat_true = list(chain(*self.y_valid))
@@ -628,6 +629,7 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
         f1_score_list = []
         l2_w1_list = []
         l2_w2_list = []
+        l2_w3_list = []
         l2_wt_list = []
         train_cross_entropy_list = []
         valid_cross_entropy_list = []
@@ -640,6 +642,7 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
             epoch_errors = 0
             epoch_l2_w1 = 0
             epoch_l2_w2 = 0
+            epoch_l2_w3 = 0
             epoch_l2_wt = 0
             train_cross_entropy = 0
             # predicted_tags = np.array(np.concatenate(([self.pad_tag]*(n_window/2),[self.unk_tag]*((n_window/2)+1))), dtype=INT)
@@ -657,9 +660,10 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
                     train_cross_entropy += get_cross_entropy(word_cw, [word_tag])
 
             # if self.regularization:
-            l2_w1, l2_w2, l2_wt = train_l2_penalty()
+            l2_w1, l2_w2, l2_wt, l2_w3 = train_l2_penalty()
             epoch_l2_w1 += l2_w1
             epoch_l2_w2 += l2_w2
+            epoch_l2_w3 += l2_w3
             epoch_l2_wt += l2_wt
 
             valid_error = 0
@@ -682,6 +686,7 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
             valid_errors_list.append(valid_error)
             l2_w1_list.append(epoch_l2_w1)
             l2_w2_list.append(epoch_l2_w2)
+            l2_w3_list.append(epoch_l2_w3)
             l2_wt_list.append(epoch_l2_wt)
             train_cross_entropy_list.append(train_cross_entropy)
             valid_cross_entropy_list.append(valid_cross_entropy)
@@ -713,6 +718,7 @@ class Vector_Tag_Contex_Window_Net(A_neural_network):
             self.plot_scores(precision_list=precision_list, recall_list=recall_list, f1_score_list=f1_score_list,
                              actual_time=actual_time)
             self.plot_penalties(l2_w1_list=l2_w1_list, l2_w2_list=l2_w2_list, l2_wt_list=l2_wt_list,
+                                l2_w3_list=l2_w3_list,
                                 actual_time=actual_time)
             self.plot_cross_entropies(train_cross_entropy_list, valid_cross_entropy_list, actual_time)
 
