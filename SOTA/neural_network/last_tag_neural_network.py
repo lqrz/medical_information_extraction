@@ -929,6 +929,7 @@ class Last_tag_neural_network_trainer(A_neural_network):
             _, _, test_document_sentence_words, test_document_sentence_tags = Dataset.get_clef_testing_dataset()
 
             document_sentence_words.extend(test_document_sentence_words.values())
+            document_sentence_tags.extend(test_document_sentence_tags.values())
 
         word2index, index2word = cls._construct_index(add_words, document_sentence_words)
         label2index, index2label = cls._construct_index(add_tags, document_sentence_tags)
