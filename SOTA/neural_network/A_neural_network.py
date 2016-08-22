@@ -653,7 +653,7 @@ class A_neural_network():
         }
         output_filename = self.get_output_path('training_cost_plot_' + actual_time)
         utils.NeuralNetwork.plot(data, x_axis='epoch', x_label='Epochs', y_label='Value',
-                                 title='Training and Testing cost and error evolution',
+                                 title='Training and validation cost and error evolution',
                                  output_filename=output_filename)
         
         return True
@@ -671,7 +671,7 @@ class A_neural_network():
         }
         output_filename = self.get_output_path('training_scores_plot' + actual_time)
         utils.NeuralNetwork.plot(data, x_axis='epoch', x_label='Epochs', y_label='Score ',
-                                 title='Training scores evolution',
+                                 title='Validation scores evolution',
                                  output_filename=output_filename)
 
         return True
