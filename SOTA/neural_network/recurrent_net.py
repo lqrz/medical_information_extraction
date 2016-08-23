@@ -30,14 +30,12 @@ INT = 'int64'
 
 class Recurrent_net(A_neural_network):
 
-    def __init__(self, hidden_activation_f, out_activation_f, regularization, **kwargs):
+    def __init__(self, hidden_activation_f, out_activation_f, **kwargs):
         super(Recurrent_net, self).__init__(**kwargs)
 
         self.hidden_activation_f = hidden_activation_f
         self.out_activation_f = out_activation_f
         self.n_window = 1
-
-        self.regularization = regularization
 
         self.params = OrderedDict()
 
@@ -110,17 +108,14 @@ class Recurrent_net(A_neural_network):
                                 outputs_info=[dict(initial=T.zeros(self.n_window*self.n_emb)), None],
                                 non_sequences=[ww])
 
-        if self.regularization:
-            L2_w1 = T.sum(w1 ** 2)
-            L2_w_x = T.sum(w_x ** 2)
-            L2_w2 = T.sum(w2 ** 2)
-            L2_ww = T.sum(ww ** 2)
-            L2 = L2_w_x + L2_w2 + L2_ww
-            # L2 = T.sum(w1 ** 2) + T.sum(w2 ** 2) + T.sum(ww ** 2)
-            #TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
-            cost = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y)) + alpha_l2_reg * L2
-        else:
-            cost = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y))
+        L2_w1 = T.sum(w1 ** 2)
+        L2_w_x = T.sum(w_x ** 2)
+        L2_w2 = T.sum(w2 ** 2)
+        L2_ww = T.sum(ww ** 2)
+        L2 = L2_w_x + L2_w2 + L2_ww
+        # L2 = T.sum(w1 ** 2) + T.sum(w2 ** 2) + T.sum(ww ** 2)
+        #TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
+        cost = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y)) + alpha_l2_reg * L2
 
         y_predictions = T.argmax(out[:,-1,:], axis=1)
         errors = T.sum(T.neq(y_predictions,y))
@@ -161,10 +156,9 @@ class Recurrent_net(A_neural_network):
                                 outputs=[cost, errors, y_predictions],
                                 updates=[])
 
-        if self.regularization:
-            train_l2_penalty = theano.function(inputs=[],
-                                               outputs=[L2_w1, L2_w2, L2_ww],
-                                               givens=[])
+        train_l2_penalty = theano.function(inputs=[],
+                                           outputs=[L2_w1, L2_w2, L2_ww],
+                                           givens=[])
 
         # plotting purposes
         train_costs_list = []
@@ -195,11 +189,10 @@ class Recurrent_net(A_neural_network):
                 train_cost += cost_output
                 train_errors += errors_output
 
-            if self.regularization:
-                l2_w1, l2_w2, l2_ww = train_l2_penalty()
-                epoch_l2_w1 += l2_w1
-                epoch_l2_w2 += l2_w2
-                epoch_l2_ww += l2_ww
+            l2_w1, l2_w2, l2_ww = train_l2_penalty()
+            epoch_l2_w1 += l2_w1
+            epoch_l2_w2 += l2_w2
+            epoch_l2_ww += l2_ww
 
             valid_errors = 0
             valid_cost = 0
@@ -244,8 +237,12 @@ class Recurrent_net(A_neural_network):
 
         return True
 
-    def train_bidirectional_with_shared_params(self, learning_rate=0.01, batch_size=512, max_epochs=100, alpha_l1_reg=0.001, alpha_l2_reg=0.01,
-              save_params=False, plot=True, **kwargs):
+    def train_bidirectional_with_shared_params(self,
+                                               learning_rate=0.01,
+                                               batch_size=512,
+                                               max_epochs=100,
+                                               alpha_l1_reg=0.001, alpha_l2_reg=0.01,
+                                              save_params=False, plot=True, **kwargs):
 
         # train_x = theano.shared(value=self.x_train, name='train_x_shared')
         # train_y = theano.shared(value=self.y_train, name='train_y_shared')
@@ -298,18 +295,15 @@ class Recurrent_net(A_neural_network):
         # test = theano.function(inputs=[idxs], outputs=[out_bidirectional], allow_input_downcast=True)
         # test(self.x_train[0])
 
-        if self.regularization:
-            L2_w1 = T.sum(w1 ** 2)
-            L2_w_x = T.sum(w_x ** 2)
-            # L2_w_x_flipped = T.sum(w_x_flipped ** 2)
-            L2_w2 = T.sum(w2 ** 2)
-            L2_ww = T.sum(ww ** 2)
-            L2 = L2_w_x + L2_w2 + L2_ww
-            # L2 = T.sum(w1 ** 2) + T.sum(w2 ** 2) + T.sum(ww ** 2)
-            #TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
-            cost = T.mean(T.nnet.categorical_crossentropy(out_bidirectional, y)) + alpha_l2_reg * L2
-        else:
-            cost = T.mean(T.nnet.categorical_crossentropy(out_bidirectional, y))
+        L2_w1 = T.sum(w1 ** 2)
+        L2_w_x = T.sum(w_x ** 2)
+        # L2_w_x_flipped = T.sum(w_x_flipped ** 2)
+        L2_w2 = T.sum(w2 ** 2)
+        L2_ww = T.sum(ww ** 2)
+        L2 = L2_w_x + L2_w2 + L2_ww
+        # L2 = T.sum(w1 ** 2) + T.sum(w2 ** 2) + T.sum(ww ** 2)
+        #TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
+        cost = T.mean(T.nnet.categorical_crossentropy(out_bidirectional, y)) + alpha_l2_reg * L2
 
         y_predictions = T.argmax(out_bidirectional, axis=1)
         errors = T.sum(T.neq(y_predictions,y))
@@ -370,10 +364,9 @@ class Recurrent_net(A_neural_network):
                                 outputs=[cost, errors, y_predictions],
                                 updates=[])
 
-        if self.regularization:
-            train_l2_penalty = theano.function(inputs=[],
-                                               outputs=[L2_w1, L2_w2, L2_ww],
-                                               givens=[])
+        train_l2_penalty = theano.function(inputs=[],
+                                           outputs=[L2_w1, L2_w2, L2_ww],
+                                           givens=[])
 
         # plotting purposes
         train_costs_list = []
@@ -404,11 +397,10 @@ class Recurrent_net(A_neural_network):
                 train_cost += cost_output
                 train_errors += errors_output
 
-            if self.regularization:
-                l2_w1, l2_w2, l2_ww = train_l2_penalty()
-                epoch_l2_w1 += l2_w1
-                epoch_l2_w2 += l2_w2
-                epoch_l2_ww += l2_ww
+            l2_w1, l2_w2, l2_ww = train_l2_penalty()
+            epoch_l2_w1 += l2_w1
+            epoch_l2_w2 += l2_w2
+            epoch_l2_ww += l2_ww
 
             valid_errors = 0
             valid_cost = 0
@@ -517,18 +509,15 @@ class Recurrent_net(A_neural_network):
         # test = theano.function(inputs=[idxs], outputs=[out_bidirectional], allow_input_downcast=True)
         # test(self.x_train[0])
 
-        if self.regularization:
-            L2_w1 = T.sum(w1 ** 2)
-            L2_w_x = T.sum(w_x ** 2)
-            # L2_w_x_flipped = T.sum(w_x_flipped ** 2)
-            L2_w2 = T.sum(w2 ** 2)
-            L2_ww_forward = T.sum(ww_forward ** 2)
-            L2_ww_backwards = T.sum(ww_backwards ** 2)
-            L2 = L2_w_x + L2_w2 + L2_ww_forward + L2_ww_backwards
-            
-            cost = T.mean(T.nnet.categorical_crossentropy(out_bidirectional, y)) + alpha_l2_reg * L2
-        else:
-            cost = T.mean(T.nnet.categorical_crossentropy(out_bidirectional, y))
+        L2_w1 = T.sum(w1 ** 2)
+        L2_w_x = T.sum(w_x ** 2)
+        # L2_w_x_flipped = T.sum(w_x_flipped ** 2)
+        L2_w2 = T.sum(w2 ** 2)
+        L2_ww_forward = T.sum(ww_forward ** 2)
+        L2_ww_backwards = T.sum(ww_backwards ** 2)
+        L2 = L2_w_x + L2_w2 + L2_ww_forward + L2_ww_backwards
+
+        cost = T.mean(T.nnet.categorical_crossentropy(out_bidirectional, y)) + alpha_l2_reg * L2
 
         y_predictions = T.argmax(out_bidirectional, axis=1)
         errors = T.sum(T.neq(y_predictions, y))
@@ -587,9 +576,8 @@ class Recurrent_net(A_neural_network):
                                 outputs=[cost, errors],
                                 updates=updates)
 
-        if self.regularization:
-            train_l2_penalty = theano.function(inputs=[],
-                                               outputs=[L2_w1, L2_w2, L2_ww_forward, L2_ww_backwards])
+        train_l2_penalty = theano.function(inputs=[],
+                                           outputs=[L2_w1, L2_w2, L2_ww_forward, L2_ww_backwards])
 
         predict = theano.function(inputs=[theano.In(idxs, borrow=True), theano.In(y, borrow=True)],
                                   outputs=[cost, errors, y_predictions],
@@ -623,17 +611,14 @@ class Recurrent_net(A_neural_network):
                 # error = train(self.x_train, self.y_train)
                 # print 'Epoch %d Sentence %d' % (epoch_index, j)
                 cost_output, errors_output = train(sentence_idxs, tags_idxs)
-                if self.regularization:
-                    l2_w1, l2_w2, l2_ww_fw, l2_ww_bw = train_l2_penalty()
-                    # print 'W1:%f W2:%f WW_f:%f WW_b:%f' % (l2_w1,l2_w2,l2_ww_fw,l2_ww_bw)
                 train_cost += cost_output
                 train_errors += errors_output
 
-            if self.regularization:
-                epoch_l2_w1 = l2_w1
-                epoch_l2_w2 += l2_w2
-                epoch_l2_ww_f += l2_ww_fw
-                epoch_l2_ww_b += l2_ww_bw
+            l2_w1, l2_w2, l2_ww_fw, l2_ww_bw = train_l2_penalty()
+            epoch_l2_w1 = l2_w1
+            epoch_l2_w2 = l2_w2
+            epoch_l2_ww_f = l2_ww_fw
+            epoch_l2_ww_b = l2_ww_bw
 
             valid_error = 0
             valid_cost = 0
@@ -692,6 +677,8 @@ class Recurrent_net(A_neural_network):
 
         results = dict()
 
+        assert on_training_set or on_validation_set or on_testing_set
+
         if on_training_set:
             x_test = self.x_train
             y_test = self.y_train
@@ -742,6 +729,8 @@ class Recurrent_net(A_neural_network):
                                    **kwargs):
 
         results = dict()
+
+        assert on_training_set or on_validation_set or on_testing_set
 
         if on_training_set:
             x_test = self.x_train
@@ -802,6 +791,8 @@ class Recurrent_net(A_neural_network):
 
         results = dict()
 
+        assert on_training_set or on_validation_set or on_testing_set
+
         if on_training_set:
             x_test = self.x_train
             y_test = self.y_train
@@ -861,8 +852,9 @@ class Recurrent_net(A_neural_network):
         return 'RNN.'
 
     @classmethod
-    def get_data(cls, clef_training=True, clef_validation=False, clef_testing=False,
-                 add_words=[], add_tags=[], add_feats=[], x_idx=None, n_window=None, feat_positions=None):
+    def get_data(cls, clef_training=False, clef_validation=False, clef_testing=False,
+                 add_words=[], add_tags=[], add_feats=[], x_idx=None, n_window=None, feat_positions=None,
+                 lowercase=True):
         """
         overrides the inherited method.
         gets the training data and organizes it into sentences per document.
@@ -871,6 +863,8 @@ class Recurrent_net(A_neural_network):
         :param crf_training_data_filename:
         :return:
         """
+
+        assert clef_training or clef_validation or clef_testing
 
         document_sentence_words = []
         document_sentence_tags = []
@@ -902,7 +896,7 @@ class Recurrent_net(A_neural_network):
             test_features, _, test_document_sentence_words, test_document_sentence_tags = Dataset.get_clef_testing_dataset()
 
             document_sentence_words.extend(test_document_sentence_words.values())
-            # document_sentence_tags.extend(test_document_sentence_tags.values())   # its all Nones.
+            document_sentence_tags.extend(test_document_sentence_tags.values())
 
         word2index, index2word = cls._construct_index(add_words, document_sentence_words)
         label2index, index2label = cls._construct_index(add_tags, document_sentence_tags)
@@ -940,3 +934,11 @@ class Recurrent_net(A_neural_network):
                word2index, index2word, \
                label2index, index2label, \
                features_indexes
+
+    def get_hidden_activations(self, on_training_set, on_validation_set, on_testing_set):
+        # not implemented
+        return []
+
+    def get_output_logits(self, on_training_set, on_validation_set, on_testing_set):
+        # not implemented
+        return []
