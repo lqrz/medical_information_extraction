@@ -272,13 +272,18 @@ class Neural_Net(A_neural_network):
             if lr_decay:
                 starter_learning_rate_train = learning_rate_train
                 lr_train = tf.train.exponential_decay(starter_learning_rate_train, global_step,
-                                                                 5, 0.96, staircase=True)
+                                                                 1, 0.96, staircase=True)
                 starter_learning_rate_tune = learning_rate_tune
                 lr_tune = tf.train.exponential_decay(starter_learning_rate_tune, global_step,
-                                                                 5, 0.96, staircase=True)
+                                                                 1, 0.96, staircase=True)
             else:
-                lr_train = tf.constant(value=learning_rate_train)
-                lr_tune = tf.constant(value=learning_rate_tune)
+                lr_train = tf.Variable(learning_rate_train)
+                lr_tune = tf.Variable(learning_rate_tune)
+
+                # new_lr_train = tf.mul(lr_train, tf.constant(0.5))
+                # halve_lr_train = tf.assign(lr_train, new_lr_train)
+                # new_lr_tune = tf.mul(lr_tune, tf.constant(0.5))
+                # halve_lr_tune = tf.assign(lr_tune, new_lr_tune)
 
             optimizer_fine_tune = tf.train.AdagradOptimizer(learning_rate=lr_tune)
             optimizer_train = tf.train.AdagradOptimizer(learning_rate=lr_train)
@@ -298,6 +303,8 @@ class Neural_Net(A_neural_network):
             print("Initialized")
 
             n_batches = np.int(np.ceil(self.x_train.shape[0] / float(minibatch_size)))
+
+            # last_valid_cost = np.inf
 
             for epoch_ix in range(max_epochs):
                 start = time.time()
@@ -326,12 +333,20 @@ class Neural_Net(A_neural_network):
                 session.run(global_step_assign_op)
                 # print('Global step: %d' % session.run(global_step))
                 print('Lr_train: %f' % session.run(lr_train))
+                print('Lr_tune: %f' % session.run(lr_tune))
 
                 # session.run([out, y_valid, cross_entropy, tf.reduce_sum(cross_entropy)], feed_dict=feed_dict)
                 valid_cost, valid_xentropy, pred, valid_errors = session.run(
                     [cost, cross_entropy, predictions, n_errors], feed_dict=feed_dict_valid)
 
                 precision, recall, f1_score = self.compute_scores(self.y_valid, pred)
+
+                # if valid_cost > last_valid_cost:
+                #     print('Changing learning rate from %f to %f' % (learning_rate_train, learning_rate_train * .5))
+                #     session.run(halve_lr_train)
+                #     session.run(halve_lr_tune)
+                #
+                # last_valid_cost = valid_cost
 
                 if plot:
                     epoch_l2_w1, epoch_l2_w2, epoch_l2_w3 = self.compute_parameters_sum()
