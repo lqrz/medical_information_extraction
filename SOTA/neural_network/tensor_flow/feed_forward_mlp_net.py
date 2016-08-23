@@ -282,7 +282,7 @@ class Neural_Net(A_neural_network):
             session.run(tf.initialize_all_variables())
             print("Initialized")
 
-            n_batches = np.int(np.ceil(self.x_train.shape[0] / minibatch_size))
+            n_batches = np.int(np.ceil(self.x_train.shape[0] / float(minibatch_size)))
 
             for epoch_ix in range(max_epochs):
                 start = time.time()
