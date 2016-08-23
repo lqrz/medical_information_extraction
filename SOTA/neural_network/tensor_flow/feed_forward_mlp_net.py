@@ -265,8 +265,23 @@ class Neural_Net(A_neural_network):
             #     minimize(cost, var_list=self.training_params)
             # optimizer = tf.group(optimizer_fine_tune, optimizer_train)
 
-            optimizer_fine_tune = tf.train.AdagradOptimizer(learning_rate=learning_rate_tune)
-            optimizer_train = tf.train.AdagradOptimizer(learning_rate=learning_rate_train)
+            global_step = tf.Variable(0, name='global_step')
+            new_global_step = tf.add(global_step, tf.constant(value=1))
+            global_step_assign_op = tf.assign(global_step, new_global_step)
+
+            if lr_decay:
+                starter_learning_rate_train = learning_rate_train
+                lr_train = tf.train.exponential_decay(starter_learning_rate_train, global_step,
+                                                                 5, 0.96, staircase=True)
+                starter_learning_rate_tune = learning_rate_tune
+                lr_tune = tf.train.exponential_decay(starter_learning_rate_tune, global_step,
+                                                                 5, 0.96, staircase=True)
+            else:
+                lr_train = tf.constant(value=learning_rate_train)
+                lr_tune = tf.constant(value=learning_rate_tune)
+
+            optimizer_fine_tune = tf.train.AdagradOptimizer(learning_rate=lr_tune)
+            optimizer_train = tf.train.AdagradOptimizer(learning_rate=lr_train)
             grads = tf.gradients(cost, self.fine_tuning_params + self.training_params)
             fine_tuning_grads = grads[:len(self.fine_tuning_params)]
             training_grads = grads[-len(self.training_params):]
@@ -307,6 +322,10 @@ class Neural_Net(A_neural_network):
                     train_cost += cost_val
                     train_xentropy += xentropy
                     train_errors += errors
+
+                session.run(global_step_assign_op)
+                # print('Global step: %d' % session.run(global_step))
+                print('Lr_train: %f' % session.run(lr_train))
 
                 # session.run([out, y_valid, cross_entropy, tf.reduce_sum(cross_entropy)], feed_dict=feed_dict)
                 valid_cost, valid_xentropy, pred, valid_errors = session.run(
