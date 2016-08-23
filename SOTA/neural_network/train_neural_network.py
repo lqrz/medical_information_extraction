@@ -563,13 +563,19 @@ def use_testing_dataset(nn_class,
 
     results = dict()
 
-    config_features, config_embeddings = read_config_file(config_ini_filename)
+    if config_ini_filename is not None:
+        config_features, config_embeddings = read_config_file(config_ini_filename)
 
-    logger.info('Loading CRF training data')
+        logger.info('Loading CRF training data')
 
-    feat_names_and_positions = nn_class.get_features_crf_position(config_features.keys())
+        feat_names_and_positions = nn_class.get_features_crf_position(config_features.keys())
 
-    feat_positions = [v for _,v in feat_names_and_positions]
+        feat_positions = [v for _,v in feat_names_and_positions]
+    else:
+        feat_positions = []
+        config_embeddings = dict()
+        config_features = dict()
+        feat_names_and_positions = []
 
     x_train, y_train, x_train_feats, \
     x_valid, y_valid, x_valid_feats, \
