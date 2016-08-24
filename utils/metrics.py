@@ -4,6 +4,7 @@ from collections import Counter
 import numpy as np
 import time
 import pandas as pd
+import cPickle
 
 from data import get_training_classification_report_labels
 from data import get_validation_classification_report_labels
@@ -230,6 +231,8 @@ class Metrics:
             cm = Metrics.compute_confusion_matrix(test_y_true, test_y_pred, labels=test_labels_list+additional_labels)
             # plot_confusion_matrix(cm, labels=test_labels_list+additional_labels,
             #                       output_filename=get_output_path('confusion_matrix_' + str(actual_time) + '.png'))
+
+            cPickle.dump(cm, file=get_output_path('confusion_matrix.p'))
             plot_confusion_matrix(cm, labels=test_labels_list+additional_labels,
                                   output_filename=get_output_path('confusion_matrix_' + str(actual_time) + '.png'))
 
