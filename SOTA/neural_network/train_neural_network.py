@@ -32,6 +32,7 @@ from trained_models import get_POS_nnet_path
 from trained_models import get_tf_multi_mlp_path
 from trained_models import get_tf_hierarchical_mlp_path
 from trained_models import get_tf_collobert_path
+from trained_models import get_tf_rnn_path
 from data import get_param
 from utils.plot_confusion_matrix import plot_confusion_matrix
 from data.dataset import Dataset
@@ -374,6 +375,14 @@ def determine_nnclass_and_parameters(args):
         multi_feats = args['multi_features']
         normalize_samples = args['norm_samples']
         add_feats = ['<PAD>']
+    elif args['nn_name'] == 'tf_rnn':
+        from tensor_flow.recurrent_net import Recurrent_net
+        nn_class = Recurrent_net
+        get_output_path = get_tf_rnn_path
+        add_words = ['<PAD>']
+        add_tags = ['<PAD>']
+        normalize_samples = args['norm_samples']
+        add_feats = []
 
     return nn_class, hidden_f, out_f, add_words, add_tags, add_feats, tag_dim, n_window, get_output_path, multi_feats, \
            normalize_samples
