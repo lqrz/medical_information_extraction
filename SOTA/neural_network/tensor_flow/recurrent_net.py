@@ -68,32 +68,39 @@ def get_data(clef_training=False, clef_validation=False, clef_testing=False,
     word2index, index2word = A_neural_network._construct_index(add_words, document_sentence_words)
     label2index, index2label = A_neural_network._construct_index(add_tags, document_sentence_tags)
 
+    use_context_window = False if not n_window or n_window == 1 else True
+
     if clef_training:
         x_train, y_train = A_neural_network.get_partitioned_data(x_idx=x_idx,
-                                                    document_sentences_words=train_document_sentence_words,
-                                                    document_sentences_tags=train_document_sentence_tags,
-                                                    word2index=word2index,
-                                                    label2index=label2index,
-                                                    use_context_window=False,
-                                                    n_window=n_window)
+                                                                 document_sentences_words=train_document_sentence_words,
+                                                                 document_sentences_tags=train_document_sentence_tags,
+                                                                 word2index=word2index,
+                                                                 label2index=label2index,
+                                                                 use_context_window=use_context_window,
+                                                                 n_window=n_window)
 
     if clef_validation:
         x_valid, y_valid = A_neural_network.get_partitioned_data(x_idx=x_idx,
-                                                    document_sentences_words=valid_document_sentence_words,
-                                                    document_sentences_tags=valid_document_sentence_tags,
-                                                    word2index=word2index,
-                                                    label2index=label2index,
-                                                    use_context_window=False,
-                                                    n_window=n_window)
+                                                                 document_sentences_words=valid_document_sentence_words,
+                                                                 document_sentences_tags=valid_document_sentence_tags,
+                                                                 word2index=word2index,
+                                                                 label2index=label2index,
+                                                                 use_context_window=use_context_window,
+                                                                 n_window=n_window)
 
     if clef_testing:
         x_test, y_test = A_neural_network.get_partitioned_data(x_idx=x_idx,
-                                                  document_sentences_words=test_document_sentence_words,
-                                                  document_sentences_tags=test_document_sentence_tags,
-                                                  word2index=word2index,
-                                                  label2index=label2index,
-                                                  use_context_window=False,
-                                                  n_window=n_window)
+                                                               document_sentences_words=test_document_sentence_words,
+                                                               document_sentences_tags=test_document_sentence_tags,
+                                                               word2index=word2index,
+                                                               label2index=label2index,
+                                                               use_context_window=use_context_window,
+                                                               n_window=n_window)
+
+    if not use_context_window:
+        # if i use context window, the senteces are padded when constructing the windows. If not, i have to do it here.
+        x_train, y_train, x_valid, y_valid, x_test, y_test = pad_sentences(x_train, y_train, x_valid, y_valid, x_test,
+                                                                           y_test, word2index, label2index)
 
     return x_train, y_train, x_train_feats, \
            x_valid, y_valid, x_valid_feats, \
@@ -143,42 +150,27 @@ if __name__ == '__main__':
     batch_size = 1
     input_size = 10
     max_length = 7     # unrolled up to this length
-    n_window = 1
+    n_window = 3
     learning_rate = 0.1
     alpha_l2 = 0.001
     max_epochs = 20
     mask_inputs_by_length = True
 
-    if n_window == 1:
-        x_train, y_train, x_train_feats, \
-        x_valid, y_valid, x_valid_feats, \
-        x_test, y_test, x_test_feats, \
-        word2index, index2word, \
-        label2index, index2label, \
-        features_indexes = \
-            get_data(clef_training=True, clef_validation=True, clef_testing=True,
-                                   add_words=['<PAD>'], add_tags=['<PAD>'], add_feats=[], x_idx=None,
-                                   n_window=n_window,
-                                   feat_positions=None,
-                                   lowercase=True)
-    elif n_window > 1:
-        x_train, y_train, x_train_feats, \
-        x_valid, y_valid, x_valid_feats, \
-        x_test, y_test, x_test_feats, \
-        word2index, index2word, \
-        label2index, index2label, \
-        features_indexes = \
-            get_data(clef_training=True, clef_validation=True, clef_testing=True,
-                                                  add_words=[], add_tags=[], add_feats=[], x_idx=None,
-                                                  n_window=n_window,
-                                                  feat_positions=None,
-                                                  lowercase=True)
+    x_train, y_train, x_train_feats, \
+    x_valid, y_valid, x_valid_feats, \
+    x_test, y_test, x_test_feats, \
+    word2index, index2word, \
+    label2index, index2label, \
+    features_indexes = \
+        get_data(clef_training=True, clef_validation=True, clef_testing=True,
+                               add_words=['<PAD>'], add_tags=['<PAD>'], add_feats=[], x_idx=None,
+                               n_window=n_window,
+                               feat_positions=None,
+                               lowercase=True)
 
     args = {
         'w2v_vectors_cache': 'w2v_googlenews_representations.p',
     }
-
-    x_train, y_train, x_valid, y_valid, x_test, y_test = pad_sentences(x_train, y_train, x_valid, y_valid, x_test, y_test, word2index, label2index)
 
     w2v_vectors, w2v_model, w2v_dims = load_w2v_model_and_vectors_cache(args)
 
