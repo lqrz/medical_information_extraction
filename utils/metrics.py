@@ -232,7 +232,7 @@ class Metrics:
             # plot_confusion_matrix(cm, labels=test_labels_list+additional_labels,
             #                       output_filename=get_output_path('confusion_matrix_' + str(actual_time) + '.png'))
 
-            cPickle.dump(cm, file=get_output_path('confusion_matrix.p'))
+            cPickle.dump(cm, file=open(get_output_path('confusion_matrix.p'), 'wb'))
             plot_confusion_matrix(cm, labels=test_labels_list+additional_labels,
                                   output_filename=get_output_path('confusion_matrix_' + str(actual_time) + '.png'))
 
