@@ -115,7 +115,8 @@ class Recurrent_net(A_neural_network):
         L2 = L2_w_x + L2_w2 + L2_ww
         # L2 = T.sum(w1 ** 2) + T.sum(w2 ** 2) + T.sum(ww ** 2)
         #TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
-        cost = T.mean(T.nnet.categorical_crossentropy(out[:,-1,:], y)) + alpha_l2_reg * L2
+        cross_entropy = T.mean(T.nnet.categorical_crossentropy(out[:, -1, :], y))
+        cost = cross_entropy + alpha_l2_reg * L2
 
         y_predictions = T.argmax(out[:,-1,:], axis=1)
         errors = T.sum(T.neq(y_predictions,y))
@@ -149,11 +150,11 @@ class Recurrent_net(A_neural_network):
                 updates.append((accum_grad, accum))
 
         train = theano.function(inputs=[theano.In(idxs,borrow=True), theano.In(y,borrow=True)],
-                                outputs=[cost, errors],
+                                outputs=[cost, cross_entropy, errors],
                                 updates=updates)
 
         predict = theano.function(inputs=[theano.In(idxs,borrow=True), theano.In(y,borrow=True)],
-                                outputs=[cost, errors, y_predictions],
+                                outputs=[cost, cross_entropy, errors, y_predictions],
                                 updates=[])
 
         train_l2_penalty = theano.function(inputs=[],
@@ -162,8 +163,10 @@ class Recurrent_net(A_neural_network):
 
         # plotting purposes
         train_costs_list = []
+        train_cross_entropy_list = []
         train_errors_list = []
         valid_costs_list = []
+        valid_cross_entropy_list = []
         valid_errors_list = []
         precision_list = []
         recall_list = []
@@ -177,6 +180,7 @@ class Recurrent_net(A_neural_network):
         for epoch_index in range(max_epochs):
             start = time.time()
             train_cost = 0
+            train_cross_entropy = 0
             train_errors = 0
             epoch_l2_w1 = 0
             epoch_l2_w2 = 0
@@ -185,8 +189,9 @@ class Recurrent_net(A_neural_network):
                 # for j,(sentence_idxs, tags_idxs) in enumerate(zip(train_x.get_value(borrow=True), train_y.get_value(borrow=True))):
                 # error = train(self.x_train, self.y_train)
                 # print 'Epoch %d Sentence %d' % (epoch_index, j)
-                cost_output, errors_output = train(sentence_idxs, tags_idxs)
+                cost_output, cross_entropy_output, errors_output = train(sentence_idxs, tags_idxs)
                 train_cost += cost_output
+                train_cross_entropy += cross_entropy_output
                 train_errors += errors_output
 
             l2_w1, l2_w2, l2_ww = train_l2_penalty()
@@ -194,18 +199,22 @@ class Recurrent_net(A_neural_network):
             epoch_l2_w2 += l2_w2
             epoch_l2_ww += l2_ww
 
-            valid_errors = 0
             valid_cost = 0
+            valid_cross_entropy = 0
+            valid_errors = 0
             predictions = []
             for sentence_idxs,tags_idxs in zip(self.x_valid, self.y_valid):
-                cost_output, errors_output, pred_output = predict(sentence_idxs, tags_idxs)
+                cost_output, cross_entropy_output, errors_output, pred_output = predict(sentence_idxs, tags_idxs)
                 valid_cost += cost_output
+                valid_cross_entropy += cross_entropy_output
                 valid_errors += errors_output
                 predictions.extend(pred_output)
 
             train_costs_list.append(train_cost)
+            train_cross_entropy_list.append(train_cross_entropy)
             train_errors_list.append(train_errors)
             valid_costs_list.append(valid_cost)
+            valid_cross_entropy_list.append(valid_cross_entropy)
             valid_errors_list.append(valid_errors)
             l2_w1_list.append(epoch_l2_w1)
             l2_w2_list.append(epoch_l2_w2)
@@ -231,6 +240,9 @@ class Recurrent_net(A_neural_network):
             self.plot_training_cost_and_error(train_costs_list, train_errors_list, valid_costs_list,
                                               valid_errors_list,
                                               actual_time)
+            self.plot_cross_entropies(train_cross_entropy=train_cross_entropy_list,
+                                      valid_cross_entropy=valid_cross_entropy_list,
+                                      actual_time=actual_time)
             self.plot_scores(precision_list, recall_list, f1_score_list, actual_time)
             self.plot_penalties(l2_w1_list=l2_w1_list, l2_w2_list=l2_w2_list, l2_ww_fw_list=l2_ww_list,
                                 actual_time=actual_time)
@@ -303,7 +315,8 @@ class Recurrent_net(A_neural_network):
         L2 = L2_w_x + L2_w2 + L2_ww
         # L2 = T.sum(w1 ** 2) + T.sum(w2 ** 2) + T.sum(ww ** 2)
         #TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
-        cost = T.mean(T.nnet.categorical_crossentropy(out_bidirectional, y)) + alpha_l2_reg * L2
+        cross_entropy = T.mean(T.nnet.categorical_crossentropy(out_bidirectional, y))
+        cost = cross_entropy + alpha_l2_reg * L2
 
         y_predictions = T.argmax(out_bidirectional, axis=1)
         errors = T.sum(T.neq(y_predictions,y))
@@ -357,11 +370,11 @@ class Recurrent_net(A_neural_network):
                 updates.append((accum_grad, accum))
 
         train = theano.function(inputs=[theano.In(idxs,borrow=True), theano.In(y,borrow=True)],
-                                outputs=[cost, errors],
+                                outputs=[cost, cross_entropy, errors],
                                 updates=updates)
 
         predict = theano.function(inputs=[theano.In(idxs,borrow=True), theano.In(y,borrow=True)],
-                                outputs=[cost, errors, y_predictions],
+                                outputs=[cost, cross_entropy, errors, y_predictions],
                                 updates=[])
 
         train_l2_penalty = theano.function(inputs=[],
@@ -370,8 +383,10 @@ class Recurrent_net(A_neural_network):
 
         # plotting purposes
         train_costs_list = []
+        train_cross_entropy_list = []
         train_errors_list = []
         valid_costs_list = []
+        valid_cross_entropy_list = []
         valid_errors_list = []
         precision_list = []
         recall_list = []
@@ -385,6 +400,7 @@ class Recurrent_net(A_neural_network):
         for epoch_index in range(max_epochs):
             start = time.time()
             train_cost = 0
+            train_cross_entropy = 0
             train_errors = 0
             epoch_l2_w1 = 0
             epoch_l2_w2 = 0
@@ -393,8 +409,9 @@ class Recurrent_net(A_neural_network):
                 # for j,(sentence_idxs, tags_idxs) in enumerate(zip(train_x.get_value(borrow=True), train_y.get_value(borrow=True))):
                 # error = train(self.x_train, self.y_train)
                 # print 'Epoch %d Sentence %d' % (epoch_index, j)
-                cost_output, errors_output = train(sentence_idxs, tags_idxs)
+                cost_output, cross_entropy_output, errors_output = train(sentence_idxs, tags_idxs)
                 train_cost += cost_output
+                train_cross_entropy += cross_entropy_output
                 train_errors += errors_output
 
             l2_w1, l2_w2, l2_ww = train_l2_penalty()
@@ -402,18 +419,22 @@ class Recurrent_net(A_neural_network):
             epoch_l2_w2 += l2_w2
             epoch_l2_ww += l2_ww
 
-            valid_errors = 0
             valid_cost = 0
+            valid_cross_entropy = 0
+            valid_errors = 0
             predictions = []
             for sentence_idxs,tags_idxs in zip(self.x_valid, self.y_valid):
-                cost_output, errors_output, pred_output = predict(sentence_idxs, tags_idxs)
+                cost_output, cross_entropy_output, errors_output, pred_output = predict(sentence_idxs, tags_idxs)
                 valid_cost += cost_output
+                valid_cross_entropy += cross_entropy_output
                 valid_errors += errors_output
                 predictions.extend(pred_output)
 
             train_costs_list.append(train_cost)
+            train_cross_entropy_list.append(train_cross_entropy)
             train_errors_list.append(train_errors)
             valid_costs_list.append(valid_cost)
+            valid_cross_entropy_list.append(valid_cross_entropy)
             valid_errors_list.append(valid_errors)
             l2_w1_list.append(epoch_l2_w1)
             l2_w2_list.append(epoch_l2_w2)
@@ -442,6 +463,10 @@ class Recurrent_net(A_neural_network):
             self.plot_scores(precision_list, recall_list, f1_score_list, actual_time)
             self.plot_penalties(l2_w1_list=l2_w1_list, l2_w2_list=l2_w2_list, l2_ww_fw_list=l2_ww_list,
                                 actual_time=actual_time)
+
+            self.plot_cross_entropies(train_cross_entropy=train_cross_entropy_list,
+                                      valid_cross_entropy=valid_cross_entropy_list,
+                                      actual_time=actual_time)
 
         return True
 
@@ -517,7 +542,8 @@ class Recurrent_net(A_neural_network):
         L2_ww_backwards = T.sum(ww_backwards ** 2)
         L2 = L2_w_x + L2_w2 + L2_ww_forward + L2_ww_backwards
 
-        cost = T.mean(T.nnet.categorical_crossentropy(out_bidirectional, y)) + alpha_l2_reg * L2
+        cross_entropy = T.mean(T.nnet.categorical_crossentropy(out_bidirectional, y))
+        cost = cross_entropy + alpha_l2_reg * L2
 
         y_predictions = T.argmax(out_bidirectional, axis=1)
         errors = T.sum(T.neq(y_predictions, y))
@@ -573,20 +599,22 @@ class Recurrent_net(A_neural_network):
                 updates.append((accum_grad, accum))
 
         train = theano.function(inputs=[theano.In(idxs, borrow=True), theano.In(y, borrow=True)],
-                                outputs=[cost, errors],
+                                outputs=[cost, cross_entropy, errors],
                                 updates=updates)
 
         train_l2_penalty = theano.function(inputs=[],
                                            outputs=[L2_w1, L2_w2, L2_ww_forward, L2_ww_backwards])
 
         predict = theano.function(inputs=[theano.In(idxs, borrow=True), theano.In(y, borrow=True)],
-                                  outputs=[cost, errors, y_predictions],
+                                  outputs=[cost, cross_entropy, errors, y_predictions],
                                   updates=[])
 
         # plotting purposes
         train_costs_list = []
+        train_cross_entropy_list = []
         train_errors_list = []
         valid_costs_list = []
+        valid_cross_entropy_list = []
         valid_errors_list = []
         precision_list = []
         recall_list = []
@@ -601,17 +629,15 @@ class Recurrent_net(A_neural_network):
         for epoch_index in range(max_epochs):
             start = time.time()
             train_cost = 0
+            train_cross_entropy = 0
             train_errors = 0
-            epoch_l2_w1 = 0
-            epoch_l2_w2 = 0
-            epoch_l2_ww_f = 0
-            epoch_l2_ww_b = 0
             for j, (sentence_idxs, tags_idxs) in enumerate(zip(self.x_train, self.y_train)):
                 # for j,(sentence_idxs, tags_idxs) in enumerate(zip(train_x.get_value(borrow=True), train_y.get_value(borrow=True))):
                 # error = train(self.x_train, self.y_train)
                 # print 'Epoch %d Sentence %d' % (epoch_index, j)
-                cost_output, errors_output = train(sentence_idxs, tags_idxs)
+                cost_output, cross_entropy_output, errors_output = train(sentence_idxs, tags_idxs)
                 train_cost += cost_output
+                train_cross_entropy += cross_entropy_output
                 train_errors += errors_output
 
             l2_w1, l2_w2, l2_ww_fw, l2_ww_bw = train_l2_penalty()
@@ -620,18 +646,22 @@ class Recurrent_net(A_neural_network):
             epoch_l2_ww_f = l2_ww_fw
             epoch_l2_ww_b = l2_ww_bw
 
-            valid_error = 0
             valid_cost = 0
+            valid_cross_entropy = 0
+            valid_error = 0
             predictions = []
             for sentence_idxs, tags_idxs in zip(self.x_valid, self.y_valid):
-                cost_output, errors_output, preds = predict(sentence_idxs, tags_idxs)
+                cost_output, cross_entropy_output, errors_output, preds = predict(sentence_idxs, tags_idxs)
                 valid_cost += cost_output
+                valid_cross_entropy += cross_entropy_output
                 valid_error += errors_output
                 predictions.append(preds)
 
             train_costs_list.append(train_cost)
+            train_cross_entropy_list.append(train_cross_entropy)
             train_errors_list.append(train_errors)
             valid_costs_list.append(valid_cost)
+            valid_cross_entropy_list.append(valid_cross_entropy)
             valid_errors_list.append(valid_error)
             l2_w1_list.append(epoch_l2_w1)
             l2_w2_list.append(epoch_l2_w2)
@@ -665,6 +695,9 @@ class Recurrent_net(A_neural_network):
             self.plot_scores(precision_list, recall_list, f1_score_list, actual_time)
             self.plot_penalties(l2_w1_list, l2_w2_list=l2_w2_list, l2_ww_fw_list=l2_ww_fw_list, l2_ww_bw_list=l2_ww_bw_list, actual_time=actual_time)
 
+            self.plot_cross_entropies(train_cross_entropy=train_cross_entropy_list,
+                                      valid_cross_entropy=valid_cross_entropy_list,
+                                      actual_time=actual_time)
         return True
 
     def save_params(self):
