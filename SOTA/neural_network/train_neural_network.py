@@ -55,7 +55,8 @@ def parse_arguments():
     parser.add_argument('--net', type=str, action='store', required=True,
                         choices=['single_cw','hidden_cw','vector_tag','last_tag','rnn', 'cw_rnn', 'multi_hidden_cw',
                                  'two_hidden_cw',
-                                 'tf_mlp', 'tf_cnn', 'tf_multi_mlp', 'tf_hierarchical_mlp', 'tf_collobert'],
+                                 'tf_mlp', 'tf_cnn', 'tf_multi_mlp', 'tf_hierarchical_mlp', 'tf_collobert',
+                                 'tf_rnn'],
                         help='NNet type')
     parser.add_argument('--window', type=int, action='store', required=True,
                         help='Context window size. 1 for RNN')
@@ -715,7 +716,8 @@ def use_testing_dataset(nn_class,
         'log_reg': args['log_reg'],
         'cnn_features': config_features,
         'training_param_names': training_params,
-        'tuning_param_names': tuning_params
+        'tuning_param_names': tuning_params,
+        'grad_clip': args['grad_clip']
     }
 
     nn_trainer = nn_class(**params)
