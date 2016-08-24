@@ -36,7 +36,7 @@ def plot_confusion_matrix(confusion_matrix, labels, output_filename, title=None)
             p <- ggplot(df, aes(x=prediction, y=true, fill=value)) +
                 geom_tile(colour='gray92') +
                 # scale_fill_gradient(low='gray99', high='steelblue4', guide = guide_legend(title = "Probability")) +
-                scale_fill_gradient2(low='green4', high='red4', midpoint=0, mid = "white", guide = guide_colourbar(title="", ticks=FALSE,
+                scale_fill_gradient2(low='red4', high='green4', midpoint=0, mid = "white", guide = guide_colourbar(title="", ticks=FALSE,
                                                                                 barwidth = 0.5, barheight = 12)) +
                 # scale_fill_gradient() +
                 labs(x='Predicted labels', y='True labels', title='') +
