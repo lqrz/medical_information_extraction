@@ -37,6 +37,8 @@ class Recurrent_net(A_neural_network):
         # parameters to get L2
         self.regularizables = []
 
+        self.grad_clip = isinstance(grad_clip, int)
+
         if grad_clip:
             self.max_length = grad_clip
         else:
@@ -46,7 +48,10 @@ class Recurrent_net(A_neural_network):
         self._add_padding_representation_to_embeddings()
         self.filling_ix = self._determing_padding_representation_ix()
 
-        self._pad_datasets_to_max_length()
+        if self.grad_clip:
+            self._grad_clip_dataset()
+        else:
+            self._pad_datasets_to_max_length()
 
         self.initialize_plotting_lists()
 
@@ -797,6 +802,26 @@ class Recurrent_net(A_neural_network):
         self.y_test = np.array(map(lambda x: x + [self.filling_ix] * (self.max_length - x.__len__()), self.y_test))
 
         return True
+
+    def _grad_clip_dataset(self):
+        self.x_train, self.y_train = self._grad_clip_dataset_(self.x_train, self.y_train)
+        self.x_valid, self.y_valid = self._grad_clip_dataset_(self.x_valid, self.y_valid)
+        self.x_test, self.y_test = self._grad_clip_dataset_(self.x_test, self.y_test)
+
+        return True
+
+    def _grad_clip_dataset_(self, dataset_x, dataset_y):
+        x = []
+        y = []
+        for sentence_x, sentence_y in zip(dataset_x, dataset_y):
+            to_add = np.int(np.ceil(sentence_x.__len__() / float(self.max_length))* self.max_length - sentence_x.__len__())
+            padded_sentence_x = sentence_x + [self.filling_ix] * to_add
+            padded_sentence_y = sentence_y + [self.filling_ix] * to_add
+
+            x.extend([padded_sentence_x[i*self.max_length:(i+1)*self.max_length] for i in range(np.int(np.ceil(padded_sentence_x.__len__() / float(self.max_length))))])
+            y.extend([padded_sentence_y[i*self.max_length:(i+1)*self.max_length] for i in range(np.int(np.ceil(padded_sentence_y.__len__() / float(self.max_length))))])
+
+        return np.array(x), np.array(y)
 
     def _determine_datasets_max_len(self):
         return np.max(map(len, list(self.x_train) + list(self.x_valid) + list(self.x_test)))

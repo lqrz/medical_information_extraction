@@ -147,7 +147,7 @@ def parse_arguments():
     args['alpha_na'] = arguments.alphana
     args['augment_data'] = arguments.augmentdata
     args['treat_oovs'] = arguments.treatoovs
-    args['grad_clip'] = arguments.treatoovs
+    args['grad_clip'] = arguments.gradclip
     args['rnn_cell_type'] = arguments.rnntype
 
     return args
