@@ -9,282 +9,521 @@ sys.path.append(os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(
 
 import tensorflow as tf
 from tensorflow.models.rnn import rnn_cell
+from tensorflow.python.ops import variable_scope as vs
 import numpy as np
 from itertools import chain
 import time
 
-from SOTA.neural_network.train_neural_network import load_w2v_model_and_vectors_cache
 from SOTA.neural_network.A_neural_network import A_neural_network
 from data.dataset import Dataset
 from utils.metrics import Metrics
 
+class Recurrent_net(A_neural_network):
 
-def get_data(clef_training=False, clef_validation=False, clef_testing=False,
-             add_words=[], add_tags=[], add_feats=[], x_idx=None, n_window=None, feat_positions=None,
-             lowercase=True):
-    """
-    overrides the inherited method.
-    gets the training data and organizes it into sentences per document.
-    RNN overrides this method, cause other neural nets dont partition into sentences.
+    def __init__(self, grad_clip, pad_tag, **kwargs):
+        super(Recurrent_net, self).__init__(**kwargs)
 
-    :param crf_training_data_filename:
-    :return:
-    """
+        self.graph = tf.Graph()
 
-    assert clef_training or clef_validation or clef_testing
+        self.w1 = None
+        self.w2 = None
+        self.b2 = None
 
-    document_sentence_words = []
-    document_sentence_tags = []
+        # parameters to get L2
+        self.regularizables = []
 
-    x_train = None
-    y_train = None
-    y_valid = None
-    x_valid = None
-    y_test = None
-    x_test = None
-    features_indexes = None
-    x_train_feats = None
-    x_valid_feats = None
-    x_test_feats = None
+        if grad_clip:
+            self.max_length = grad_clip
+        else:
+            self.max_length = self._determine_datasets_max_len()
 
-    if clef_training:
-        train_features, _, train_document_sentence_words, train_document_sentence_tags = Dataset.get_clef_training_dataset()
+        self.pad_tag = pad_tag
+        self._add_padding_representation_to_embeddings()
+        self.filling_ix = self._determing_padding_representation_ix()
 
-        document_sentence_words.extend(train_document_sentence_words.values())
-        document_sentence_tags.extend(train_document_sentence_tags.values())
+        self._pad_datasets_to_max_length()
 
-    if clef_validation:
-        valid_features, _, valid_document_sentence_words, valid_document_sentence_tags = Dataset.get_clef_validation_dataset()
+        self.initialize_plotting_lists()
 
-        document_sentence_words.extend(valid_document_sentence_words.values())
-        document_sentence_tags.extend(valid_document_sentence_tags.values())
+        self.initialize_parameters()
 
-    if clef_testing:
-        test_features, _, test_document_sentence_words, test_document_sentence_tags = Dataset.get_clef_testing_dataset()
+    def train(self, bidirectional, **kwargs):
 
-        document_sentence_words.extend(test_document_sentence_words.values())
-        document_sentence_tags.extend(test_document_sentence_tags.values())
+        if bidirectional:
+            raise NotImplementedError
+            print('Using a bidirectional RNN clipping_grad: %d' % self.max_length)
+        else:
+            minibatch_size = kwargs['batch_size']
+            learning_rate = kwargs['learning_rate_train']
+            # plot = kwargs['plot']
+            # max_epochs = kwargs['max_epochs']
 
-    word2index, index2word = A_neural_network._construct_index(add_words, document_sentence_words)
-    label2index, index2label = A_neural_network._construct_index(add_tags, document_sentence_tags)
+            print('Using an unidirectional RNN minibatch: %d lr: %d clipping_grad: %d' % \
+                  (minibatch_size, learning_rate, self.max_length))
 
-    use_context_window = False if not n_window or n_window == 1 else True
+            self._train_unidirectional_graph(minibatch_size=minibatch_size,
+                                             learning_rate=learning_rate,
+                                             **kwargs)
 
-    if clef_training:
-        x_train, y_train = A_neural_network.get_partitioned_data(x_idx=x_idx,
-                                                                 document_sentences_words=train_document_sentence_words,
-                                                                 document_sentences_tags=train_document_sentence_tags,
-                                                                 word2index=word2index,
-                                                                 label2index=label2index,
-                                                                 use_context_window=use_context_window,
-                                                                 n_window=n_window)
+        return True
 
-    if clef_validation:
-        x_valid, y_valid = A_neural_network.get_partitioned_data(x_idx=x_idx,
-                                                                 document_sentences_words=valid_document_sentence_words,
-                                                                 document_sentences_tags=valid_document_sentence_tags,
-                                                                 word2index=word2index,
-                                                                 label2index=label2index,
-                                                                 use_context_window=use_context_window,
-                                                                 n_window=n_window)
-
-    if clef_testing:
-        x_test, y_test = A_neural_network.get_partitioned_data(x_idx=x_idx,
-                                                               document_sentences_words=test_document_sentence_words,
-                                                               document_sentences_tags=test_document_sentence_tags,
-                                                               word2index=word2index,
-                                                               label2index=label2index,
-                                                               use_context_window=use_context_window,
-                                                               n_window=n_window)
-
-    if not use_context_window:
-        # if i use context window, the senteces are padded when constructing the windows. If not, i have to do it here.
-        x_train, y_train, x_valid, y_valid, x_test, y_test = pad_sentences(x_train, y_train, x_valid, y_valid, x_test,
-                                                                           y_test, word2index, label2index)
-
-    return x_train, y_train, x_train_feats, \
-           x_valid, y_valid, x_valid_feats, \
-           x_test, y_test, x_test_feats, \
-           word2index, index2word, \
-           label2index, index2label, \
-           features_indexes
-
-def pad_to_max_length(x_train, y_train, x_valid, y_valid, x_test, y_test, pad_ix):
-
-    max_len = determine_datasets_max_len(x_train, x_valid, x_test)
-
-    x_train = map(lambda x: x + [pad_ix] * (max_len - x.__len__()), x_train)
-    y_train = map(lambda x: x + [pad_ix] * (max_len - x.__len__()), y_train)
-    x_valid = map(lambda x: x + [pad_ix] * (max_len - x.__len__()), x_valid)
-    y_valid = map(lambda x: x + [pad_ix] * (max_len - x.__len__()), y_valid)
-    x_test = map(lambda x: x + [pad_ix] * (max_len - x.__len__()), x_test)
-    y_test = map(lambda x: x + [pad_ix] * (max_len - x.__len__()), y_test)
-
-    return x_train, y_train, x_valid, y_valid, x_test, y_test
-
-def determine_datasets_max_len(x_train, x_valid, x_test):
-    return np.max(map(len, x_train+x_valid+x_test))
-
-
-def length(data):
-    used = tf.sign(tf.reduce_max(tf.abs(data), reduction_indices=2))
-    length = tf.reduce_sum(used, reduction_indices=1)
-    length = tf.cast(length, tf.int32)
-    return length
-
-def pad_sentences(x_train, y_train, x_valid, y_valid, x_test, y_test, word2index, label2index):
-    pad_word_ix = [word2index['<PAD>']]
-    pad_tag_ix = [label2index['<PAD>']]
-
-    x_train = map(lambda x: pad_word_ix+ x + pad_word_ix, x_train)
-    x_valid = map(lambda x: pad_word_ix + x + pad_word_ix, x_valid)
-    x_test = map(lambda x: pad_word_ix + x + pad_word_ix, x_test)
-
-    y_train = map(lambda x: pad_tag_ix + x + pad_tag_ix, y_train)
-    y_valid = map(lambda x: pad_tag_ix + x + pad_tag_ix, y_valid)
-    y_test = map(lambda x: pad_tag_ix + x + pad_tag_ix, y_test)
-
-    return x_train, y_train, x_valid, y_valid, x_test, y_test
-
-if __name__ == '__main__':
-    batch_size = 1
-    input_size = 10
-    max_length = 7     # unrolled up to this length
-    n_window = 3
-    learning_rate = 0.1
-    alpha_l2 = 0.001
-    max_epochs = 20
-    mask_inputs_by_length = True
-
-    x_train, y_train, x_train_feats, \
-    x_valid, y_valid, x_valid_feats, \
-    x_test, y_test, x_test_feats, \
-    word2index, index2word, \
-    label2index, index2label, \
-    features_indexes = \
-        get_data(clef_training=True, clef_validation=True, clef_testing=True,
-                               add_words=['<PAD>'], add_tags=['<PAD>'], add_feats=[], x_idx=None,
-                               n_window=n_window,
-                               feat_positions=None,
-                               lowercase=True)
-
-    args = {
-        'w2v_vectors_cache': 'w2v_googlenews_representations.p',
-    }
-
-    w2v_vectors, w2v_model, w2v_dims = load_w2v_model_and_vectors_cache(args)
-
-    pretrained_embeddings = A_neural_network.initialize_w(w2v_dims, word2index.keys(),
-                                   w2v_vectors=w2v_vectors, w2v_model=w2v_model)
-
-    n_words, n_emb_dims = pretrained_embeddings.shape
-    n_out = label2index.keys().__len__()
-
-    assert w2v_dims == n_emb_dims, 'Error in embeddings dimensions computation.'
-
-    pretrained_embeddings = np.vstack((pretrained_embeddings, np.zeros(n_emb_dims)))
-    extra_ix_pad = pretrained_embeddings.shape[0] - 1
-
-    x_train, y_train, x_valid, y_valid, x_test, y_test = pad_to_max_length(x_train, y_train, x_valid, y_valid, x_test,
-                                                                           y_test, extra_ix_pad)
-
-    max_length = determine_datasets_max_len(x_train, x_valid, x_test)
-
-    x_train = np.array(x_train)
-    y_train = np.array(y_train)
-    x_valid = np.array(x_valid)
-    y_valid = np.array(y_valid)
-    x_test = np.array(x_test)
-    y_test = np.array(y_test)
-
-    with tf.Graph().as_default():
-        with tf.device('/cpu:0'):
-
+    def initialize_parameters(self):
+        with self.graph.as_default():
             tf.set_random_seed(1234)
 
-            # word embeddings matrix and bias. Always needed
-            w1 = tf.Variable(initial_value=pretrained_embeddings, dtype=tf.float32, trainable=True, name='w1')
-            b1 = tf.Variable(tf.zeros([n_emb_dims * n_window]), dtype=tf.float32, name='b1')
+            self.w1 = tf.Variable(initial_value=self.pretrained_embeddings, dtype=tf.float32, trainable=True, name='w1')
+            self.w2 = tf.Variable(tf.truncated_normal([self.n_emb * self.n_window, self.n_out], stddev=0.1))
+            self.b2 = tf.Variable(tf.constant(0.1, shape=[self.n_out]))
 
-            # data = tf.placeholder(tf.float32, [None, max_length, n_emb_dims])
+        return
 
-            idxs = tf.placeholder(tf.int32, name='idxs', shape=[None, max_length])
-            # true_labels = tf.placeholder(tf.float32, [None, max_length, index2label.__len__()])
-            true_labels = tf.placeholder(tf.int32, name='true_labels')
+    def compute_output_layer_logits(self, idxs):
+        w_x = tf.nn.embedding_lookup(self.w1, idxs)
 
-            # embedding_matrix is a tensor of shape [vocabulary_size, embedding size]
-            w_x = tf.nn.embedding_lookup(w1, idxs)
+        input_data = tf.reshape(w_x, shape=[-1, self.max_length, self.n_emb])
 
-            input_data = tf.reshape(w_x, shape=[-1, max_length, n_emb_dims])
+        hidden_activations, _ = tf.nn.dynamic_rnn(self.cell, input_data, dtype=tf.float32,
+                                                  sequence_length=self.length(input_data))
 
-            cell = rnn_cell.BasicRNNCell(num_units=n_emb_dims * n_window, input_size=None)
+        hidden_activations_flat = tf.reshape(hidden_activations, [-1, self.n_emb * self.n_window])
 
-            # Initial state of the cell.
-            # state = tf.zeros([batch_size, n_emb_dims * n_window])
+        return tf.matmul(hidden_activations_flat, self.w2) + self.b2
 
-            hidden_activations, _ = tf.nn.dynamic_rnn(cell, input_data, dtype=tf.float32, sequence_length=length(input_data))
-            hidden_activations_flat = tf.reshape(hidden_activations, [-1, n_emb_dims * n_window])
+    def _train_unidirectional_graph(self, minibatch_size, max_epochs, learning_rate, plot, alpha_l2=0.001, **kwargs):
+        with self.graph.as_default():
+            with tf.device('/cpu:0'):
+                idxs = tf.placeholder(tf.int32, name='idxs', shape=[None, self.max_length])
 
-            w2 = tf.Variable(tf.truncated_normal([n_emb_dims * n_window, label2index.__len__()], stddev=0.1))
-            b2 = tf.Variable(tf.constant(0.1, shape=[label2index.__len__()]))
+                true_labels = tf.placeholder(tf.int32, name='true_labels')
 
-            out_logits = tf.matmul(hidden_activations_flat, w2) + b2
-            # logits_reshape = tf.reshape(out_logits, [-1, max_length, label2index.__len__()])
+                keep_prob = tf.placeholder(tf.float32, name='keep_prob')
 
-            # cross_entropy = tf.reduce_sum(tf.slice(cros_entropies_list, begin=0, size=lengths))
-            cross_entropies_list = tf.nn.sparse_softmax_cross_entropy_with_logits(out_logits, true_labels)
-            # cross_entropy_unmasked = tf.reduce_sum(cross_entropies_list)
+                with tf.variable_scope("cell"):
+                    self.cell = rnn_cell.BasicRNNCell(num_units=self.n_emb * self.n_window, input_size=None)
+                    self.cell = rnn_cell.DropoutWrapper(self.cell, output_keep_prob=keep_prob)
 
-            mask = tf.sign(tf.to_float(tf.not_equal(true_labels, tf.constant(extra_ix_pad))))
-            cross_entropy_masked = cross_entropies_list * mask
+                    out_logits = self.compute_output_layer_logits(idxs)
 
-            cross_entropy = tf.reduce_sum(cross_entropy_masked)
-            # cross_entropy /= tf.reduce_sum(mask)
-            # cross_entropy = tf.reduce_mean(cross_entropy)
+                # cross_entropy = tf.reduce_sum(tf.slice(cros_entropies_list, begin=0, size=lengths))
+                cross_entropies_list = tf.nn.sparse_softmax_cross_entropy_with_logits(out_logits, true_labels)
+                # cross_entropy_unmasked = tf.reduce_sum(cross_entropies_list)
 
-            regularizables = [w1, w2]
+                mask = tf.sign(tf.to_float(tf.not_equal(true_labels, tf.constant(self.filling_ix))))
+                cross_entropy_masked = cross_entropies_list * mask
 
-            l2_sum = tf.add_n([tf.nn.l2_loss(param) for param in regularizables])
-            cost = cross_entropy + alpha_l2 * l2_sum
+                cross_entropy = tf.reduce_sum(cross_entropy_masked)
+                # cross_entropy /= tf.reduce_sum(mask)
+                # cross_entropy = tf.reduce_mean(cross_entropy)
 
-            optimizer = tf.train.AdagradOptimizer(learning_rate=learning_rate).minimize(cost)
+                # self.regularizables = [w_x, self.w2]
+                # l2_sum = tf.add_n([tf.nn.l2_loss(param) for param in self.regularizables])
 
-            predictions = tf.to_int32(tf.arg_max(tf.nn.softmax(out_logits), 1))
+                cost = cross_entropy
 
-            errors_list = tf.to_float(tf.not_equal(predictions, true_labels))
-            errors = errors_list * mask
-            errors = tf.reduce_sum(errors)
+                optimizer = tf.train.AdagradOptimizer(learning_rate=learning_rate).minimize(cost)
 
-            with tf.Session() as session:
-                session.run(tf.initialize_all_variables())
-                print("Initialized")
-                for epoch_ix in range(max_epochs):
-                    start = time.time()
-                    n_batches = np.int(np.ceil(x_train.shape[0] / batch_size))
-                    train_cost = 0
-                    train_cross_entropy = 0
-                    train_errors = 0
-                    for batch_ix in range(n_batches):
-                        feed_dict = {
-                                    # true_labels: y_train[batch_ix*batch_size:(batch_ix+1)*batch_size].astype(float),
-                                    idxs: x_train[batch_ix*batch_size: (batch_ix+1)*batch_size],
-                                    true_labels: list(chain(*y_train[batch_ix*batch_size:(batch_ix+1)*batch_size]))
-                        }
+                predictions = self.compute_predictions(out_logits)
 
-                        _, cost_output, cross_entropy_output, errors_output = session.run([optimizer, cost, cross_entropy, errors], feed_dict=feed_dict)
-                        train_cost += cost_output
-                        train_cross_entropy += cross_entropy_output
-                        train_errors += errors_output
+                errors_list = tf.to_float(tf.not_equal(predictions, true_labels))
+                errors = errors_list * mask
+                errors = tf.reduce_sum(errors)
 
-                    feed_dict = {idxs: x_valid, true_labels: list(chain(*y_valid))}
-                    valid_predictions, valid_cost, valid_errors = session.run([predictions, cost, errors], feed_dict)
+                # with vs.variable_scope("Linear"):
+                #     matrix = vs.get_variable("Matrix", None)
 
-                    valid_f1 = Metrics.compute_f1_score(y_true=list(chain(*y_valid)), y_pred=valid_predictions, average='macro')
+        with tf.Session(graph=self.graph) as session:
 
-                    end = time.time()
+            valid_mask = np.array(sorted(set(np.where(self.y_valid.reshape((-1)) != self.filling_ix)[0]).intersection(set(np.where(self.y_valid.reshape((-1)) != self.pad_tag)[0]))))
+            flat_y_valid = self.y_valid.reshape((-1))
 
-                    print 'Epoch %d - Train_cost: %f Train_errors: %d Valid_cost: %f Valid_errors: %d Valid_f1: %f Took: %f' % \
-                          (epoch_ix, train_cost, train_errors, valid_cost, valid_errors, valid_f1, end-start)
+            session.run(tf.initialize_all_variables())
+            print("Initialized")
+
+            for epoch_ix in range(max_epochs):
+                start = time.time()
+                n_batches = np.int(np.ceil(self.x_train.shape[0] / float(minibatch_size)))
+                train_cost = 0
+                train_cross_entropy = 0
+                train_errors = 0
+                for batch_ix in range(n_batches):
+                    feed_dict = {
+                        # true_labels: y_train[batch_ix*batch_size:(batch_ix+1)*batch_size].astype(float),
+                        idxs: self.x_train[batch_ix * minibatch_size: (batch_ix + 1) * minibatch_size],
+                        true_labels: list(chain(*self.y_train[batch_ix * minibatch_size:(batch_ix + 1) * minibatch_size])),
+                        keep_prob: 0.5
+                    }
+
+                    _, cost_output, cross_entropy_output, errors_output = session.run(
+                        [optimizer, cost, cross_entropy, errors], feed_dict=feed_dict)
+                    train_cost += cost_output
+                    train_cross_entropy += cross_entropy_output
+                    train_errors += errors_output
+
+                feed_dict = {idxs: self.x_valid, true_labels: list(chain(*self.y_valid)), keep_prob: 1.}
+                valid_predictions, valid_cost, valid_cross_entropy, valid_errors = session.run([predictions, cost,
+                                                                                                cross_entropy, errors],
+                                                                                               feed_dict)
+                valid_true = flat_y_valid[valid_mask]
+                valid_predictions = valid_predictions[valid_mask]
+                precision, recall, f1_score = self.compute_scores(valid_true, valid_predictions)
+
+                if plot:
+                    epoch_l2_w1, epoch_l2_w2 = self.compute_parameters_sum()
+
+                    self.update_monitoring_lists(train_cost, train_cross_entropy, train_errors,
+                                                 valid_cost, valid_cross_entropy, valid_errors,
+                                                 epoch_l2_w1, epoch_l2_w2,
+                                                 precision, recall, f1_score)
+
+                print('epoch: %d train_cost: %f train_errors: %d valid_cost: %f valid_errors: %d F1: %f took: %f' \
+                      % (epoch_ix, train_cost, train_errors, valid_cost, valid_errors, f1_score, time.time() - start))
+
+            self.saver = tf.train.Saver(tf.all_variables())
+            self.saver.save(session, self.get_output_path('params.model'), write_meta_graph=True)
+
+        if plot:
+            print 'Making plots'
+            self.make_plots()
+
+        return True
+
+    def predict(self, on_training_set=False, on_validation_set=False, on_testing_set=False, **kwargs):
+
+        assert on_training_set or on_validation_set or on_testing_set
+        results = dict()
+
+        if on_training_set:
+            x_test = self.x_train
+            y_test = self.y_train
+        elif on_validation_set:
+            x_test = self.x_valid
+            y_test = self.y_valid
+        elif on_testing_set:
+            x_test = self.x_test
+            y_test = self.y_test
+        else:
+            raise Exception
+
+        with self.graph.as_default():
+
+            mask = np.array(sorted(set(np.where(y_test.reshape((-1)) != self.filling_ix)[0]).intersection(
+                set(np.where(y_test.reshape((-1)) != self.pad_tag)[0]))))
+            flat_y_test = y_test.reshape((-1))
+
+            tf.train.import_meta_graph(self.get_output_path('params.model.meta'))
+
+            idxs = self.graph.get_tensor_by_name(name='idxs:0')
+            keep_prob = self.graph.get_tensor_by_name(name='keep_prob:0')
+
+            with tf.variable_scope("cell") as scope:
+                scope.reuse_variables()
+            # with tf.variable_scope("RNN"):
+            #     tf.get_variable_scope().reuse_variables()
+                out_logits = self.compute_output_layer_logits(idxs)
+                predictions = self.compute_predictions(out_logits)
+
+        with tf.Session(graph=self.graph) as session:
+            self.saver.restore(session, self.get_output_path('params.model'))
+
+            feed_dict = {idxs: x_test, keep_prob: 1.}
+
+            prediction_output = session.run(predictions, feed_dict=feed_dict)
+
+        results['flat_trues'] = flat_y_test[mask]
+        results['flat_predictions'] = prediction_output[mask]
+
+        return results
+
+    def compute_predictions(self, out_logits):
+        return tf.to_int32(tf.arg_max(tf.nn.softmax(out_logits), 1))
+
+    def update_monitoring_lists(self,
+                                train_cost, train_xentropy, train_errors,
+                                valid_cost, valid_xentropy, valid_errors,
+                                epoch_l2_w1, epoch_l2_w2,
+                                precision, recall, f1_score):
+
+        # training
+        self.train_costs_list.append(train_cost)
+        self.train_cross_entropy_list.append(train_xentropy)
+        self.train_errors_list.append(train_errors)
+
+        # validation
+        self.valid_costs_list.append(valid_cost)
+        self.valid_cross_entropy_list.append(valid_xentropy)
+        self.valid_errors_list.append(valid_errors)
+
+        # weights
+        self.epoch_l2_w1_list.append(epoch_l2_w1)
+        self.epoch_l2_w2_list.append(epoch_l2_w2)
+
+        # scores
+        self.precision_list.append(precision)
+        self.recall_list.append(recall)
+        self.f1_score_list.append(f1_score)
+
+        return
+
+    def compute_parameters_sum(self):
+        w1_sum = 0
+        w2_sum = 0
+
+        if self.w1 is not None:
+            w1_sum = tf.reduce_sum(tf.square(self.w1)).eval()
+
+        if self.w2 is not None:
+            w2_sum = tf.reduce_sum(tf.square(self.w2)).eval()
+
+        # if self.w3 is not None:
+        #     w3_sum = tf.reduce_sum(tf.square(self.w3)).eval()
+
+        return w1_sum, w2_sum
+
+    def make_plots(self):
+        actual_time = str(time.time())
+
+        self.plot_training_cost_and_error(self.train_costs_list, self.train_errors_list,
+                                          self.valid_costs_list, self.valid_errors_list,
+                                          actual_time=actual_time)
+
+        self.plot_scores(self.precision_list, self.recall_list, self.f1_score_list,
+                         actual_time=actual_time)
+
+        self.plot_cross_entropies(self.train_cross_entropy_list, self.valid_cross_entropy_list,
+                                  actual_time=actual_time)
+
+        plot_data_dict = dict()
+
+        if self.w1 is not None:
+            plot_data_dict['w1'] = self.epoch_l2_w1_list
+
+        if self.w2 is not None:
+            plot_data_dict['w2'] = self.epoch_l2_w2_list
+
+        self.plot_penalties_general(plot_data_dict, actual_time=actual_time)
+
+        return
+
+    def compute_scores(self, true_values, predictions):
+
+        assert true_values.__len__() == predictions.__len__()
+
+        results = Metrics.compute_all_metrics(y_true=true_values, y_pred=predictions, average='macro')
+        f1_score = results['f1_score']
+        precision = results['precision']
+        recall = results['recall']
+
+        return precision, recall, f1_score
+
+    def initialize_plotting_lists(self):
+
+        # plotting purposes
+        self.train_costs_list = []
+        self.train_errors_list = []
+        self.valid_costs_list = []
+        self.valid_errors_list = []
+        self.precision_list = []
+        self.recall_list = []
+        self.f1_score_list = []
+        self.epoch_l2_w1_list = []
+        self.epoch_l2_w2_list = []
+        self.epoch_l2_ww_list = []
+        self.train_cross_entropy_list = []
+        self.valid_cross_entropy_list = []
+
+        return True
+
+    @classmethod
+    def get_data(cls, clef_training=False, clef_validation=False, clef_testing=False,
+                 add_words=[], add_tags=[], add_feats=[], x_idx=None, n_window=None, feat_positions=None,
+                 lowercase=True):
+        """
+        overrides the inherited method.
+        gets the training data and organizes it into sentences per document.
+        RNN overrides this method, cause other neural nets dont partition into sentences.
+
+        :param crf_training_data_filename:
+        :return:
+        """
+
+        assert clef_training or clef_validation or clef_testing
+
+        document_sentence_words = []
+        document_sentence_tags = []
+
+        x_train = None
+        y_train = None
+        y_valid = None
+        x_valid = None
+        y_test = None
+        x_test = None
+        features_indexes = None
+        x_train_feats = None
+        x_valid_feats = None
+        x_test_feats = None
+
+        if clef_training:
+            train_features, _, train_document_sentence_words, train_document_sentence_tags = Dataset.get_clef_training_dataset()
+
+            document_sentence_words.extend(train_document_sentence_words.values())
+            document_sentence_tags.extend(train_document_sentence_tags.values())
+
+        if clef_validation:
+            valid_features, _, valid_document_sentence_words, valid_document_sentence_tags = Dataset.get_clef_validation_dataset()
+
+            document_sentence_words.extend(valid_document_sentence_words.values())
+            document_sentence_tags.extend(valid_document_sentence_tags.values())
+
+        if clef_testing:
+            test_features, _, test_document_sentence_words, test_document_sentence_tags = Dataset.get_clef_testing_dataset()
+
+            document_sentence_words.extend(test_document_sentence_words.values())
+            document_sentence_tags.extend(test_document_sentence_tags.values())
+
+        word2index, index2word = A_neural_network._construct_index(add_words, document_sentence_words)
+        label2index, index2label = A_neural_network._construct_index(add_tags, document_sentence_tags)
+
+        use_context_window = False if not n_window or n_window == 1 else True
+
+        if clef_training:
+            x_train, y_train = A_neural_network.get_partitioned_data(x_idx=x_idx,
+                                                                     document_sentences_words=train_document_sentence_words,
+                                                                     document_sentences_tags=train_document_sentence_tags,
+                                                                     word2index=word2index,
+                                                                     label2index=label2index,
+                                                                     use_context_window=use_context_window,
+                                                                     n_window=n_window)
+
+        if clef_validation:
+            x_valid, y_valid = A_neural_network.get_partitioned_data(x_idx=x_idx,
+                                                                     document_sentences_words=valid_document_sentence_words,
+                                                                     document_sentences_tags=valid_document_sentence_tags,
+                                                                     word2index=word2index,
+                                                                     label2index=label2index,
+                                                                     use_context_window=use_context_window,
+                                                                     n_window=n_window)
+
+        if clef_testing:
+            x_test, y_test = A_neural_network.get_partitioned_data(x_idx=x_idx,
+                                                                   document_sentences_words=test_document_sentence_words,
+                                                                   document_sentences_tags=test_document_sentence_tags,
+                                                                   word2index=word2index,
+                                                                   label2index=label2index,
+                                                                   use_context_window=use_context_window,
+                                                                   n_window=n_window)
+
+        if not use_context_window:
+            # if i use context window, the senteces are padded when constructing the windows. If not, i have to do it here.
+            x_train, y_train, x_valid, y_valid, x_test, y_test = cls._pad_sentences(x_train, y_train, x_valid, y_valid, x_test,
+                                                                               y_test, word2index, label2index)
+
+        return x_train, y_train, x_train_feats, \
+               x_valid, y_valid, x_valid_feats, \
+               x_test, y_test, x_test_feats, \
+               word2index, index2word, \
+               label2index, index2label, \
+               features_indexes
+
+    def _pad_datasets_to_max_length(self):
+
+        self.x_train = np.array(map(lambda x: x + [self.filling_ix] * (self.max_length - x.__len__()), self.x_train))
+        self.y_train = np.array(map(lambda x: x + [self.filling_ix] * (self.max_length - x.__len__()), self.y_train))
+        self.x_valid = np.array(map(lambda x: x + [self.filling_ix] * (self.max_length - x.__len__()), self.x_valid))
+        self.y_valid = np.array(map(lambda x: x + [self.filling_ix] * (self.max_length - x.__len__()), self.y_valid))
+        self.x_test = np.array(map(lambda x: x + [self.filling_ix] * (self.max_length - x.__len__()), self.x_test))
+        self.y_test = np.array(map(lambda x: x + [self.filling_ix] * (self.max_length - x.__len__()), self.y_test))
+
+        return True
+
+    def _determine_datasets_max_len(self):
+        return np.max(map(len, list(self.x_train) + list(self.x_valid) + list(self.x_test)))
+
+    def length(self, data):
+        used = tf.sign(tf.reduce_max(tf.abs(data), reduction_indices=2))
+        length = tf.reduce_sum(used, reduction_indices=1)
+        length = tf.cast(length, tf.int32)
+        return length
+
+    def _add_padding_representation_to_embeddings(self):
+
+        self.pretrained_embeddings = np.vstack((self.pretrained_embeddings, np.zeros(self.n_emb)))
+
+    def _determing_padding_representation_ix(self):
+        return self.pretrained_embeddings.shape[0] - 1
+
+    @classmethod
+    def _pad_sentences(cls, x_train, y_train, x_valid, y_valid, x_test, y_test, word2index, label2index):
+        pad_word_ix = [word2index['<PAD>']]
+        pad_tag_ix = [label2index['<PAD>']]
+
+        x_train = map(lambda x: pad_word_ix+ x + pad_word_ix, x_train)
+        x_valid = map(lambda x: pad_word_ix + x + pad_word_ix, x_valid)
+        x_test = map(lambda x: pad_word_ix + x + pad_word_ix, x_test)
+
+        y_train = map(lambda x: pad_tag_ix + x + pad_tag_ix, y_train)
+        y_valid = map(lambda x: pad_tag_ix + x + pad_tag_ix, y_valid)
+        y_test = map(lambda x: pad_tag_ix + x + pad_tag_ix, y_test)
+
+        return x_train, y_train, x_valid, y_valid, x_test, y_test
+
+    def to_string(self):
+        return '[Tensorflow] Recurrent neural network'
+
+    def get_hidden_activations(self, on_training_set, on_validation_set, on_testing_set, **kwargs):
+
+       return []
+
+    def get_output_logits(self, on_training_set, on_validation_set, on_testing_set, **kwargs):
+
+        return []
+
+if __name__ == '__main__':
+    batch_size = 128
+    max_length = 7     # unrolled up to this length
+    n_window = 1
+    learning_rate = 0.1
+    alpha_l2 = 0.001
+    max_epochs = 15
+    mask_inputs_by_length = True
+
+    # x_train, y_train, x_train_feats, \
+    # x_valid, y_valid, x_valid_feats, \
+    # x_test, y_test, x_test_feats, \
+    # word2index, index2word, \
+    # label2index, index2label, \
+    # features_indexes = \
+    #     Recurrent_net.get_data(clef_training=True, clef_validation=True, clef_testing=True,
+    #                            add_words=['<PAD>'], add_tags=['<PAD>'], add_feats=[], x_idx=None,
+    #                            n_window=n_window,
+    #                            feat_positions=None,
+    #                            lowercase=True)
+
+    # args = {
+    #     'w2v_vectors_cache': 'w2v_googlenews_representations.p',
+    # }
+    #
+    # w2v_vectors, w2v_model, w2v_dims = load_w2v_model_and_vectors_cache(args)
+
+    # pretrained_embeddings = A_neural_network.initialize_w(w2v_dims, word2index.keys(),
+    #                                w2v_vectors=w2v_vectors, w2v_model=w2v_model)
+
+    # n_words, n_emb_dims = pretrained_embeddings.shape
+    # n_out = label2index.keys().__len__()
+
+    # assert w2v_dims == n_emb_dims, 'Error in embeddings dimensions computation.'
+
+
+
+
+
+    # x_train = np.array(x_train)
+    # y_train = np.array(y_train)
+    # x_valid = np.array(x_valid)
+    # y_valid = np.array(y_valid)
+    # x_test = np.array(x_test)
+    # y_test = np.array(y_test)
+
+
 
         # rnn.bidirectional_rnn(cell_fw=, cell_bw=, inputs=, initial_state_fw=, initial_state_bw=,
         #                       sequence_length=None, scope=None)
