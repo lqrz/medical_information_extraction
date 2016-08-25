@@ -21,12 +21,13 @@ from utils import utils
 
 class Recurrent_net(A_neural_network):
 
-    def __init__(self, grad_clip, pad_tag, bidirectional, **kwargs):
+    def __init__(self, grad_clip, pad_tag, bidirectional, rnn_cell_type, **kwargs):
         super(Recurrent_net, self).__init__(**kwargs)
 
         self.graph = tf.Graph()
 
         self.bidirectional = bidirectional
+        self.rnn_cell_type = rnn_cell_type
 
         self.w1 = None
         self.w2 = None
@@ -57,8 +58,8 @@ class Recurrent_net(A_neural_network):
         learning_rate = kwargs['learning_rate_train']
 
         if self.bidirectional:
-            print('Using a bidirectional RNN minibatch: %d lr: %d clipping_grad: %d' % \
-                  (minibatch_size, learning_rate, self.max_length))
+            print('Using a bidirectional RNN cells: %s minibatch: %d lr: %d clipping_grad: %d' % \
+                  (self.rnn_cell_type, minibatch_size, learning_rate, self.max_length))
 
             self.instantiate_cells = self.instantiate_bidirectional_cells
             self.compute_output_layer_logits = self.compute_output_layer_logits_bidirectional
@@ -69,8 +70,8 @@ class Recurrent_net(A_neural_network):
                                  **kwargs)
 
         else:
-            print('Using an unidirectional RNN minibatch: %d lr: %d clipping_grad: %d' % \
-                  (minibatch_size, learning_rate, self.max_length))
+            print('Using an unidirectional RNN cells %s minibatch: %d lr: %d clipping_grad: %d' % \
+                  (self.rnn_cell_type, minibatch_size, learning_rate, self.max_length))
 
             self.instantiate_cells = self.instantiate_unidirectional_cells
             self.compute_output_layer_logits = self.compute_output_layer_logits_unidirectional
@@ -84,16 +85,33 @@ class Recurrent_net(A_neural_network):
 
     def instantiate_bidirectional_cells(self, keep_prob):
 
-        self.cell_fw = rnn_cell.BasicRNNCell(num_units=self.n_emb * self.n_window, input_size=None)
-        self.cell_fw = rnn_cell.DropoutWrapper(self.cell_fw, output_keep_prob=keep_prob)
+        if self.rnn_cell_type == 'normal':
+            self.cell_fw = rnn_cell.BasicRNNCell(num_units=self.n_emb * self.n_window, input_size=None)
+            self.cell_bw = rnn_cell.BasicRNNCell(num_units=self.n_emb * self.n_window, input_size=None)
+        elif self.rnn_cell_type == 'lstm':
+            self.cell_fw = rnn_cell.BasicLSTMCell(num_units=self.n_emb * self.n_window)
+            self.cell_bw = rnn_cell.BasicLSTMCell(num_units=self.n_emb * self.n_window)
+        elif self.rnn_cell_type == 'gru':
+            self.cell_fw = rnn_cell.GRUCell(num_units=self.n_emb * self.n_window)
+            self.cell_bw = rnn_cell.GRUCell(num_units=self.n_emb * self.n_window)
+        else:
+            raise Exception()
 
-        self.cell_bw = rnn_cell.BasicRNNCell(num_units=self.n_emb * self.n_window, input_size=None)
+        self.cell_fw = rnn_cell.DropoutWrapper(self.cell_fw, output_keep_prob=keep_prob)
         self.cell_bw = rnn_cell.DropoutWrapper(self.cell_bw, output_keep_prob=keep_prob)
 
         return True
 
     def instantiate_unidirectional_cells(self, keep_prob):
-        self.cell = rnn_cell.BasicRNNCell(num_units=self.n_emb * self.n_window, input_size=None)
+        if self.rnn_cell_type == 'normal':
+            self.cell = rnn_cell.BasicRNNCell(num_units=self.n_emb * self.n_window, input_size=None)
+        elif self.rnn_cell_type == 'lstm':
+            self.cell = rnn_cell.BasicLSTMCell(num_units=self.n_emb * self.n_window)
+        elif self.rnn_cell_type == 'gru':
+            self.cell = rnn_cell.GRUCell(num_units=self.n_emb * self.n_window)
+        else:
+            raise Exception()
+
         self.cell = rnn_cell.DropoutWrapper(self.cell, output_keep_prob=keep_prob)
 
         return True
@@ -151,29 +169,109 @@ class Recurrent_net(A_neural_network):
 
     def compute_inner_weights_sum_unidirectional(self):
 
-        with tf.variable_scope("RNN"):
-            with tf.variable_scope("BasicRNNCell"):
-                with tf.variable_scope("Linear"):
-                    tf.get_variable_scope().reuse_variables()
-                    self.ww = tf.get_variable("Matrix")
+        if self.rnn_cell_type == 'normal':
+            with tf.variable_scope("RNN"):
+                with tf.variable_scope("BasicRNNCell"):
+                    with tf.variable_scope("Linear"):
+                        tf.get_variable_scope().reuse_variables()
+                        self.ww = tf.get_variable("Matrix")
+        elif self.rnn_cell_type == 'lstm':
+            with tf.variable_scope("RNN"):
+                with tf.variable_scope("BasicLSTMCell"):
+                    with tf.variable_scope("Linear"):
+                        tf.get_variable_scope().reuse_variables()
+                        self.ww = tf.get_variable("Matrix")
+        elif self.rnn_cell_type == 'gru':
+            with tf.variable_scope("RNN"):
+                with tf.variable_scope("GRUCell"):
+                    with tf.variable_scope("Candidate"):
+                        with tf.variable_scope("Linear"):
+                            tf.get_variable_scope().reuse_variables()
+                            ww_candidate = tf.get_variable("Matrix")
+
+            with tf.variable_scope("RNN"):
+                with tf.variable_scope("GRUCell"):
+                    with tf.variable_scope("Gates"):
+                        with tf.variable_scope("Linear"):
+                            tf.get_variable_scope().reuse_variables()
+                            ww_gates = tf.get_variable("Matrix")
+
+            self.ww = tf.concat(1, [ww_candidate, ww_gates])
+
+        else:
+            raise Exception()
 
         return True
 
     def compute_inner_weights_sum_bidirectional(self):
 
-        with tf.variable_scope("BiRNN_FW"):
-            with tf.variable_scope("BasicRNNCell"):
-                with tf.variable_scope("Linear"):
-                    tf.get_variable_scope().reuse_variables()
-                    ww_fw = tf.get_variable("Matrix")
+        if self.rnn_cell_type == 'normal':
 
-        with tf.variable_scope("BiRNN_BW"):
-            with tf.variable_scope("BasicRNNCell"):
-                with tf.variable_scope("Linear"):
-                    tf.get_variable_scope().reuse_variables()
-                    ww_bw = tf.get_variable("Matrix")
+            with tf.variable_scope("BiRNN_FW"):
+                with tf.variable_scope("BasicRNNCell"):
+                    with tf.variable_scope("Linear"):
+                        tf.get_variable_scope().reuse_variables()
+                        ww_fw = tf.get_variable("Matrix")
 
-        self.ww = tf.concat(0, [ww_fw, ww_bw])
+            with tf.variable_scope("BiRNN_BW"):
+                with tf.variable_scope("BasicRNNCell"):
+                    with tf.variable_scope("Linear"):
+                        tf.get_variable_scope().reuse_variables()
+                        ww_bw = tf.get_variable("Matrix")
+
+            self.ww = tf.concat(0, [ww_fw, ww_bw])
+
+        elif self.rnn_cell_type == 'lstm':
+
+            with tf.variable_scope("BiRNN_FW"):
+                with tf.variable_scope("BasicLSTMCell"):
+                    with tf.variable_scope("Linear"):
+                        tf.get_variable_scope().reuse_variables()
+                        ww_fw = tf.get_variable("Matrix")
+            with tf.variable_scope("BiRNN_BW"):
+                with tf.variable_scope("BasicLSTMCell"):
+                    with tf.variable_scope("Linear"):
+                        tf.get_variable_scope().reuse_variables()
+                        ww_bw = tf.get_variable("Matrix")
+
+            self.ww = tf.concat(0, [ww_fw, ww_bw])
+
+        elif self.rnn_cell_type == 'gru':
+
+            with tf.variable_scope("BiRNN_FW"):
+                with tf.variable_scope("RNN"):
+                    with tf.variable_scope("GRUCell"):
+                        with tf.variable_scope("Candidate"):
+                            with tf.variable_scope("Linear"):
+                                tf.get_variable_scope().reuse_variables()
+                                fw_ww_candidate = tf.get_variable("Matrix")
+
+                with tf.variable_scope("RNN"):
+                    with tf.variable_scope("GRUCell"):
+                        with tf.variable_scope("Gates"):
+                            with tf.variable_scope("Linear"):
+                                tf.get_variable_scope().reuse_variables()
+                                fw_ww_gates = tf.get_variable("Matrix")
+
+            with tf.variable_scope("BiRNN_BW"):
+                with tf.variable_scope("RNN"):
+                    with tf.variable_scope("GRUCell"):
+                        with tf.variable_scope("Candidate"):
+                            with tf.variable_scope("Linear"):
+                                tf.get_variable_scope().reuse_variables()
+                                bw_ww_candidate = tf.get_variable("Matrix")
+
+                with tf.variable_scope("RNN"):
+                    with tf.variable_scope("GRUCell"):
+                        with tf.variable_scope("Gates"):
+                            with tf.variable_scope("Linear"):
+                                tf.get_variable_scope().reuse_variables()
+                                bw_ww_gates = tf.get_variable("Matrix")
+
+            self.ww = tf.concat(1, [fw_ww_candidate, fw_ww_gates, bw_ww_candidate, bw_ww_gates])
+
+        else:
+            raise Exception()
 
         return True
 

@@ -79,6 +79,7 @@ def parse_arguments():
     group_rnn.add_argument('--bidirectional', action='store_true', default=False)
     group_rnn.add_argument('--sharedparams', action='store_true', default=False)
     group_rnn.add_argument('--gradclip', action='store', default=None, type=int)
+    group_rnn.add_argument('--rnntype', action='store', type=str, choices=['normal', 'lstm', 'gru'], required=True)
 
     parser.add_argument('--plot', action='store_true', default=False)
     parser.add_argument('--tags', action='store', type=str, default=None)
@@ -147,6 +148,7 @@ def parse_arguments():
     args['augment_data'] = arguments.augmentdata
     args['treat_oovs'] = arguments.treatoovs
     args['grad_clip'] = arguments.treatoovs
+    args['rnn_cell_type'] = arguments.rnntype
 
     return args
 
@@ -718,7 +720,8 @@ def use_testing_dataset(nn_class,
         'training_param_names': training_params,
         'tuning_param_names': tuning_params,
         'grad_clip': args['grad_clip'],
-        'bidirectional': args['bidirectional']
+        'bidirectional': args['bidirectional'],
+        'rnn_cell_type': args['rnn_cell_type']
     }
 
     nn_trainer = nn_class(**params)
