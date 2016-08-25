@@ -717,7 +717,8 @@ def use_testing_dataset(nn_class,
         'cnn_features': config_features,
         'training_param_names': training_params,
         'tuning_param_names': tuning_params,
-        'grad_clip': args['grad_clip']
+        'grad_clip': args['grad_clip'],
+        'bidirectional': args['bidirectional']
     }
 
     nn_trainer = nn_class(**params)

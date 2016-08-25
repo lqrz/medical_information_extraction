@@ -21,10 +21,12 @@ from utils import utils
 
 class Recurrent_net(A_neural_network):
 
-    def __init__(self, grad_clip, pad_tag, **kwargs):
+    def __init__(self, grad_clip, pad_tag, bidirectional, **kwargs):
         super(Recurrent_net, self).__init__(**kwargs)
 
         self.graph = tf.Graph()
+
+        self.bidirectional = bidirectional
 
         self.w1 = None
         self.w2 = None
@@ -49,23 +51,50 @@ class Recurrent_net(A_neural_network):
 
         self.initialize_parameters()
 
-    def train(self, bidirectional, **kwargs):
+    def train(self, **kwargs):
 
-        if bidirectional:
-            raise NotImplementedError
-            print('Using a bidirectional RNN clipping_grad: %d' % self.max_length)
+        minibatch_size = kwargs['batch_size']
+        learning_rate = kwargs['learning_rate_train']
+
+        if self.bidirectional:
+            print('Using a bidirectional RNN minibatch: %d lr: %d clipping_grad: %d' % \
+                  (minibatch_size, learning_rate, self.max_length))
+
+            self.instantiate_cells = self.instantiate_bidirectional_cells
+            self.compute_output_layer_logits = self.compute_output_layer_logits_bidirectional
+            self.compute_inner_weights_sum = self.compute_inner_weights_sum_bidirectional
+
+            self._train_graph(minibatch_size=minibatch_size,
+                                 learning_rate=learning_rate,
+                                 **kwargs)
+
         else:
-            minibatch_size = kwargs['batch_size']
-            learning_rate = kwargs['learning_rate_train']
-            # plot = kwargs['plot']
-            # max_epochs = kwargs['max_epochs']
-
             print('Using an unidirectional RNN minibatch: %d lr: %d clipping_grad: %d' % \
                   (minibatch_size, learning_rate, self.max_length))
 
-            self._train_unidirectional_graph(minibatch_size=minibatch_size,
-                                             learning_rate=learning_rate,
-                                             **kwargs)
+            self.instantiate_cells = self.instantiate_unidirectional_cells
+            self.compute_output_layer_logits = self.compute_output_layer_logits_unidirectional
+            self.compute_inner_weights_sum = self.compute_inner_weights_sum_unidirectional
+
+            self._train_graph(minibatch_size=minibatch_size,
+                                 learning_rate=learning_rate,
+                                 **kwargs)
+
+        return True
+
+    def instantiate_bidirectional_cells(self, keep_prob):
+
+        self.cell_fw = rnn_cell.BasicRNNCell(num_units=self.n_emb * self.n_window, input_size=None)
+        self.cell_fw = rnn_cell.DropoutWrapper(self.cell_fw, output_keep_prob=keep_prob)
+
+        self.cell_bw = rnn_cell.BasicRNNCell(num_units=self.n_emb * self.n_window, input_size=None)
+        self.cell_bw = rnn_cell.DropoutWrapper(self.cell_bw, output_keep_prob=keep_prob)
+
+        return True
+
+    def instantiate_unidirectional_cells(self, keep_prob):
+        self.cell = rnn_cell.BasicRNNCell(num_units=self.n_emb * self.n_window, input_size=None)
+        self.cell = rnn_cell.DropoutWrapper(self.cell, output_keep_prob=keep_prob)
 
         return True
 
@@ -74,7 +103,13 @@ class Recurrent_net(A_neural_network):
             tf.set_random_seed(1234)
 
             self.w1 = tf.Variable(initial_value=self.pretrained_embeddings, dtype=tf.float32, trainable=True, name='w1')
-            self.w2 = tf.Variable(tf.truncated_normal([self.n_emb * self.n_window, self.n_out], stddev=0.1))
+
+            if self.bidirectional:
+                # forward and backward
+                self.w2 = tf.Variable(tf.truncated_normal([2 * self.n_emb * self.n_window, self.n_out], stddev=0.1))
+            else:
+                self.w2 = tf.Variable(tf.truncated_normal([self.n_emb * self.n_window, self.n_out], stddev=0.1))
+
             self.b2 = tf.Variable(tf.constant(0.1, shape=[self.n_out]))
 
         return
@@ -83,7 +118,7 @@ class Recurrent_net(A_neural_network):
         w_x = tf.nn.embedding_lookup(self.w1, idxs)
         return tf.reshape(w_x, shape=[-1, self.n_window * self.n_emb])
 
-    def compute_output_layer_logits(self, idxs):
+    def compute_output_layer_logits_unidirectional(self, idxs):
 
         w_x_r = self.perform_lookup_and_reshape(idxs)
 
@@ -96,7 +131,53 @@ class Recurrent_net(A_neural_network):
 
         return tf.matmul(hidden_activations_flat, self.w2) + self.b2
 
-    def _train_unidirectional_graph(self, minibatch_size, max_epochs, learning_rate, plot, alpha_l2=0.001, **kwargs):
+    def compute_output_layer_logits_bidirectional(self, idxs):
+        w_x_r = self.perform_lookup_and_reshape(idxs)
+
+        input_data = tf.reshape(w_x_r, shape=[-1, self.max_length, self.n_window * self.n_emb])
+
+        # """Split the single tensor of a sequence into a list of frames."""
+        input_data_unp = tf.unpack(tf.transpose(input_data, perm=[1, 0, 2]))
+
+        hidden_activations, _, _ = tf.nn.bidirectional_rnn(self.cell_fw, self.cell_bw, input_data_unp,
+                                                           dtype=tf.float32,
+                                                           sequence_length=self.length(input_data))
+
+        # """Combine a list of the frames into a single tensor of the sequence."""
+        hidden_activations_flat = tf.reshape(tf.transpose(tf.pack(hidden_activations), perm=[1, 0, 2]),
+                                                [-1, 2 * self.n_emb * self.n_window])
+
+        return tf.matmul(hidden_activations_flat, self.w2) + self.b2
+
+    def compute_inner_weights_sum_unidirectional(self):
+
+        with tf.variable_scope("RNN"):
+            with tf.variable_scope("BasicRNNCell"):
+                with tf.variable_scope("Linear"):
+                    tf.get_variable_scope().reuse_variables()
+                    self.ww = tf.get_variable("Matrix")
+
+        return True
+
+    def compute_inner_weights_sum_bidirectional(self):
+
+        with tf.variable_scope("BiRNN_FW"):
+            with tf.variable_scope("BasicRNNCell"):
+                with tf.variable_scope("Linear"):
+                    tf.get_variable_scope().reuse_variables()
+                    ww_fw = tf.get_variable("Matrix")
+
+        with tf.variable_scope("BiRNN_BW"):
+            with tf.variable_scope("BasicRNNCell"):
+                with tf.variable_scope("Linear"):
+                    tf.get_variable_scope().reuse_variables()
+                    ww_bw = tf.get_variable("Matrix")
+
+        self.ww = tf.concat(0, [ww_fw, ww_bw])
+
+        return True
+
+    def _train_graph(self, minibatch_size, max_epochs, learning_rate, plot, **kwargs):
         with self.graph.as_default():
             with tf.device('/cpu:0'):
 
@@ -110,16 +191,11 @@ class Recurrent_net(A_neural_network):
                 keep_prob = tf.placeholder(tf.float32, name='keep_prob')
 
                 with tf.variable_scope("cell"):
-                    self.cell = rnn_cell.BasicRNNCell(num_units=self.n_emb * self.n_window, input_size=None)
-                    self.cell = rnn_cell.DropoutWrapper(self.cell, output_keep_prob=keep_prob)
+                    self.instantiate_cells(keep_prob)
 
                     out_logits = self.compute_output_layer_logits(idxs)
 
-                    with tf.variable_scope("RNN"):
-                        with tf.variable_scope("BasicRNNCell"):
-                            with tf.variable_scope("Linear"):
-                                tf.get_variable_scope().reuse_variables()
-                                self.ww = tf.get_variable("Matrix")
+                    self.compute_inner_weights_sum()
 
                 # cross_entropy = tf.reduce_sum(tf.slice(cros_entropies_list, begin=0, size=lengths))
                 cross_entropies_list = tf.nn.sparse_softmax_cross_entropy_with_logits(out_logits, true_labels)
