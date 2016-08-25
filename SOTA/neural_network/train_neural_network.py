@@ -980,7 +980,7 @@ if __name__ == '__main__':
                                  test_y_true=test_y_true, test_y_pred=test_y_pred,
                                  metatags=args['meta_tags'],
                                  get_output_path=get_output_path,
-                                 additional_labels=[])
+                                 additional_labels=add_tags)
     # if args['meta_tags']:
     #     labels_list = get_aggregated_classification_report_labels()
     # else:
