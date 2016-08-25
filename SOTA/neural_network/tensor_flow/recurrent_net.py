@@ -17,6 +17,7 @@ import time
 from SOTA.neural_network.A_neural_network import A_neural_network
 from data.dataset import Dataset
 from utils.metrics import Metrics
+from utils import utils
 
 class Recurrent_net(A_neural_network):
 
@@ -78,10 +79,15 @@ class Recurrent_net(A_neural_network):
 
         return
 
-    def compute_output_layer_logits(self, idxs):
+    def perform_lookup_and_reshape(self, idxs):
         w_x = tf.nn.embedding_lookup(self.w1, idxs)
+        return tf.reshape(w_x, shape=[-1, self.n_window * self.n_emb])
 
-        input_data = tf.reshape(w_x, shape=[-1, self.max_length, self.n_emb])
+    def compute_output_layer_logits(self, idxs):
+
+        w_x_r = self.perform_lookup_and_reshape(idxs)
+
+        input_data = tf.reshape(w_x_r, shape=[-1, self.max_length, self.n_window * self.n_emb])
 
         hidden_activations, _ = tf.nn.dynamic_rnn(self.cell, input_data, dtype=tf.float32,
                                                   sequence_length=self.length(input_data))
@@ -93,7 +99,11 @@ class Recurrent_net(A_neural_network):
     def _train_unidirectional_graph(self, minibatch_size, max_epochs, learning_rate, plot, alpha_l2=0.001, **kwargs):
         with self.graph.as_default():
             with tf.device('/cpu:0'):
-                idxs = tf.placeholder(tf.int32, name='idxs', shape=[None, self.max_length])
+
+                if self.n_window > 1:
+                    idxs = tf.placeholder(tf.int32, name='idxs', shape=[None, self.max_length, self.n_window])
+                else:
+                    idxs = tf.placeholder(tf.int32, name='idxs', shape=[None, self.max_length])
 
                 true_labels = tf.placeholder(tf.int32, name='true_labels')
 
@@ -347,19 +357,11 @@ class Recurrent_net(A_neural_network):
         return True
 
     @classmethod
-    def get_data(cls, clef_training=False, clef_validation=False, clef_testing=False,
+    def _get_data_as_sentences(cls, clef_training=False, clef_validation=False, clef_testing=False,
                  add_words=[], add_tags=[], add_feats=[], x_idx=None, n_window=None, feat_positions=None,
-                 lowercase=True):
-        """
-        overrides the inherited method.
-        gets the training data and organizes it into sentences per document.
-        RNN overrides this method, cause other neural nets dont partition into sentences.
+                 lowercase=True, use_context_window=None):
 
-        :param crf_training_data_filename:
-        :return:
-        """
-
-        assert clef_training or clef_validation or clef_testing
+        assert not use_context_window
 
         document_sentence_words = []
         document_sentence_tags = []
@@ -396,10 +398,92 @@ class Recurrent_net(A_neural_network):
         word2index, index2word = A_neural_network._construct_index(add_words, document_sentence_words)
         label2index, index2label = A_neural_network._construct_index(add_tags, document_sentence_tags)
 
-        use_context_window = False if not n_window or n_window == 1 else True
+        if clef_training:
+            x_train, y_train = cls.get_partitioned_data(x_idx=x_idx,
+                                                      document_sentences_words=train_document_sentence_words,
+                                                      document_sentences_tags=train_document_sentence_tags,
+                                                      word2index=word2index,
+                                                      label2index=label2index,
+                                                      use_context_window=use_context_window,
+                                                      n_window=n_window)
+
+        if clef_validation:
+            x_valid, y_valid = cls.get_partitioned_data(x_idx=x_idx,
+                                                      document_sentences_words=valid_document_sentence_words,
+                                                      document_sentences_tags=valid_document_sentence_tags,
+                                                      word2index=word2index,
+                                                      label2index=label2index,
+                                                      use_context_window=use_context_window,
+                                                      n_window=n_window)
+
+        if clef_testing:
+            x_test, y_test = cls.get_partitioned_data(x_idx=x_idx,
+                                                    document_sentences_words=test_document_sentence_words,
+                                                    document_sentences_tags=test_document_sentence_tags,
+                                                    word2index=word2index,
+                                                    label2index=label2index,
+                                                    use_context_window=use_context_window,
+                                                    n_window=n_window)
+
+        # if i use context window, the senteces are padded when constructing the windows. If not, i have to do it here.
+        x_train, y_train, x_valid, y_valid, x_test, y_test = cls._pad_sentences(x_train, y_train, x_valid, y_valid,
+                                                                                x_test,
+                                                                                y_test, word2index, label2index)
+
+        return x_train, y_train, x_train_feats, \
+               x_valid, y_valid, x_valid_feats, \
+               x_test, y_test, x_test_feats, \
+               word2index, index2word, \
+               label2index, index2label, \
+               features_indexes
+
+
+
+
+    @classmethod
+    def _get_data_as_sentences_of_windows(cls, clef_training=False, clef_validation=False, clef_testing=False,
+                 add_words=[], add_tags=[], add_feats=[], x_idx=None, n_window=None, feat_positions=None,
+                 lowercase=True, use_context_window=None):
+
+        assert use_context_window
+
+        document_sentence_words = []
+        document_sentence_tags = []
+
+        x_train = None
+        y_train = None
+        y_valid = None
+        x_valid = None
+        y_test = None
+        x_test = None
+        features_indexes = None
+        x_train_feats = None
+        x_valid_feats = None
+        x_test_feats = None
 
         if clef_training:
-            x_train, y_train = A_neural_network.get_partitioned_data(x_idx=x_idx,
+            train_features, _, train_document_sentence_words, train_document_sentence_tags = Dataset.get_clef_training_dataset()
+
+            document_sentence_words.extend(train_document_sentence_words.values())
+            document_sentence_tags.extend(train_document_sentence_tags.values())
+
+        if clef_validation:
+            valid_features, _, valid_document_sentence_words, valid_document_sentence_tags = Dataset.get_clef_validation_dataset()
+
+            document_sentence_words.extend(valid_document_sentence_words.values())
+            document_sentence_tags.extend(valid_document_sentence_tags.values())
+
+        if clef_testing:
+            test_features, _, test_document_sentence_words, test_document_sentence_tags = Dataset.get_clef_testing_dataset()
+
+            document_sentence_words.extend(test_document_sentence_words.values())
+            document_sentence_tags.extend(test_document_sentence_tags.values())
+
+        word2index, index2word = A_neural_network._construct_index(add_words, document_sentence_words)
+        label2index, index2label = A_neural_network._construct_index(add_tags, document_sentence_tags)
+
+        if clef_training:
+            x_train, y_train = cls._get_partitioned_data_sentences_of_windows(x_idx=x_idx,
                                                                      document_sentences_words=train_document_sentence_words,
                                                                      document_sentences_tags=train_document_sentence_tags,
                                                                      word2index=word2index,
@@ -408,7 +492,7 @@ class Recurrent_net(A_neural_network):
                                                                      n_window=n_window)
 
         if clef_validation:
-            x_valid, y_valid = A_neural_network.get_partitioned_data(x_idx=x_idx,
+            x_valid, y_valid = cls._get_partitioned_data_sentences_of_windows(x_idx=x_idx,
                                                                      document_sentences_words=valid_document_sentence_words,
                                                                      document_sentences_tags=valid_document_sentence_tags,
                                                                      word2index=word2index,
@@ -417,7 +501,7 @@ class Recurrent_net(A_neural_network):
                                                                      n_window=n_window)
 
         if clef_testing:
-            x_test, y_test = A_neural_network.get_partitioned_data(x_idx=x_idx,
+            x_test, y_test = cls._get_partitioned_data_sentences_of_windows(x_idx=x_idx,
                                                                    document_sentences_words=test_document_sentence_words,
                                                                    document_sentences_tags=test_document_sentence_tags,
                                                                    word2index=word2index,
@@ -425,10 +509,93 @@ class Recurrent_net(A_neural_network):
                                                                    use_context_window=use_context_window,
                                                                    n_window=n_window)
 
-        if not use_context_window:
-            # if i use context window, the senteces are padded when constructing the windows. If not, i have to do it here.
-            x_train, y_train, x_valid, y_valid, x_test, y_test = cls._pad_sentences(x_train, y_train, x_valid, y_valid, x_test,
-                                                                               y_test, word2index, label2index)
+        return x_train, y_train, x_train_feats, \
+               x_valid, y_valid, x_valid_feats, \
+               x_test, y_test, x_test_feats, \
+               word2index, index2word, \
+               label2index, index2label, \
+               features_indexes
+
+    @classmethod
+    def _get_partitioned_data_with_context_window_sentences_of_windows(cls, doc_sentences, n_window, item2index):
+        x = []
+        for sentence in doc_sentences:
+            x.append([map(lambda x: item2index[x], sent_window)
+                      for sent_window in utils.NeuralNetwork.context_window(sentence, n_window)])
+
+        return x
+
+    @classmethod
+    def _get_partitioned_data_sentences_of_windows(cls, x_idx, document_sentences_words, document_sentences_tags,
+                             word2index, label2index, use_context_window=False, n_window=None, **kwargs):
+        """
+        this is at sentence level.
+        it partitions the training data according to the x_idx doc_nrs used for training and y_idx doc_nrs used for
+        testing while cross-validating.
+
+        :param x_idx:
+        :param y_idx:
+        :return:
+        """
+        x = []
+        y = []
+
+        for doc_nr, doc_sentences in document_sentences_words.iteritems():
+            if (not x_idx) or (doc_nr in x_idx):
+                # training set
+                if use_context_window:
+                    x_doc = cls._get_partitioned_data_with_context_window_sentences_of_windows(doc_sentences, n_window, word2index)
+                else:
+                    x_doc = cls._get_partitioned_data_without_context_window(doc_sentences, word2index)
+
+                y_doc = [map(lambda x: label2index[x] if x else None, sent) for sent in
+                         document_sentences_tags[doc_nr]]
+
+                x.extend(x_doc)
+                y.extend(y_doc)
+
+        return x, y
+
+
+    @classmethod
+    def get_data(cls, clef_training=False, clef_validation=False, clef_testing=False,
+                 add_words=[], add_tags=[], add_feats=[], x_idx=None, n_window=None, feat_positions=None,
+                 lowercase=True):
+        """
+        overrides the inherited method.
+        gets the training data and organizes it into sentences per document.
+        RNN overrides this method, cause other neural nets dont partition into sentences.
+
+        :param crf_training_data_filename:
+        :return:
+        """
+
+        assert clef_training or clef_validation or clef_testing
+
+        use_context_window = False if not n_window or n_window == 1 else True
+
+        if use_context_window:
+            x_train, y_train, x_train_feats, \
+            x_valid, y_valid, x_valid_feats, \
+            x_test, y_test, x_test_feats, \
+            word2index, index2word, \
+            label2index, index2label, \
+            features_indexes = cls._get_data_as_sentences_of_windows(clef_training=clef_training, clef_validation=clef_validation,
+                                                          clef_testing=clef_testing,
+                 add_words=add_words, add_tags=add_tags, add_feats=add_feats, x_idx=x_idx, n_window=n_window,
+                                                          feat_positions=feat_positions,
+                 lowercase=lowercase, use_context_window=use_context_window)
+        else:
+            x_train, y_train, x_train_feats, \
+            x_valid, y_valid, x_valid_feats, \
+            x_test, y_test, x_test_feats, \
+            word2index, index2word, \
+            label2index, index2label, \
+            features_indexes = cls._get_data_as_sentences(clef_training=clef_training, clef_validation=clef_validation,
+                                                          clef_testing=clef_testing,
+                 add_words=add_words, add_tags=add_tags, add_feats=add_feats, x_idx=x_idx, n_window=n_window,
+                                                          feat_positions=feat_positions,
+                 lowercase=lowercase, use_context_window=use_context_window)
 
         return x_train, y_train, x_train_feats, \
                x_valid, y_valid, x_valid_feats, \
@@ -439,11 +606,20 @@ class Recurrent_net(A_neural_network):
 
     def _pad_datasets_to_max_length(self):
 
-        self.x_train = np.array(map(lambda x: x + [self.filling_ix] * (self.max_length - x.__len__()), self.x_train))
+        if self.n_window > 1:
+            # i have to add entire windows of fillings
+            filling = [[self.filling_ix] * self.n_window]
+
+        else:
+            filling = [self.filling_ix]
+
+        assert isinstance(filling, list)
+
+        self.x_train = np.array(map(lambda x: x + filling * (self.max_length - x.__len__()), self.x_train))
         self.y_train = np.array(map(lambda x: x + [self.filling_ix] * (self.max_length - x.__len__()), self.y_train))
-        self.x_valid = np.array(map(lambda x: x + [self.filling_ix] * (self.max_length - x.__len__()), self.x_valid))
+        self.x_valid = np.array(map(lambda x: x + filling * (self.max_length - x.__len__()), self.x_valid))
         self.y_valid = np.array(map(lambda x: x + [self.filling_ix] * (self.max_length - x.__len__()), self.y_valid))
-        self.x_test = np.array(map(lambda x: x + [self.filling_ix] * (self.max_length - x.__len__()), self.x_test))
+        self.x_test = np.array(map(lambda x: x + filling * (self.max_length - x.__len__()), self.x_test))
         self.y_test = np.array(map(lambda x: x + [self.filling_ix] * (self.max_length - x.__len__()), self.y_test))
 
         return True
