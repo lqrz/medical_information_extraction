@@ -9,10 +9,10 @@ sys.path.append(os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(
 
 import tensorflow as tf
 from tensorflow.models.rnn import rnn_cell
-from tensorflow.python.ops import variable_scope as vs
 import numpy as np
 from itertools import chain
 import time
+import cPickle
 
 from SOTA.neural_network.A_neural_network import A_neural_network
 from data.dataset import Dataset
@@ -281,6 +281,10 @@ class Recurrent_net(A_neural_network):
         return True
 
     def _train_graph(self, minibatch_size, max_epochs, learning_rate, plot, **kwargs):
+
+        self.minibatch_size = minibatch_size
+        self.learning_rate = learning_rate
+
         with self.graph.as_default():
             with tf.device('/cpu:0'):
 
@@ -380,6 +384,22 @@ class Recurrent_net(A_neural_network):
         if plot:
             print 'Making plots'
             self.make_plots()
+
+        self.pickle_lists()
+
+        return True
+
+    def pickle_lists(self):
+        """
+        This is to make some later plots.
+        """
+        output_filename = '_'.join([self.rnn_cell_type, self.minibatch_size, self.learning_rate, self.bidirectional, self.max_length])
+
+        cPickle.dump(self.valid_costs_list, open(self.get_output_path('validation_costs_list_'+output_filename+'.p','rb')))
+        cPickle.dump(self.valid_cross_entropy_list, open(self.get_output_path('valid_cross_entropy_list'+output_filename+'.p','rb')))
+        cPickle.dump(self.train_costs_list, open(self.get_output_path('train_costs_list'+output_filename+'.p','rb')))
+        cPickle.dump(self.train_cross_entropy_list, open(self.get_output_path('train_cross_entropy_list'+output_filename+'.p','rb')))
+        cPickle.dump(self.f1_score_list, open(self.get_output_path('valid_f1_score_list'+output_filename+'.p','rb')))
 
         return True
 
