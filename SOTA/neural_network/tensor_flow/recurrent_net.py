@@ -28,6 +28,7 @@ class Recurrent_net(A_neural_network):
         self.w1 = None
         self.w2 = None
         self.b2 = None
+        self.ww = None
 
         # parameters to get L2
         self.regularizables = []
@@ -104,6 +105,12 @@ class Recurrent_net(A_neural_network):
 
                     out_logits = self.compute_output_layer_logits(idxs)
 
+                    with tf.variable_scope("RNN"):
+                        with tf.variable_scope("BasicRNNCell"):
+                            with tf.variable_scope("Linear"):
+                                tf.get_variable_scope().reuse_variables()
+                                self.ww = tf.get_variable("Matrix")
+
                 # cross_entropy = tf.reduce_sum(tf.slice(cros_entropies_list, begin=0, size=lengths))
                 cross_entropies_list = tf.nn.sparse_softmax_cross_entropy_with_logits(out_logits, true_labels)
                 # cross_entropy_unmasked = tf.reduce_sum(cross_entropies_list)
@@ -168,11 +175,11 @@ class Recurrent_net(A_neural_network):
                 precision, recall, f1_score = self.compute_scores(valid_true, valid_predictions)
 
                 if plot:
-                    epoch_l2_w1, epoch_l2_w2 = self.compute_parameters_sum()
+                    epoch_l2_w1, epoch_l2_w2, epoch_l2_ww = self.compute_parameters_sum()
 
                     self.update_monitoring_lists(train_cost, train_cross_entropy, train_errors,
                                                  valid_cost, valid_cross_entropy, valid_errors,
-                                                 epoch_l2_w1, epoch_l2_w2,
+                                                 epoch_l2_w1, epoch_l2_w2, epoch_l2_ww,
                                                  precision, recall, f1_score)
 
                 print('epoch: %d train_cost: %f train_errors: %d valid_cost: %f valid_errors: %d F1: %f took: %f' \
@@ -240,7 +247,7 @@ class Recurrent_net(A_neural_network):
     def update_monitoring_lists(self,
                                 train_cost, train_xentropy, train_errors,
                                 valid_cost, valid_xentropy, valid_errors,
-                                epoch_l2_w1, epoch_l2_w2,
+                                epoch_l2_w1, epoch_l2_w2, epoch_l2_ww,
                                 precision, recall, f1_score):
 
         # training
@@ -256,6 +263,7 @@ class Recurrent_net(A_neural_network):
         # weights
         self.epoch_l2_w1_list.append(epoch_l2_w1)
         self.epoch_l2_w2_list.append(epoch_l2_w2)
+        self.epoch_l2_ww_list.append(epoch_l2_ww)
 
         # scores
         self.precision_list.append(precision)
@@ -265,8 +273,10 @@ class Recurrent_net(A_neural_network):
         return
 
     def compute_parameters_sum(self):
-        w1_sum = 0
-        w2_sum = 0
+        w1_sum = None
+        w2_sum = None
+
+        ww_sum = None
 
         if self.w1 is not None:
             w1_sum = tf.reduce_sum(tf.square(self.w1)).eval()
@@ -274,10 +284,10 @@ class Recurrent_net(A_neural_network):
         if self.w2 is not None:
             w2_sum = tf.reduce_sum(tf.square(self.w2)).eval()
 
-        # if self.w3 is not None:
-        #     w3_sum = tf.reduce_sum(tf.square(self.w3)).eval()
+        if self.ww is not None:
+            ww_sum = tf.reduce_sum(tf.square(self.ww)).eval()
 
-        return w1_sum, w2_sum
+        return w1_sum, w2_sum, ww_sum
 
     def make_plots(self):
         actual_time = str(time.time())
@@ -299,6 +309,9 @@ class Recurrent_net(A_neural_network):
 
         if self.w2 is not None:
             plot_data_dict['w2'] = self.epoch_l2_w2_list
+
+        if self.ww is not None:
+            plot_data_dict['ww'] = self.epoch_l2_ww_list
 
         self.plot_penalties_general(plot_data_dict, actual_time=actual_time)
 
