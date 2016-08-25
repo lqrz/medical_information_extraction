@@ -393,13 +393,13 @@ class Recurrent_net(A_neural_network):
         """
         This is to make some later plots.
         """
-        output_filename = '_'.join([self.rnn_cell_type, self.minibatch_size, self.learning_rate, self.bidirectional, self.max_length])
+        output_filename = '_'.join([self.rnn_cell_type, str(self.minibatch_size), str(self.learning_rate), str(self.bidirectional), str(self.max_length)])
 
-        cPickle.dump(self.valid_costs_list, open(self.get_output_path('validation_costs_list_'+output_filename+'.p','rb')))
-        cPickle.dump(self.valid_cross_entropy_list, open(self.get_output_path('valid_cross_entropy_list'+output_filename+'.p','rb')))
-        cPickle.dump(self.train_costs_list, open(self.get_output_path('train_costs_list'+output_filename+'.p','rb')))
-        cPickle.dump(self.train_cross_entropy_list, open(self.get_output_path('train_cross_entropy_list'+output_filename+'.p','rb')))
-        cPickle.dump(self.f1_score_list, open(self.get_output_path('valid_f1_score_list'+output_filename+'.p','rb')))
+        cPickle.dump(self.valid_costs_list, open(self.get_output_path('validation_cost_list-'+output_filename+'.p'),'wb'))
+        cPickle.dump(self.valid_cross_entropy_list, open(self.get_output_path('valid_cross_entropy_list-'+output_filename+'.p'),'wb'))
+        cPickle.dump(self.train_costs_list, open(self.get_output_path('train_cost_list-'+output_filename+'.p'),'wb'))
+        cPickle.dump(self.train_cross_entropy_list, open(self.get_output_path('train_cross_entropy_list-'+output_filename+'.p'),'wb'))
+        cPickle.dump(self.f1_score_list, open(self.get_output_path('valid_f1_score_list-'+output_filename+'.p'),'wb'))
 
         return True
 
