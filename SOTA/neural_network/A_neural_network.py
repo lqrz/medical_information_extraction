@@ -53,6 +53,7 @@ class A_neural_network():
                  n_window,
                  pretrained_embeddings,
                  get_output_path,
+                 early_stopping_threshold,
                  **kwargs):
         """
         common constructor for all neural nets.
@@ -120,6 +121,9 @@ class A_neural_network():
 
         #output path get function
         self.get_output_path = get_output_path
+
+        # early stopping threshold
+        self.early_stopping_threshold = early_stopping_threshold
 
     @abstractmethod
     def to_string(self):

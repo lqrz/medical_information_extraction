@@ -108,6 +108,8 @@ def parse_arguments():
     parser.add_argument('--augmentdata', action='store_true', default=False)
     parser.add_argument('--treatoovs', action='store_true', default=False)
 
+    parser.add_argument('--earlystop', action='store', default=None, type=int)
+
     #parse arguments
     arguments = parser.parse_args()
 
@@ -149,6 +151,7 @@ def parse_arguments():
     args['treat_oovs'] = arguments.treatoovs
     args['grad_clip'] = arguments.gradclip
     args['rnn_cell_type'] = arguments.rnntype
+    args['early_stopping_threshold'] = arguments.earlystop
 
     return args
 
@@ -721,7 +724,8 @@ def use_testing_dataset(nn_class,
         'tuning_param_names': tuning_params,
         'grad_clip': args['grad_clip'],
         'bidirectional': args['bidirectional'],
-        'rnn_cell_type': args['rnn_cell_type']
+        'rnn_cell_type': args['rnn_cell_type'],
+        'early_stopping_threshold': args['early_stopping_threshold']
     }
 
     nn_trainer = nn_class(**params)

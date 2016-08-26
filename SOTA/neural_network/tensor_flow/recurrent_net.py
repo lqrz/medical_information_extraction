@@ -339,7 +339,19 @@ class Recurrent_net(A_neural_network):
             session.run(tf.initialize_all_variables())
             print("Initialized")
 
+            early_stopping_cnt_since_last_update = 0
+            early_stopping_min_validation_cost = np.inf
+            early_stopping_min_iteration = None
+            model_update = None
+
             for epoch_ix in range(max_epochs):
+
+                if self.early_stopping_threshold is not None:
+                    if early_stopping_cnt_since_last_update > self.early_stopping_threshold:
+                        assert early_stopping_min_iteration is not None
+                        print('Training early stopped at iteration %d' % early_stopping_min_iteration)
+                        break
+
                 start = time.time()
                 n_batches = np.int(np.ceil(self.x_train.shape[0] / float(minibatch_size)))
                 train_cost = 0
@@ -375,11 +387,22 @@ class Recurrent_net(A_neural_network):
                                                  epoch_l2_w1, epoch_l2_w2, epoch_l2_ww,
                                                  precision, recall, f1_score)
 
-                print('epoch: %d train_cost: %f train_errors: %d valid_cost: %f valid_errors: %d F1: %f took: %f' \
-                      % (epoch_ix, train_cost, train_errors, valid_cost, valid_errors, f1_score, time.time() - start))
 
-            self.saver = tf.train.Saver(tf.all_variables())
-            self.saver.save(session, self.get_output_path('params.model'), write_meta_graph=True)
+                if valid_cost < early_stopping_min_validation_cost:
+                    self.saver = tf.train.Saver(tf.all_variables())
+                    self.saver.save(session, self.get_output_path('params.model'), write_meta_graph=True)
+                    early_stopping_min_iteration = epoch_ix
+                    early_stopping_min_validation_cost = valid_cost
+                    early_stopping_cnt_since_last_update = 0
+                    model_update = True
+                else:
+                    early_stopping_cnt_since_last_update += 1
+                    model_update = False
+
+                assert model_update is not None
+
+                print('epoch: %d train_cost: %f train_errors: %d valid_cost: %f valid_errors: %d F1: %f upd: %s took: %f' \
+                      % (epoch_ix, train_cost, train_errors, valid_cost, valid_errors, f1_score, model_update, time.time() - start))
 
         if plot:
             print 'Making plots'
