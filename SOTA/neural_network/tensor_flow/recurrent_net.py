@@ -408,7 +408,9 @@ class Recurrent_net(A_neural_network):
             print 'Making plots'
             self.make_plots()
 
-        self.pickle_lists()
+        if self.pickle_lists:
+            print('Pickling lists')
+            self.pickle_lists()
 
         return True
 

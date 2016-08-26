@@ -109,6 +109,7 @@ def parse_arguments():
     parser.add_argument('--treatoovs', action='store_true', default=False)
 
     parser.add_argument('--earlystop', action='store', default=None, type=int)
+    parser.add_argument('--picklelists', action='store_true', default=False)
 
     #parse arguments
     arguments = parser.parse_args()
@@ -152,6 +153,7 @@ def parse_arguments():
     args['grad_clip'] = arguments.gradclip
     args['rnn_cell_type'] = arguments.rnntype
     args['early_stopping_threshold'] = arguments.earlystop
+    args['pickle_lists'] = arguments.picklelists
 
     return args
 
@@ -725,7 +727,8 @@ def use_testing_dataset(nn_class,
         'grad_clip': args['grad_clip'],
         'bidirectional': args['bidirectional'],
         'rnn_cell_type': args['rnn_cell_type'],
-        'early_stopping_threshold': args['early_stopping_threshold']
+        'early_stopping_threshold': args['early_stopping_threshold'],
+        'pickle_lists': args['pickle_lists'],
     }
 
     nn_trainer = nn_class(**params)

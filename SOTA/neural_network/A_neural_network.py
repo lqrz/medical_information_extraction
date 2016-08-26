@@ -54,6 +54,7 @@ class A_neural_network():
                  pretrained_embeddings,
                  get_output_path,
                  early_stopping_threshold,
+                 pickle_lists,
                  **kwargs):
         """
         common constructor for all neural nets.
@@ -124,6 +125,8 @@ class A_neural_network():
 
         # early stopping threshold
         self.early_stopping_threshold = early_stopping_threshold
+
+        self.pickle_lists = pickle_lists
 
     @abstractmethod
     def to_string(self):
