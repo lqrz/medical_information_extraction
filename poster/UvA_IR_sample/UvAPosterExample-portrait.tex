@@ -1,0 +1,389 @@
+% Written by Daina Chiba (daina.chiba@gmail.com).
+% It was mostly copied from two poster style files:
+% beamerthemeI6pd2.sty written by
+%	 	Philippe Dreuw <dreuw@cs.rwth-aachen.de> and 
+% 		Thomas Deselaers <deselaers@cs.rwth-aachen.de>
+% and beamerthemeconfposter.sty written by
+%     Nathaniel Johnston (nathaniel@nathanieljohnston.com)
+%		http://www.nathanieljohnston.com/2009/08/latex-poster-template/
+% 
+% Modified for UvA by
+%
+%---------------------------------------------------------------------------------------------------% 
+% Preamble
+% ---------------------------------------------------------------------------------------------------% 
+\documentclass[final]{beamer}
+\usepackage[orientation=portrait,size=a0,scale=1.2,debug]{beamerposter}
+\mode<presentation>{\usetheme{UvAPoster}}
+\usepackage[english]{babel}
+\usepackage[latin1]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amsthm, amssymb, latexsym}
+
+\usepackage{array,booktabs,tabularx}
+\newcolumntype{Z}{>{\centering\arraybackslash}X} % centered tabularx columns
+
+% comment 
+\newcommand{\comment}[1]{}
+
+% (relative) path to the figures
+\graphicspath{{figs/}}
+
+\newlength{\columnheight}
+\setlength{\columnheight}{105cm}
+\newlength{\sepwid}
+\newlength{\onecolwid}
+\newlength{\twocolwid}
+\newlength{\threecolwid}
+\setlength{\sepwid}{0.024\paperwidth}
+\setlength{\onecolwid}{0.42\paperwidth}
+\setlength{\twocolwid}{0.42\paperwidth}
+\setlength{\threecolwid}{0.19\paperwidth}
+
+% ---------------------------------------------------------------------------------------------------% 
+% Title, author, date, etc.
+% ---------------------------------------------------------------------------------------------------% 
+\title{\huge \LaTeX~Poster Example for Faculty of Science, University of Amsterdam}
+\author{Your Name}
+\institute[University of Amsterdam]{University of Amsterdam}
+\date[Feb. 2014]{February, 2014}
+%%% Put the name of conference here.
+	\def\conference{2014 Annual Meeting of the XYZ Association} 
+ %%% Put your e-mail address here.
+ 	\def\yourEmail{your.email@uva.nl}
+
+
+% ---------------------------------------------------------------------------------------------------% 
+% Contents
+% ---------------------------------------------------------------------------------------------------% 
+\begin{document}
+\begin{frame}[t]
+	\begin{columns}[t]
+    % -----------------------------------------------------------
+    % Start the first column
+    % -----------------------------------------------------------
+    \begin{column}{\onecolwid}
+      % -----------------------------------------------------------
+      % 1-1 (first column's first block
+      % -----------------------------------------------------------
+\vskip3ex
+      % -----------------------------------------------------------
+      % 1-1
+      % -----------------------------------------------------------
+      \begin{alertblock}{Alerted Block}
+        \baselineskip=.7\baselineskip
+        \vskip1ex
+        This is an \textbf{\alert{alerted}} block. \\
+        Use alerted blocks to highlight important points.
+        \vskip1ex
+      \end{alertblock}
+
+      \vskip3ex
+
+      % -----------------------------------------------------------
+      % 1-2
+      % -----------------------------------------------------------
+      \begin{block}{Normal Block}
+        \baselineskip=.7\baselineskip
+
+	This is a normal block. 
+
+	\begin{itemize}
+	\item Put
+	\item your
+	\item argument
+	\item here
+	\end{itemize}
+
+	\end{block}
+
+\vskip3ex
+
+    \begin{alertblock}{Sample Block}
+	\begin{columns}[c] \column{.45\textwidth}
+%      \vskip1ex
+      {\bf This block is wide.}
+      \begin{itemize}
+      \item Put something here. Put something here.Put something here.
+      \item Put something here. Put something here.
+      \item Don't you get it? Put something here.
+      \end{itemize}
+
+%\vskip2ex
+
+	% Phantom column
+	\column{.01\textwidth}
+	\begin{beamercolorbox}[wd=.1in,ht=2in]{cboxg}\end{beamercolorbox}
+	\vskip2ex
+
+	\column{.45\textwidth}
+	\vskip2ex
+      {\bf Put something here.}
+      \vskip1ex
+	\begin{tabular}{>{\color{myred}}rl}
+	Something & = Blur blur blur\\
+		& Yadi Yadi Ya \\ [1em]
+	Anything & = Put something here. \\
+		& OK?
+	\end{tabular}
+
+    \end{columns}
+
+	\vskip3ex
+
+      {\bf Please}: 
+      Put something here. 
+        {\small\boldmath
+\begin{align}
+%{\cal L} &= \prod_{i=1}^{n} 
+\Pr(T_{wi} > t^0_{wi})^{(1-c_i)}
+\Pr(T_{wi} = t_{wi} \cap T_{pi} > t^0_{pi} )^{c_i (1-d_i)}
+\Pr(T_{wi} = t_{wi} \cap T_{pi} = t_{pi} )^{c_i d_i}. \nonumber
+\end{align}
+}
+
+      \end{alertblock}
+
+      \vskip3ex
+
+
+      % -----------------------------------------------------------
+      % 1-4
+      % -----------------------------------------------------------
+      \begin{block}{Sample Block}
+        \baselineskip=.7\baselineskip
+\vskip2ex
+        You can put figures, too.
+
+	\vskip2ex
+
+	\begin{figure}
+	\begin{center}
+	\caption{Potential Endogeneity Problem}
+		\includegraphics[width=9in]{figEndog}
+	\end{center}
+	\end{figure}
+	
+	\vskip2ex
+
+	{\bf Put something here} 
+	\begin{itemize}
+	\item Put something here. Put something here.Put something here.
+	\item Put something here. Put something here.Put something here.
+	\end{itemize}
+
+      \end{block}
+
+    \begin{columns}[t,totalwidth=\twocolwid]
+    	    \begin{column}{.45\textwidth}
+      % -----------------------------------------------------------
+      % 2-1a
+      % -----------------------------------------------------------
+      \begin{block}{Sample Block (Left)}
+        \baselineskip=.7\baselineskip
+
+	Put whatever you want.
+	\begin{itemize}
+	\item Yes.
+	\item This is just
+	\item an
+	\item example.
+	\end{itemize}
+
+	\vskip1ex
+      \end{block}
+	    \end{column}
+	    \begin{column}{3.75ex}\end{column}
+    	    \begin{column}{\threecolwid}
+
+      % -----------------------------------------------------------
+      % 2-1b
+      % -----------------------------------------------------------
+      \begin{block}{Sample Block (Right)}
+        \baselineskip=.7\baselineskip
+
+	Put whatever you want.
+	\vspace{1ex}
+	\begin{itemize}
+	\item No.
+	\item This is not
+	\item a real
+	\item poster.
+	\end{itemize}
+      \end{block}
+	    \end{column}
+	   \end{columns}
+	   
+	   \vskip2ex
+
+      \begin{block}{Sample Block}
+        \baselineskip=.7\baselineskip
+\vskip2ex
+        The following table is from the TeXShop template. 
+
+	\vskip2ex
+
+% Requires the booktabs if the memoir class is not being used
+\begin{table}[htbp]
+   \centering
+   %\topcaption{Table captions are better up top} % requires the topcapt package
+   \begin{tabular}{@{} lcr @{}} % Column formatting, @{} suppresses leading/trailing space
+      \toprule
+      \multicolumn{2}{c}{Item} \\
+      \cmidrule(r){1-2} % Partial rule. (r) trims the line a little bit on the right; (l) & (lr) also possible
+      Animal    & Description & Price (\$)\\
+      \midrule
+      Gnat      & per gram & 13.65 \\
+                & each     &  0.01 \\
+      Gnu       & stuffed  & 92.50 \\
+      Emu       & stuffed  & 33.33 \\
+      Armadillo & frozen   &  8.99 \\
+      \bottomrule
+   \end{tabular}
+   \caption{Remember, \emph{never} use vertical lines in tables.}
+   \label{tab:booktabs}
+\end{table}
+	
+      \end{block}
+
+	\end{column}
+
+    % -----------------------------------------------------------
+    % Start the second column
+    % -----------------------------------------------------------
+    \begin{column}{\twocolwid}
+	   
+      \vskip2ex
+
+      \begin{block}{Sample Block}
+        \baselineskip=.7\baselineskip
+\vskip2ex
+
+	Put something here. You can put equations, too.
+
+\begin{align}
+f(x) &= \frac{1}{2\sqrt{\pi \sigma^2}}\exp \Big(- \frac{(x-\mu)^2}{2\sigma^2} \Big) \nonumber
+\end{align}
+
+\vskip2ex
+
+	Normal distribution
+	\begin{itemize}
+	\item $x$ is a random variable.
+	\item $\mu$ is the mean of $x$.
+	\item $\sigma$ is the standard deviation of $x$
+	\end{itemize}
+
+      \end{block}
+
+	\vskip2ex
+
+      % -----------------------------------------------------------
+      % 2-3
+      % -----------------------------------------------------------
+      \begin{block}{Another Sample Block}
+      \vskip-2ex
+      \begin{figure}[h]
+	\hfill
+	\begin{minipage}[t]{.45\textwidth}
+	\begin{center}
+	\caption{Figure Title Here}
+		\includegraphics[width=1.1\textwidth]{figLeft}
+	\end{center}
+	\end{minipage}
+	\hfill
+	\begin{minipage}[t]{.45\textwidth}
+	\begin{center}
+	\caption{Figure Title Here}
+		\includegraphics[width=1.1\textwidth]{figRight}
+	\end{center}
+	\end{minipage}
+	\hfill
+	\end{figure}
+	\vskip3ex
+
+R code ({\tt plotFigs.R}) accompanying this template will produce all the figures included in this poster (except for the Rice Logo).
+
+\vskip1ex
+
+{\bf Explain the figure here.}
+	\begin{itemize}
+	\item Put something here. Put something here. Put something here. Put something here. Put something here. 
+	\item Put something here. Put something here. Put something here. Put something here. Put something here. 
+	\end{itemize}
+
+	\vskip3ex
+
+{\bf Put something here.}
+	\begin{itemize}
+	\item Blur Blur Blur
+	\item Yadi Yadi Yah
+	\end{itemize}
+
+      \end{block}
+
+%\end{column}
+%
+%    % -----------------------------------------------------------
+%    % Start the third column
+%    % -----------------------------------------------------------
+%    \begin{column}{\onecolwid}
+%\vskip3ex
+
+      % -----------------------------------------------------------
+      % 3-0
+      % -----------------------------------------------------------
+
+\vskip3ex
+
+
+      % -----------------------------------------------------------
+      % 3-4
+      % -----------------------------------------------------------
+      \begin{alertblock}{Findings}
+        \baselineskip=.7\baselineskip
+
+      \vskip2ex
+
+	\begin{figure}
+	\begin{center}
+	\caption{Effect of X on Y}
+		\includegraphics{figResult}
+	\end{center}
+	\end{figure}
+Explain the findings.
+      \vskip2ex
+
+	\end{alertblock}
+      \vskip2ex
+
+      % -----------------------------------------------------------
+      % 3-4
+      % -----------------------------------------------------------
+      \begin{block}{Conclusion}
+        \baselineskip=.7\baselineskip
+
+      \vskip2ex
+
+	{\bf Remember:}\\
+	\begin{itemize} 
+	\item You'd 
+	\item better
+	\item keep
+	\item it
+	\item simple!
+	\end{itemize}
+
+      \vskip2ex
+      
+      Lorem ipsum dolor sit amet, consectetur adipiscing elit. In laoreet eget velit eget fermentum. Quisque facilisis sapien non sapien dignissim, quis eleifend tellus mollis. Donec porttitor vulputate blandit. Class aptent taciti sociosqu ad litora torquent per conubia nostra, per inceptos himenaeos. Phasellus volutpat velit quis rhoncus sodales. Pellentesque porttitor enim.
+
+	\end{block}
+      \vskip2ex
+
+
+	\end{column}
+\end{columns}
+\end{frame}
+\end{document}
+
