@@ -347,7 +347,7 @@ class Recurrent_net(A_neural_network):
             for epoch_ix in range(max_epochs):
 
                 if self.early_stopping_threshold is not None:
-                    if early_stopping_cnt_since_last_update > self.early_stopping_threshold:
+                    if early_stopping_cnt_since_last_update >= self.early_stopping_threshold:
                         assert early_stopping_min_iteration is not None
                         print('Training early stopped at iteration %d' % early_stopping_min_iteration)
                         break
