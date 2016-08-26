@@ -410,11 +410,11 @@ class Recurrent_net(A_neural_network):
 
         if self.pickle_lists:
             print('Pickling lists')
-            self.pickle_lists()
+            self.perform_pickle_lists()
 
         return True
 
-    def pickle_lists(self):
+    def perform_pickle_lists(self):
         """
         This is to make some later plots.
         """
