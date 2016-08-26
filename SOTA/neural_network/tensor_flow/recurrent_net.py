@@ -175,18 +175,23 @@ class Recurrent_net(A_neural_network):
     def compute_inner_weights_sum_unidirectional(self):
 
         if self.rnn_cell_type == 'normal':
+
             with tf.variable_scope("RNN"):
                 with tf.variable_scope("BasicRNNCell"):
                     with tf.variable_scope("Linear"):
                         tf.get_variable_scope().reuse_variables()
                         self.ww = tf.get_variable("Matrix")
+
         elif self.rnn_cell_type == 'lstm':
+
             with tf.variable_scope("RNN"):
                 with tf.variable_scope("BasicLSTMCell"):
                     with tf.variable_scope("Linear"):
                         tf.get_variable_scope().reuse_variables()
                         self.ww = tf.get_variable("Matrix")
+
         elif self.rnn_cell_type == 'gru':
+
             with tf.variable_scope("RNN"):
                 with tf.variable_scope("GRUCell"):
                     with tf.variable_scope("Candidate"):
@@ -244,30 +249,24 @@ class Recurrent_net(A_neural_network):
         elif self.rnn_cell_type == 'gru':
 
             with tf.variable_scope("BiRNN_FW"):
-                with tf.variable_scope("RNN"):
-                    with tf.variable_scope("GRUCell"):
-                        with tf.variable_scope("Candidate"):
-                            with tf.variable_scope("Linear"):
-                                tf.get_variable_scope().reuse_variables()
-                                fw_ww_candidate = tf.get_variable("Matrix")
+                with tf.variable_scope("GRUCell"):
+                    with tf.variable_scope("Candidate"):
+                        with tf.variable_scope("Linear"):
+                            tf.get_variable_scope().reuse_variables()
+                            fw_ww_candidate = tf.get_variable("Matrix")
 
-                with tf.variable_scope("RNN"):
-                    with tf.variable_scope("GRUCell"):
-                        with tf.variable_scope("Gates"):
-                            with tf.variable_scope("Linear"):
-                                tf.get_variable_scope().reuse_variables()
-                                fw_ww_gates = tf.get_variable("Matrix")
+                    with tf.variable_scope("Gates"):
+                        with tf.variable_scope("Linear"):
+                            tf.get_variable_scope().reuse_variables()
+                            fw_ww_gates = tf.get_variable("Matrix")
 
             with tf.variable_scope("BiRNN_BW"):
-                with tf.variable_scope("RNN"):
                     with tf.variable_scope("GRUCell"):
                         with tf.variable_scope("Candidate"):
                             with tf.variable_scope("Linear"):
                                 tf.get_variable_scope().reuse_variables()
                                 bw_ww_candidate = tf.get_variable("Matrix")
 
-                with tf.variable_scope("RNN"):
-                    with tf.variable_scope("GRUCell"):
                         with tf.variable_scope("Gates"):
                             with tf.variable_scope("Linear"):
                                 tf.get_variable_scope().reuse_variables()
