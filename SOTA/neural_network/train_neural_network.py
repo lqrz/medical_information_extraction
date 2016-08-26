@@ -45,7 +45,7 @@ from utils.utils import Others
 from utils.utils import NeuralNetwork
 from SOTA.neural_network.A_neural_network import A_neural_network
 
-logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.DEBUG)
+logging.basicConfig(stream=sys.stdout, format='%(asctime)s : %(levelname)s : %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 np.random.seed(1234)
@@ -76,10 +76,14 @@ def parse_arguments():
     group_w2v.add_argument('--w2vrandomdim', action='store', type=int, default=None)
 
     group_rnn = parser.add_argument_group(title='rnn', description='Recurrent neural net specifics.')
-    group_rnn.add_argument('--bidirectional', action='store_true', default=False)
     group_rnn.add_argument('--sharedparams', action='store_true', default=False)
     group_rnn.add_argument('--gradclip', action='store', default=None, type=int)
     group_rnn.add_argument('--rnntype', action='store', type=str, choices=['normal', 'lstm', 'gru'], required=True)
+
+    group_rnn_direction = parser.add_mutually_exclusive_group(required=True)
+    group_rnn_direction.add_argument('--bidirectional', action='store_true', default=False)
+    group_rnn_direction.add_argument('--unidirectional', action='store_true', default=False)
+
 
     parser.add_argument('--plot', action='store_true', default=False)
     parser.add_argument('--tags', action='store', type=str, default=None)
@@ -110,6 +114,8 @@ def parse_arguments():
 
     parser.add_argument('--earlystop', action='store', default=None, type=int)
     parser.add_argument('--picklelists', action='store_true', default=False)
+
+    parser.add_argument('--logger', action='store', default=None, type=str)
 
     #parse arguments
     arguments = parser.parse_args()
@@ -154,6 +160,7 @@ def parse_arguments():
     args['rnn_cell_type'] = arguments.rnntype
     args['early_stopping_threshold'] = arguments.earlystop
     args['pickle_lists'] = arguments.picklelists
+    args['logger_filename'] = arguments.logger
 
     return args
 
@@ -729,6 +736,7 @@ def use_testing_dataset(nn_class,
         'rnn_cell_type': args['rnn_cell_type'],
         'early_stopping_threshold': args['early_stopping_threshold'],
         'pickle_lists': args['pickle_lists'],
+        'logger': logger
     }
 
     nn_trainer = nn_class(**params)
@@ -953,6 +961,12 @@ if __name__ == '__main__':
     nn_class, hidden_f, out_f, add_words, add_tags, add_feats, tag_dim, n_window, get_output_path,\
         multi_feats, normalize_samples = determine_nnclass_and_parameters(args)
 
+    if args['logger_filename'] is not None:
+        file_logger = logging.FileHandler(filename=get_output_path(args['logger_filename']))
+        file_logger.setFormatter(logging.Formatter('%(asctime)s : %(levelname)s : %(message)s'))
+        file_logger.setLevel(logging.DEBUG)
+        logging.getLogger().addHandler(file_logger)
+
     logger.info('Using Neural class: %s with window size: %d for epochs: %d' % (args['nn_name'],n_window,args['max_epochs']))
 
     if args['use_leave_one_out']:
@@ -991,7 +1005,8 @@ if __name__ == '__main__':
                                  test_y_true=test_y_true, test_y_pred=test_y_pred,
                                  metatags=args['meta_tags'],
                                  get_output_path=get_output_path,
-                                 additional_labels=add_tags)
+                                 additional_labels=add_tags,
+                                 logger=logger)
     # if args['meta_tags']:
     #     labels_list = get_aggregated_classification_report_labels()
     # else:
@@ -1033,6 +1048,6 @@ if __name__ == '__main__':
     # df = pd.DataFrame(stats, index=['tp', 'tn', 'fp', 'fn'], columns=labels_list).transpose()
     # df.to_csv(get_output_path('classification_stats.csv'))
 
-    print 'Elapsed time: ', time.time()-start
+    logger.info('Elapsed time: ', time.time()-start)
 
     logger.info('End')

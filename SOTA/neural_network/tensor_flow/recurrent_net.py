@@ -63,7 +63,7 @@ class Recurrent_net(A_neural_network):
         learning_rate = kwargs['learning_rate_train']
 
         if self.bidirectional:
-            print('Using a bidirectional RNN cells: %s minibatch: %d lr: %d clipping_grad: %d' % \
+            self.logger.info('Using a bidirectional RNN cells: %s minibatch: %d lr: %f clipping_grad: %d' % \
                   (self.rnn_cell_type, minibatch_size, learning_rate, self.max_length))
 
             self.instantiate_cells = self.instantiate_bidirectional_cells
@@ -75,7 +75,7 @@ class Recurrent_net(A_neural_network):
                                  **kwargs)
 
         else:
-            print('Using an unidirectional RNN cells %s minibatch: %d lr: %d clipping_grad: %d' % \
+            self.logger.info('Using an unidirectional RNN cells %s minibatch: %d lr: %f clipping_grad: %d' % \
                   (self.rnn_cell_type, minibatch_size, learning_rate, self.max_length))
 
             self.instantiate_cells = self.instantiate_unidirectional_cells
@@ -337,7 +337,7 @@ class Recurrent_net(A_neural_network):
             flat_y_valid = self.y_valid.reshape((-1))
 
             session.run(tf.initialize_all_variables())
-            print("Initialized")
+            self.logger.info("Initialized")
 
             early_stopping_cnt_since_last_update = 0
             early_stopping_min_validation_cost = np.inf
@@ -349,7 +349,7 @@ class Recurrent_net(A_neural_network):
                 if self.early_stopping_threshold is not None:
                     if early_stopping_cnt_since_last_update >= self.early_stopping_threshold:
                         assert early_stopping_min_iteration is not None
-                        print('Training early stopped at iteration %d' % early_stopping_min_iteration)
+                        self.logger.info('Training early stopped at iteration %d' % early_stopping_min_iteration)
                         break
 
                 start = time.time()
@@ -401,15 +401,15 @@ class Recurrent_net(A_neural_network):
 
                 assert model_update is not None
 
-                print('epoch: %d train_cost: %f train_errors: %d valid_cost: %f valid_errors: %d F1: %f upd: %s took: %f' \
+                self.logger.info('epoch: %d train_cost: %f train_errors: %d valid_cost: %f valid_errors: %d F1: %f upd: %s took: %f' \
                       % (epoch_ix, train_cost, train_errors, valid_cost, valid_errors, f1_score, model_update, time.time() - start))
 
         if plot:
-            print 'Making plots'
+            self.logger.info('Making plots')
             self.make_plots()
 
         if self.pickle_lists:
-            print('Pickling lists')
+            self.logger.info('Pickling lists')
             self.perform_pickle_lists()
 
         return True

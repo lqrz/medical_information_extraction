@@ -135,7 +135,14 @@ class Metrics:
     def print_metric_results(train_y_true, train_y_pred, valid_y_true, valid_y_pred, test_y_true, test_y_pred,
                              metatags,
                              get_output_path,
-                             additional_labels=[]):
+                             additional_labels=[],
+                             logger=None):
+
+        if logger is None:
+            import logging
+            logging.basicConfig(stream=sys.stdout, format='%(asctime)s : %(levelname)s : %(message)s',
+                                level=logging.DEBUG)
+            logger = logging.getLogger(__name__)
 
         actual_time = time.time()
 
@@ -156,14 +163,14 @@ class Metrics:
 
             train_averaged = Metrics.compute_averaged_scores(y_true=train_y_true, y_pred=train_y_pred,
                                                              labels=train_labels_list)
-            print 'Train MICRO results'
-            print train_results_micro
+            logger.info('Train MICRO results')
+            logger.info(train_results_micro)
 
-            print 'Train MACRO results'
-            print train_results_macro
+            logger.info('Train MACRO results')
+            logger.info(train_results_macro)
 
-            print 'Train AVERAGED results'
-            print train_averaged
+            logger.info('Train AVERAGED results')
+            logger.info(train_averaged)
 
         if valid_y_pred:
             assert valid_y_pred is not None
@@ -181,14 +188,14 @@ class Metrics:
 
             valid_averaged = Metrics.compute_averaged_scores(y_true=valid_y_true, y_pred=valid_y_pred,
                                                              labels=valid_labels_list)
-            print 'Valid MICRO results'
-            print valid_results_micro
+            logger.info('Valid MICRO results')
+            logger.info(valid_results_micro)
 
-            print 'Valid MACRO results'
-            print valid_results_macro
+            logger.info('Valid MACRO results')
+            logger.info(valid_results_macro)
 
-            print 'Valid AVERAGED results'
-            print valid_averaged
+            logger.info('Valid AVERAGED results')
+            logger.info(valid_averaged)
 
         if test_y_pred:
 
@@ -208,14 +215,14 @@ class Metrics:
             test_averaged = Metrics.compute_averaged_scores(y_true=test_y_true, y_pred=test_y_pred,
                                                             labels=test_labels_list)
 
-            print 'Test MICRO results'
-            print test_results_micro
+            logger.info('Test MICRO results')
+            logger.info(test_results_micro)
 
-            print 'Test MACRO results'
-            print test_results_macro
+            logger.info('Test MACRO results')
+            logger.info(test_results_macro)
 
-            print 'Test AVERAGED results'
-            print test_averaged
+            logger.info('Test AVERAGED results')
+            logger.info(test_averaged)
 
             all_labels = get_all_classification_report_labels() + additional_labels
 
@@ -223,11 +230,11 @@ class Metrics:
             results_noaverage = Metrics.compute_all_metrics(test_y_true, test_y_pred,
                                                             labels=all_labels, average=None)
 
-            print '...Saving no-averaged results to CSV file'
+            logger.info('...Saving no-averaged results to CSV file')
             df = pd.DataFrame(results_noaverage, index=all_labels)
             df.to_csv(get_output_path('no_average_results_' + str(actual_time) + '.csv'))
 
-            print '...Ploting confusion matrix'
+            logger.info('...Ploting confusion matrix')
             cm = Metrics.compute_confusion_matrix(test_y_true, test_y_pred, labels=test_labels_list+additional_labels)
             # plot_confusion_matrix(cm, labels=test_labels_list+additional_labels,
             #                       output_filename=get_output_path('confusion_matrix_' + str(actual_time) + '.png'))
@@ -236,7 +243,7 @@ class Metrics:
             plot_confusion_matrix(cm, labels=test_labels_list+additional_labels,
                                   output_filename=get_output_path('confusion_matrix_' + str(actual_time) + '.png'))
 
-            print '...Computing classification stats'
+            logger.info('...Computing classification stats')
             stats = Metrics.compute_classification_stats(test_y_true, test_y_pred, all_labels)
             df = pd.DataFrame(stats, index=['tp', 'tn', 'fp', 'fn'], columns=all_labels).transpose()
             df.to_csv(get_output_path('classification_stats_' + str(actual_time) + '.csv'))
@@ -252,28 +259,28 @@ class Metrics:
                                                           results_dict['na_recall'],
                                                           results_dict['na_f1']]))
 
-        print '\\todo{Add Caption and Label.}'
-        print '\\begin{table}[h]'
-        print '\\centering'
-        print '\\begin{adjustbox}{width=1\\textwidth}'
-        print '\\begin{tabular}{l|c|c|c|c|c|c|c|c|c}'
-        print '\\multirow{2}{*}{\\textbf{Dataset}} &  \\multicolumn{3}{|c|}{\\textbf{Micro}} &  \\multicolumn{3}{|c|}{\\textbf{Macro}} &  \\multicolumn{3}{|c}{\\textbf{NA}} \\\\'
-        print ' & \\textbf{Precision} & \\textbf{Recall} & \\textbf{F1} & \\textbf{Precision} & \\textbf{Recall} & \\textbf{F1} & \\textbf{Precision} & \\textbf{Recall} & \\textbf{F1} \\\\'
-        print '\\hline'
+        logger.info('\\todo{Add Caption and Label.}')
+        logger.info('\\begin{table}[h]')
+        logger.info('\\centering')
+        logger.info('\\begin{adjustbox}{width=1\\textwidth}')
+        logger.info('\\begin{tabular}{l|c|c|c|c|c|c|c|c|c}')
+        logger.info('\\multirow{2}{*}{\\textbf{Dataset}} &  \\multicolumn{3}{|c|}{\\textbf{Micro}} &  \\multicolumn{3}{|c|}{\\textbf{Macro}} &  \\multicolumn{3}{|c}{\\textbf{NA}} \\\\')
+        logger.info(' & \\textbf{Precision} & \\textbf{Recall} & \\textbf{F1} & \\textbf{Precision} & \\textbf{Recall} & \\textbf{F1} & \\textbf{Precision} & \\textbf{Recall} & \\textbf{F1} \\\\')
+        logger.info('\\hline')
 
         if train_y_pred:
-            print 'Training & ' + format_averaged_values(train_averaged) + '\\\\'
+            logger.info('Training & ' + format_averaged_values(train_averaged) + '\\\\')
 
         if valid_y_pred:
-            print 'Validation & ' + format_averaged_values(valid_averaged) + '\\\\'
+            logger.info('Validation & ' + format_averaged_values(valid_averaged) + '\\\\')
 
         if test_y_pred:
-            print 'Testing & ' + format_averaged_values(test_averaged) + '\\\\'
+            logger.info('Testing & ' + format_averaged_values(test_averaged) + '\\\\')
 
-        print '\\end{tabular}'
-        print '\\end{adjustbox}'
-        print '\\caption{Caption}'
-        print '\\label{tab:label}'
-        print '\\end{table}'
+        logger.info('\\end{tabular}')
+        logger.info('\\end{adjustbox}')
+        logger.info('\\caption{Caption}')
+        logger.info('\\label{tab:label}')
+        logger.info('\\end{table}')
 
         return True
