@@ -13,8 +13,19 @@ from trained_models import get_tf_rnn_path
 MAPPING={   'rnn_cell_type': {'name': 'Model', 'pos': 0},
             'minibatch_size': {'name': 'Mini-batch size', 'pos': 1},
             'learning_rate': {'name': 'Learning rate', 'pos': 2},
-            'bidirectional': {'name': 'Direction', 'pos': 3},
+            'direction': {'name': 'Direction', 'pos': 3},
             'max_length': {'name': 'Grad clipping', 'pos': 4}
+}
+
+MODEL_MAPPING={
+    'normal': 'RNN',
+    'lstm': 'LSTM',
+    'gru': 'GRU'
+}
+
+TITLE_MAPPING={
+    'valid_cost': 'validation cost',
+    'f1': 'validation F1 score'
 }
 
 def parse_name(name):
@@ -49,13 +60,16 @@ if __name__ == '__main__':
         elif i == 1:
             feat_name = MAPPING[arg]['name']
             feat_pos = MAPPING[arg]['pos']
+        elif i == 2:
+            plot_title = TITLE_MAPPING[arg]
         else:
             params.append((arg, cPickle.load(open(get_tf_rnn_path(arg), 'rb'))))
 
     data_dict = dict()
     for name, values in params:
-        feat_value = parse_name(name)[feat_pos]
+        type = parse_name(name)[0]
+        feat_value = MODEL_MAPPING[type] + ' ' + parse_name(name)[feat_pos]
         data_dict[feat_value] = values
     data_dict['epoch'] = range(values.__len__())
 
-    plot(data_dict, get_tf_rnn_path(feat_name+'_comparison'), feat_name=feat_name, title=feat_name+' validation cost comparison')
+    plot(data_dict, get_tf_rnn_path(feat_name+'_comparison'), feat_name=feat_name, title=' '.join([feat_name, plot_title, 'comparison']))
