@@ -84,6 +84,9 @@ def parse_arguments():
     group_rnn_direction.add_argument('--bidirectional', action='store_true', default=False)
     group_rnn_direction.add_argument('--unidirectional', action='store_true', default=False)
 
+    group_last_tag_update = parser.add_mutually_exclusive_group(required=False)
+    group_last_tag_update.add_argument('--sentence', action='store_true', default=False)
+    group_last_tag_update.add_argument('--token', action='store_true', default=False)
 
     parser.add_argument('--plot', action='store_true', default=False)
     parser.add_argument('--tags', action='store', type=str, default=None)
@@ -162,6 +165,8 @@ def parse_arguments():
     args['early_stopping_threshold'] = arguments.earlystop
     args['pickle_lists'] = arguments.picklelists
     args['logger_filename'] = arguments.logger
+    args['update_per_sentence'] = arguments.sentence
+    args['update_per_token'] = arguments.token
 
     return args
 
@@ -196,6 +201,12 @@ def check_arguments_consistency(args):
     if args['nn_name'] == 'tf_rnn' and (args['unidirectional'] is False and args['bidirectional'] is False):
         logger.error('Must specify a direction for tf_rnn')
         exit()
+
+    if args['nn_name'] == 'last_tag' and args['update_per_sentence'] is False and args['update_per_token'] is False:
+        logger.error('Must specify an update option for last_tag nnet')
+        exit()
+
+    return True
 
 def perform_leave_one_out(nn_class,
                           hidden_f,
