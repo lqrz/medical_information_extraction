@@ -297,8 +297,20 @@ class Last_tag_neural_network_trainer(A_neural_network):
         train_cross_entropy_list = []
         valid_cross_entropy_list = []
 
+        early_stopping_cnt_since_last_update = 0
+        early_stopping_min_validation_cost = np.inf
+        early_stopping_min_iteration = None
+        model_update = None
+
         for epoch_index in range(max_epochs):
             start = time.time()
+
+            if self.early_stopping_threshold is not None:
+                if early_stopping_cnt_since_last_update >= self.early_stopping_threshold:
+                    assert early_stopping_min_iteration is not None
+                    self.logger.info('Training early stopped at iteration %d' % early_stopping_min_iteration)
+                    break
+
             train_cost = 0
             train_errors = 0
             train_cross_entropy = 0
@@ -357,8 +369,21 @@ class Last_tag_neural_network_trainer(A_neural_network):
             valid_cross_entropy_list.append(valid_cross_entropy)
 
             end = time.time()
-            logger.info('Epoch %d Train_cost: %f Train_errors: %d Valid_cost: %f Valid_errors: %d F1-score: %f Took: %f'
-                        % (epoch_index + 1, train_cost, train_errors, valid_cost, valid_error, f1_score, end - start))
+
+            if valid_cost < early_stopping_min_validation_cost:
+                self.save_params()
+                early_stopping_min_iteration = epoch_index
+                early_stopping_min_validation_cost = valid_cost
+                early_stopping_cnt_since_last_update = 0
+                model_update = True
+            else:
+                early_stopping_cnt_since_last_update += 1
+                model_update = False
+
+            assert model_update is not None
+
+            logger.info('Epoch %d Train_cost: %f Train_errors: %d Valid_cost: %f Valid_errors: %d F1-score: %f upd: %s Took: %f'
+                        % (epoch_index + 1, train_cost, train_errors, valid_cost, valid_error, f1_score, model_update, end - start))
 
         if plot:
             actual_time = str(time.time())
@@ -580,8 +605,20 @@ class Last_tag_neural_network_trainer(A_neural_network):
         train_cross_entropy_list = []
         valid_cross_entropy_list = []
 
+        early_stopping_cnt_since_last_update = 0
+        early_stopping_min_validation_cost = np.inf
+        early_stopping_min_iteration = None
+        model_update = None
+
         for epoch_index in range(max_epochs):
             start = time.time()
+
+            if self.early_stopping_threshold is not None:
+                if early_stopping_cnt_since_last_update >= self.early_stopping_threshold:
+                    assert early_stopping_min_iteration is not None
+                    self.logger.info('Training early stopped at iteration %d' % early_stopping_min_iteration)
+                    break
+
             train_cost = 0
             train_errors = 0
             train_l2_emb = 0
@@ -647,8 +684,23 @@ class Last_tag_neural_network_trainer(A_neural_network):
             valid_cross_entropy_list.append(valid_cross_entropy)
 
             end = time.time()
-            logger.info('Epoch %d Train_cost: %f Train_errors: %d Valid_cost: %f Valid_errors: %d F1-score: %f Took: %f'
-                        % (epoch_index + 1, train_cost, train_errors, valid_cost, valid_error, f1_score, end - start))
+
+            if valid_cost < early_stopping_min_validation_cost:
+                self.save_params()
+                early_stopping_min_iteration = epoch_index
+                early_stopping_min_validation_cost = valid_cost
+                early_stopping_cnt_since_last_update = 0
+                model_update = True
+            else:
+                early_stopping_cnt_since_last_update += 1
+                model_update = False
+
+            assert model_update is not None
+
+            logger.info(
+                'Epoch %d Train_cost: %f Train_errors: %d Valid_cost: %f Valid_errors: %d F1-score: %f upd: %s Took: %f'
+                % (epoch_index + 1, train_cost, train_errors, valid_cost, valid_error, f1_score, model_update,
+                   end - start))
 
         if plot:
             actual_time = str(time.time())
@@ -893,13 +945,22 @@ class Last_tag_neural_network_trainer(A_neural_network):
         train_cross_entropy_list = []
         valid_cross_entropy_list = []
 
+        early_stopping_cnt_since_last_update = 0
+        early_stopping_min_validation_cost = np.inf
+        early_stopping_min_iteration = None
+        model_update = None
+
         for epoch_index in range(max_epochs):
             start = time.time()
+
+            if self.early_stopping_threshold is not None:
+                if early_stopping_cnt_since_last_update >= self.early_stopping_threshold:
+                    assert early_stopping_min_iteration is not None
+                    self.logger.info('Training early stopped at iteration %d' % early_stopping_min_iteration)
+                    break
+
             train_cost = 0
             train_errors = 0
-            train_l2_emb = 0
-            train_l2_w2 = 0
-            train_l2_wt = 0
             train_cross_entropy = 0
             for idx in range(self.x_train.shape[0]):
                 # error = train(self.x_train, self.y_train)
@@ -954,8 +1015,22 @@ class Last_tag_neural_network_trainer(A_neural_network):
             valid_cross_entropy_list.append(valid_cross_entropy)
 
             end = time.time()
-            logger.info('Epoch %d Train_cost: %f Train_errors: %d Valid_cost: %f Valid_errors: %d F1-score: %f Took: %f'
-                        % (epoch_index + 1, train_cost, train_errors, valid_cost, valid_error, f1_score, end - start))
+
+            if valid_cost < early_stopping_min_validation_cost:
+                self.save_params()
+                early_stopping_min_iteration = epoch_index
+                early_stopping_min_validation_cost = valid_cost
+                early_stopping_cnt_since_last_update = 0
+                model_update = True
+            else:
+                early_stopping_cnt_since_last_update += 1
+                model_update = False
+
+            assert model_update is not None
+
+            logger.info(
+                'Epoch %d Train_cost: %f Train_errors: %d Valid_cost: %f Valid_errors: %d F1-score: %f upd: %s Took: %f'
+                % (epoch_index + 1, train_cost, train_errors, valid_cost, valid_error, f1_score, model_update, end - start))
 
         if plot:
             actual_time = str(time.time())
@@ -1088,14 +1163,24 @@ class Last_tag_neural_network_trainer(A_neural_network):
         return True
 
     def save_params(self):
-        for param_name,param_obj in self.params.iteritems():
-            cPickle.dump(param_obj, open(get_cwnn_path(param_name+'.p'),'wb'))
+        for param_name, param_obj in self.params.iteritems():
+            cPickle.dump(param_obj, open(self.get_output_path(param_name+'.p'),'wb'))
+
+        return True
+
+    def load_params(self):
+        for param_name, param_obj in self.params.iteritems():
+            self.params[param_name] = cPickle.load(open(self.get_output_path(param_name+'.p'), 'rb'))
 
         return True
 
     def predict(self, on_training_set=False, on_validation_set=False, on_testing_set=False, **kwargs):
 
         results = dict()
+
+        assert on_training_set or on_validation_set or on_testing_set
+
+        self.load_params()
 
         if on_training_set:
             x_test = self.x_train
@@ -1137,7 +1222,6 @@ class Last_tag_neural_network_trainer(A_neural_network):
         predictions = []
         for i in range(x_test.shape[0]):
             predictions.extend(perform_prediction(x_test[i]))
-
 
         flat_true = list(chain(*y_test))
 
