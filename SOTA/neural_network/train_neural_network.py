@@ -1068,6 +1068,6 @@ if __name__ == '__main__':
     # df = pd.DataFrame(stats, index=['tp', 'tn', 'fp', 'fn'], columns=labels_list).transpose()
     # df.to_csv(get_output_path('classification_stats.csv'))
 
-    logger.info('Elapsed time: ', time.time()-start)
+    logger.info('Elapsed time: %f', time.time()-start)
 
     logger.info('End')
