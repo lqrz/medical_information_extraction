@@ -80,7 +80,7 @@ def parse_arguments():
     group_rnn.add_argument('--gradclip', action='store', default=None, type=int)
     group_rnn.add_argument('--rnntype', action='store', type=str, choices=['normal', 'lstm', 'gru'], default=None)
 
-    group_rnn_direction = parser.add_mutually_exclusive_group(required=True)
+    group_rnn_direction = parser.add_mutually_exclusive_group(required=False)
     group_rnn_direction.add_argument('--bidirectional', action='store_true', default=False)
     group_rnn_direction.add_argument('--unidirectional', action='store_true', default=False)
 
@@ -134,6 +134,7 @@ def parse_arguments():
     args['w2v_vectors_cache'] = arguments.w2vvectorscache
     args['w2v_model_name'] = arguments.w2vmodel
     args['bidirectional'] = arguments.bidirectional
+    args['unidirectional'] = arguments.unidirectional
     args['shared_params'] = arguments.sharedparams
     args['plot'] = arguments.plot
     args['tags'] = arguments.tags
@@ -190,6 +191,10 @@ def check_arguments_consistency(args):
 
     if args['nn_name'] == 'tf_rnn' and args['rnn_cell_type'] is None:
         logger.error('Must specify a cell type for tf_rnn')
+        exit()
+
+    if args['nn_name'] == 'tf_rnn' and (args['unidirectional'] is False and args['bidirectional'] is False):
+        logger.error('Must specify a direction for tf_rnn')
         exit()
 
 def perform_leave_one_out(nn_class,
