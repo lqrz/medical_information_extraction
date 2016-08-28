@@ -406,7 +406,7 @@ class Last_tag_neural_network_trainer(A_neural_network):
             assert model_update is not None
 
             logger.info('Epoch %d Train_cost: %f Train_errors: %d Valid_cost: %f Valid_errors: %d F1-score: %f upd: %s Took: %f'
-                        % (epoch_index + 1, train_cost, train_errors, valid_cost, valid_error, f1_score, model_update, end - start))
+                        % (epoch_index, train_cost, train_errors, valid_cost, valid_error, f1_score, model_update, end - start))
 
         if plot:
             actual_time = str(time.time())
@@ -718,7 +718,7 @@ class Last_tag_neural_network_trainer(A_neural_network):
 
             logger.info(
                 'Epoch %d Train_cost: %f Train_errors: %d Valid_cost: %f Valid_errors: %d F1-score: %f upd: %s Took: %f'
-                % (epoch_index + 1, train_cost, train_errors, valid_cost, valid_error, f1_score, model_update,
+                % (epoch_index, train_cost, train_errors, valid_cost, valid_error, f1_score, model_update,
                    end - start))
 
         if plot:
@@ -1049,7 +1049,7 @@ class Last_tag_neural_network_trainer(A_neural_network):
 
             logger.info(
                 'Epoch %d Train_cost: %f Train_errors: %d Valid_cost: %f Valid_errors: %d F1-score: %f upd: %s Took: %f'
-                % (epoch_index + 1, train_cost, train_errors, valid_cost, valid_error, f1_score, model_update, end - start))
+                % (epoch_index, train_cost, train_errors, valid_cost, valid_error, f1_score, model_update, end - start))
 
         if plot:
             actual_time = str(time.time())
@@ -1392,7 +1392,7 @@ class Last_tag_neural_network_trainer(A_neural_network):
 
             logger.info(
                 'Epoch %d Train_cost: %f Train_errors: %d Valid_cost: %f Valid_errors: %d F1-score: %f upd: %s Took: %f'
-                % (epoch_index + 1, train_cost, train_errors, valid_cost, valid_error, f1_score, model_update, end - start))
+                % (epoch_index, train_cost, train_errors, valid_cost, valid_error, f1_score, model_update, end - start))
 
         if plot:
             actual_time = str(time.time())
