@@ -332,7 +332,8 @@ class Recurrent_net(A_neural_network):
 
         with tf.Session(graph=self.graph) as session:
 
-            valid_mask = np.array(sorted(set(np.where(self.y_valid.reshape((-1)) != self.filling_ix)[0]).intersection(set(np.where(self.y_valid.reshape((-1)) != self.pad_tag)[0]))))
+            # valid_mask = np.array(sorted(set(np.where(self.y_valid.reshape((-1)) != self.filling_ix)[0]).intersection(set(np.where(self.y_valid.reshape((-1)) != self.pad_tag)[0]))))
+            valid_mask = np.array(sorted(set(np.where(self.y_valid.reshape((-1)) != self.filling_ix)[0])))
             flat_y_valid = self.y_valid.reshape((-1))
 
             session.run(tf.initialize_all_variables())
@@ -446,8 +447,7 @@ class Recurrent_net(A_neural_network):
 
         with self.graph.as_default():
 
-            mask = np.array(sorted(set(np.where(y_test.reshape((-1)) != self.filling_ix)[0]).intersection(
-                set(np.where(y_test.reshape((-1)) != self.pad_tag)[0]))))
+            mask = np.array(sorted(set(np.where(y_test.reshape((-1)) != self.filling_ix)[0])))
             flat_y_test = y_test.reshape((-1))
 
             tf.train.import_meta_graph(self.get_output_path('params.model.meta'))
