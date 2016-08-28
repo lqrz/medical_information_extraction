@@ -78,7 +78,7 @@ def parse_arguments():
     group_rnn = parser.add_argument_group(title='rnn', description='Recurrent neural net specifics.')
     group_rnn.add_argument('--sharedparams', action='store_true', default=False)
     group_rnn.add_argument('--gradclip', action='store', default=None, type=int)
-    group_rnn.add_argument('--rnntype', action='store', type=str, choices=['normal', 'lstm', 'gru'], required=True)
+    group_rnn.add_argument('--rnntype', action='store', type=str, choices=['normal', 'lstm', 'gru'], default=None)
 
     group_rnn_direction = parser.add_mutually_exclusive_group(required=True)
     group_rnn_direction.add_argument('--bidirectional', action='store_true', default=False)
@@ -186,6 +186,10 @@ def check_arguments_consistency(args):
 
     if args['nn_name'] == 'two_hidden_cw' and not args['n_hidden']:
         logger.error('Must specify a hidden layer size for a two hidden layer nnet.')
+        exit()
+
+    if args['nn_name'] == 'tf_rnn' and args['rnn_cell_type'] is None:
+        logger.error('Must specify a cell type for tf_rnn')
         exit()
 
 def perform_leave_one_out(nn_class,
