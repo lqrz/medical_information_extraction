@@ -41,6 +41,7 @@ class Last_tag_neural_network_trainer(A_neural_network):
         self.pad_tag = pad_tag
 
         self.forward_pass_function = None
+        self.forward_pass_predict_function = None
 
     def train(self, **kwargs):
         if kwargs['batch_size']:
@@ -63,20 +64,24 @@ class Last_tag_neural_network_trainer(A_neural_network):
                     # two layers
                     logger.info('Training with SGD two layers at end of sentence')
                     self.forward_pass_function = self.forward_pass_scan_two_layers
+                    self.forward_pass_predict_function = self.forward_pass_predict_two_layers
                     self.train_with_sgd_updates_at_end_of_sentence_two_layers(**kwargs)
                 else:
                     logger.info('Training with SGD one layer at end of sentence')
                     self.forward_pass_function = self.forward_pass_scan_one_layer
+                    self.forward_pass_predict_function = self.forward_pass_predict_one_layer
                     self.train_with_sgd_updates_at_end_of_sentence_one_layer(**kwargs)
             if kwargs['n_hidden']:
                 # two layers
                 logger.info('Training with SGD two layers at each token')
                 self.forward_pass_function = self.forward_pass_noscan_two_layers
+                self.forward_pass_predict_function = self.forward_pass_predict_two_layers
                 self.train_with_sgd_updates_at_each_token_two_layers(**kwargs)
             else:
                 # one layer
                 logger.info('Training with SGD one layer at each token')
                 self.forward_pass_function = self.forward_pass_noscan_one_layer
+                self.forward_pass_predict_function = self.forward_pass_predict_one_layer
                 self.train_with_sgd_updates_at_each_token_one_layer(**kwargs)
 
         return True
@@ -119,9 +124,10 @@ class Last_tag_neural_network_trainer(A_neural_network):
 
         return [pred, result]
 
-    def forward_pass_predict(self, weight_x, prev_pred):
+    def forward_pass_predict_one_layer(self, weight_x, prev_pred):
         '''
         Use an initial tag (fixed as: <PAD>), and use the previous prediction for indexing wt.
+        One layer prediction.
         '''
         prev_rep = self.params['wt'][prev_pred, :]
         h = self.hidden_activation_f(T.concatenate([weight_x, prev_rep], axis=0) + self.params['b1'])
@@ -129,6 +135,19 @@ class Last_tag_neural_network_trainer(A_neural_network):
         pred = T.cast(T.argmax(result), dtype=INT)
 
         return [pred, result]
+
+    def forward_pass_predict_two_layers(self, weight_x, prev_pred):
+        '''
+        Use an initial tag (fixed as: <PAD>), and use the previous prediction for indexing wt.
+        Two layer prediction.
+        '''
+        prev_rep = self.params['wt'][prev_pred, :]
+        h1 = self.hidden_activation_f(T.concatenate([weight_x, prev_rep], axis=0) + self.params['b1'])
+        h2 = self.hidden_activation_f(T.dot(h1, self.params['w2']) + self.params['b2'])
+        out = self.out_activation_f(T.dot(h2, self.params['w3']) + self.params['b3'])
+        pred = T.cast(T.argmax(out), dtype=INT)
+
+        return [pred, out]
 
     def train_with_sgd_updates_at_each_token_one_layer(self, learning_rate=0.01, max_epochs=100,
                        L1_reg=0.001, alpha_L2_reg=0.01, save_params=False, validation_cost=True,
@@ -1565,7 +1584,7 @@ class Last_tag_neural_network_trainer(A_neural_network):
 
         initial_tag = T.scalar(name='initial_tag', dtype=INT)
 
-        [y_pred,out], _ = theano.scan(fn=self.forward_pass_predict,
+        [y_pred,out], _ = theano.scan(fn=self.forward_pass_predict_function,
                                 sequences=w_x,
                                 outputs_info=[initial_tag, None],
                                 non_sequences=[])
