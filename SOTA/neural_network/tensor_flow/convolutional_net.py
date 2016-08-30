@@ -6,6 +6,7 @@ from utils.metrics import Metrics
 import time
 import tensorflow as tf
 import numpy as np
+import cPickle
 
 class Convolutional_Neural_Net(A_neural_network):
 
@@ -510,6 +511,10 @@ class Convolutional_Neural_Net(A_neural_network):
                      plot, alpha_l2=0.001,
                      **kwargs):
 
+        self.learning_rate_train = learning_rate_train
+        self.learning_rate_tune = learning_rate_tune
+        self.minibatch_size = minibatch_size
+
         with self.graph.as_default():
             tf.set_random_seed(1234)
 
@@ -539,8 +544,21 @@ class Convolutional_Neural_Net(A_neural_network):
         with tf.Session(graph=self.graph) as session:
             session.run(tf.initialize_all_variables())
             n_batches = np.int(np.ceil(self.x_train.shape[0] / minibatch_size))
+
+            early_stopping_cnt_since_last_update = 0
+            early_stopping_min_validation_cost = np.inf
+            early_stopping_min_iteration = None
+            model_update = None
+
             for epoch_ix in range(max_epochs):
                 start = time.time()
+
+                if self.early_stopping_threshold is not None:
+                    if early_stopping_cnt_since_last_update >= self.early_stopping_threshold:
+                        assert early_stopping_min_iteration is not None
+                        self.logger.info('Training early stopped at iteration %d' % early_stopping_min_iteration)
+                        break
+
                 train_cost = 0
                 train_xentropy = 0
                 train_errors = 0
@@ -572,9 +590,23 @@ class Convolutional_Neural_Net(A_neural_network):
                                                  tense_filters_sum,
                                                  precision, recall, f1_score)
 
-                print 'epoch: %d train_cost: %f train_errors: %d valid_cost: %f valid_errors: %d F1: %f took: %f' \
-                      % (
-                          epoch_ix, train_cost, train_errors, valid_cost, valid_errors, f1_score, time.time() - start)
+                if valid_cost < early_stopping_min_validation_cost:
+                    self.saver = tf.train.Saver(tf.all_variables())
+                    self.saver.save(session, self.get_output_path('params.model'), write_meta_graph=True)
+                    early_stopping_min_iteration = epoch_ix
+                    early_stopping_min_validation_cost = valid_cost
+                    early_stopping_cnt_since_last_update = 0
+                    model_update = True
+                else:
+                    early_stopping_cnt_since_last_update += 1
+                    model_update = False
+
+                assert model_update is not None
+
+                self.logger.info(
+                    'epoch: %d train_cost: %f train_errors: %d valid_cost: %f valid_errors: %d F1: %f upd: %s took: %f' \
+                    % (epoch_ix, train_cost, train_errors, valid_cost, valid_errors, f1_score, model_update,
+                       time.time() - start))
 
             self.saver = tf.train.Saver(self.training_params + self.fine_tuning_params)
             self.saver.save(session, self.get_output_path('params.model'))
@@ -582,6 +614,12 @@ class Convolutional_Neural_Net(A_neural_network):
         if plot:
             print 'Making plots'
             self.make_plots()
+
+        if self.pickle_lists:
+            self.logger.info('Pickling lists')
+            self.perform_pickle_lists()
+
+        return True
 
     def get_feed_dict(self, batch_ix, minibatch_size,
                       w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs,
@@ -644,6 +682,26 @@ class Convolutional_Neural_Net(A_neural_network):
         feed_dict[keep_prob] = keep_prob_val
 
         return feed_dict
+
+    def perform_pickle_lists(self):
+        """
+        This is to make some later plots.
+        """
+        output_filename = '_'.join(
+            [str(self.minibatch_size), 'lrtrain', str(self.learning_rate_train), 'lrtune', str(self.learning_rate_tune)])
+
+        cPickle.dump(self.valid_costs_list,
+                     open(self.get_output_path('validation_cost_list-' + output_filename + '.p'), 'wb'))
+        cPickle.dump(self.valid_cross_entropy_list,
+                     open(self.get_output_path('valid_cross_entropy_list-' + output_filename + '.p'), 'wb'))
+        cPickle.dump(self.train_costs_list,
+                     open(self.get_output_path('train_cost_list-' + output_filename + '.p'), 'wb'))
+        cPickle.dump(self.train_cross_entropy_list,
+                     open(self.get_output_path('train_cross_entropy_list-' + output_filename + '.p'), 'wb'))
+        cPickle.dump(self.f1_score_list,
+                     open(self.get_output_path('valid_f1_score_list-' + output_filename + '.p'), 'wb'))
+
+        return True
 
     def compute_parameters_sum(self):
         w1_w2v_sum = 0
