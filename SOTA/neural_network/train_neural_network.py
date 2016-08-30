@@ -321,7 +321,6 @@ def determine_nnclass_and_parameters(args):
         get_output_path = get_single_mlp_path
         add_words = ['<PAD>']
     if args['nn_name'] == 'hidden_cw':
-
         from hidden_Layer_Context_Window_Net import Hidden_Layer_Context_Window_Net
         # one hidden layer with context window. Either minibatch or SGD.
         nn_class = Hidden_Layer_Context_Window_Net
@@ -331,7 +330,6 @@ def determine_nnclass_and_parameters(args):
         normalize_samples = args['norm_samples']
         add_feats = ['<PAD>']
     elif args['nn_name'] == 'vector_tag':
-
         from vector_Tag_Contex_Window_Net import Vector_Tag_Contex_Window_Net
         nn_class = Vector_Tag_Contex_Window_Net
         get_output_path = get_vector_tag_path
@@ -352,7 +350,6 @@ def determine_nnclass_and_parameters(args):
         get_output_path = get_rnn_path
         n_window = 1
     elif args['nn_name'] == 'cw_rnn':
-
         from recurrent_Context_Window_net import Recurrent_Context_Window_net
         nn_class = Recurrent_Context_Window_net
         get_output_path = get_cw_rnn_path
@@ -365,12 +362,10 @@ def determine_nnclass_and_parameters(args):
         add_feats = ['<PAD>']
         multi_feats = args['multi_features']
     elif args['nn_name'] == 'two_hidden_cw':
-
         from two_hidden_Layer_Context_Window_Net import Two_Hidden_Layer_Context_Window_Net
         nn_class = Two_Hidden_Layer_Context_Window_Net
         get_output_path = get_two_cwnn_path
         add_words = ['<PAD>']
-
     elif args['nn_name'] == 'tf_mlp':
         from tensor_flow.feed_forward_mlp_net import Neural_Net
         # one hidden layer with context window. Either minibatch or SGD.
