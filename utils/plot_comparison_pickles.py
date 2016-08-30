@@ -8,8 +8,6 @@ import cPickle
 import pandas as pd
 from ggplot import *
 
-from trained_models import get_tf_rnn_path
-
 MAPPING={   'rnn_cell_type': {'name': 'Model', 'pos': 0},
             'minibatch_size': {'name': 'Mini-batch size', 'pos': 1},
             'learning_rate': {'name': 'Learning rate', 'pos': 2},
@@ -51,6 +49,19 @@ def plot(data_dict, output_filename, feat_name, title):
 
     return True
 
+def determine_output_path(nnet):
+    if nnet == 'rnn':
+        from trained_models import get_tf_rnn_path
+        return get_tf_rnn_path
+    elif nnet == 'last_tag':
+        from trained_models import get_last_tag_path
+        return get_last_tag_path
+    elif nnet == 'cnn':
+        from trained_models import get_tf_cnn_path
+        return get_tf_cnn_path
+
+    return None
+
 if __name__ == '__main__':
 
     params = []
@@ -58,12 +69,17 @@ if __name__ == '__main__':
         if i == 0:
             continue
         elif i == 1:
+            nnet = arg
+            get_output_path = determine_output_path(arg)
+        elif i == 2:
             feat_name = MAPPING[arg]['name']
             feat_pos = MAPPING[arg]['pos']
-        elif i == 2:
+        elif i == 3:
             plot_title = TITLE_MAPPING[arg]
         else:
-            params.append((arg, cPickle.load(open(get_tf_rnn_path(arg), 'rb'))))
+            params.append((arg, cPickle.load(open(get_output_path(arg), 'rb'))))
+
+    assert get_output_path is not None
 
     data_dict = dict()
     for name, values in params:
@@ -72,4 +88,4 @@ if __name__ == '__main__':
         data_dict[feat_value] = values
     data_dict['epoch'] = range(values.__len__())
 
-    plot(data_dict, get_tf_rnn_path(feat_name+'_comparison'), feat_name=feat_name, title=' '.join([feat_name, plot_title, 'comparison']))
+    plot(data_dict, get_output_path(feat_name+'_comparison'), feat_name=feat_name, title=' '.join([feat_name, plot_title, 'comparison']))
