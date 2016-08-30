@@ -8,7 +8,6 @@ import cPickle
 import pandas as pd
 
 from data import get_testing_classification_report_labels
-from trained_models import get_tf_rnn_path
 
 def plot_confusion_matrix(confusion_matrix, labels, output_filename, title=None):
     import rpy2.robjects as robj
@@ -64,7 +63,14 @@ def determine_output_filename(output_model):
     get_output_path = None
 
     if output_model == 'rnn':
+        from trained_models import get_tf_rnn_path
         get_output_path = get_tf_rnn_path
+    elif output_model == 'last_tag':
+        from trained_models import get_last_tag_path
+        get_output_path = get_last_tag_path
+    elif output_model == 'cnn':
+        from trained_models import get_tf_cnn_path
+        get_output_path = get_tf_cnn_path
 
     assert get_output_path is not None
 
