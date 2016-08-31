@@ -531,10 +531,12 @@ class Convolutional_Neural_Net(A_neural_network):
 
             out_logits = self.forward_pass(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, keep_prob)
 
-            l2 = tf.add_n([tf.nn.l2_loss(param) for param in self.regularizables])
-
             cross_entropy = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=out_logits, labels=labels))
-            cost = cross_entropy + alpha_l2 * l2
+
+            # l2 = tf.add_n([tf.nn.l2_loss(param) for param in self.regularizables])
+            # cost = cross_entropy + alpha_l2 * l2
+            
+            cost = cross_entropy
 
             predictions = self.compute_predictions(out_logits)
             n_errors = tf.reduce_sum(tf.to_int32(tf.not_equal(predictions, labels)))
