@@ -16,11 +16,15 @@ class Convolutional_Neural_Net(A_neural_network):
                  train_sent_nr_feats, valid_sent_nr_feats, test_sent_nr_feats,
                  train_tense_feats, valid_tense_feats, test_tense_feats,
                  training_param_names, tuning_param_names,
+                 n_hidden,
                  **kwargs):
 
         super(Convolutional_Neural_Net, self).__init__(**kwargs)
 
         self.graph = tf.Graph()
+
+        self.second_layer_n_hidden = n_hidden
+        self.using_two_layers = self.second_layer_n_hidden > 0
 
         # parameters
         self.w1_w2v = None
@@ -30,6 +34,8 @@ class Convolutional_Neural_Net(A_neural_network):
         self.w1_tense = None
         self.w2 = None
         self.b2 = None
+        self.w3 = None
+        self.b3 = None
 
         # datasets
         self.train_pos_feats = train_pos_feats
@@ -220,6 +226,9 @@ class Convolutional_Neural_Net(A_neural_network):
         # w2 dense layer
         self.epoch_l2_w2_list = []
 
+        # w3 dense layer
+        self.epoch_l2_w3_list = []
+
         return
 
     def train(self, static, batch_size, **kwargs):
@@ -302,13 +311,27 @@ class Convolutional_Neural_Net(A_neural_network):
                 else:
                     raise Exception
 
+            if self.using_two_layers:
+                # two layers
+                self.w2 = tf.Variable(tf.truncated_normal(shape=[self.n_hidden, self.second_layer_n_hidden], stddev=0.1), name='w2')
+                self.b2 = tf.Variable(tf.constant(0.1, shape=[self.second_layer_n_hidden]), name='b2')
+                self.w3 = tf.Variable(tf.truncated_normal(shape=[self.second_layer_n_hidden, self.n_out], stddev=0.1), name='w3')
+                self.b3 = tf.Variable(tf.constant(0.1, shape=[self.n_out]), name='b3')
 
-            self.w2 = tf.Variable(tf.truncated_normal(shape=[self.n_hidden, self.n_out], stddev=0.1), name='w2')
-            self.b2 = tf.Variable(tf.constant(0.1, shape=[self.n_out]), name='b2')
+                self.regularizables.append(self.w2)
+                self.regularizables.append(self.w3)
+                self.training_params.append(self.w2)
+                self.training_params.append(self.b2)
+                self.training_params.append(self.w3)
+                self.training_params.append(self.b3)
+            else:
+                # one layer
+                self.w2 = tf.Variable(tf.truncated_normal(shape=[self.n_hidden, self.n_out], stddev=0.1), name='w2')
+                self.b2 = tf.Variable(tf.constant(0.1, shape=[self.n_out]), name='b2')
 
-            self.regularizables.append(self.w2)
-            self.training_params.append(self.w2)
-            self.training_params.append(self.b2)
+                self.regularizables.append(self.w2)
+                self.training_params.append(self.w2)
+                self.training_params.append(self.b2)
 
             if self.using_w2v_convolution_maxpool_feature():
                 self.initialise_filters(region_sizes=self.features_to_use['w2v_c_m']['region_sizes'],
@@ -499,7 +522,17 @@ class Convolutional_Neural_Net(A_neural_network):
 
         h_dropout = tf.nn.dropout(h_pooled_flat, keep_prob)
 
-        out_logits = tf.nn.xw_plus_b(h_dropout, self.w2, self.b2)
+        out_logits = None
+        if self.using_two_layers:
+            # two layers
+            h2 = tf.nn.xw_plus_b(h_dropout, self.w2, self.b2)
+            h2_dropout = tf.nn.dropout(h2, keep_prob)
+            out_logits = tf.nn.xw_plus_b(h_dropout, self.w3, self.b3)
+        else:
+            # one layer
+            out_logits = tf.nn.xw_plus_b(h_dropout, self.w2, self.b2)
+
+        assert out_logits is not None
 
         return out_logits
 
@@ -535,7 +568,7 @@ class Convolutional_Neural_Net(A_neural_network):
 
             # l2 = tf.add_n([tf.nn.l2_loss(param) for param in self.regularizables])
             # cost = cross_entropy + alpha_l2 * l2
-            
+
             cost = cross_entropy
 
             predictions = self.compute_predictions(out_logits)
@@ -582,14 +615,15 @@ class Convolutional_Neural_Net(A_neural_network):
 
                 if plot:
                     l2_w1_w2v, l2_w1_pos, l2_w1_ner, l2_w1_sent_nr, l2_w1_tense, l2_w2, \
-                    w2v_filters_sum, pos_filters_sum, ner_filters_sum, sent_nr_filters_sum, tense_filters_sum = \
+                    w2v_filters_sum, pos_filters_sum, ner_filters_sum, sent_nr_filters_sum, tense_filters_sum,\
+                        l2_w3 = \
                         self.compute_parameters_sum()
 
                     self.update_monitoring_lists(train_cost, train_xentropy, train_errors,
                                                  valid_cost, valid_xentropy, valid_errors,
                                                  l2_w1_w2v, l2_w1_pos, l2_w1_ner, l2_w1_sent_nr, l2_w1_tense, l2_w2,
                                                  w2v_filters_sum, pos_filters_sum, ner_filters_sum, sent_nr_filters_sum,
-                                                 tense_filters_sum,
+                                                 tense_filters_sum, l2_w3,
                                                  precision, recall, f1_score)
 
                 if valid_cost < early_stopping_min_validation_cost:
@@ -690,7 +724,8 @@ class Convolutional_Neural_Net(A_neural_network):
         This is to make some later plots.
         """
         output_filename = '_'.join(
-            [str(self.minibatch_size), 'lrtrain', str(self.learning_rate_train), 'lrtune', str(self.learning_rate_tune)])
+            [str(self.n_window), str(self.minibatch_size), 'lrtrain', str(self.learning_rate_train), 'lrtune',
+             str(self.learning_rate_tune), 'filters', 'None', 'regions', 'None'])
 
         cPickle.dump(self.valid_costs_list,
                      open(self.get_output_path('validation_cost_list-' + output_filename + '.p'), 'wb'))
@@ -743,14 +778,20 @@ class Convolutional_Neural_Net(A_neural_network):
 
         w2_sum = tf.reduce_sum(tf.square(self.w2)).eval()
 
+        if self.using_two_layers:
+            w3_sum = tf.reduce_sum(tf.square(self.w3)).eval()
+        else:
+            w3_sum = None
+
         return w1_w2v_sum, w1_pos_sum, w1_ner_sum, w1_sent_nr_sum, w1_tense_sum, w2_sum, \
-               w2v_filters_sum, pos_filters_sum, ner_filters_sum, sent_nr_filters_sum, tense_filters_sum
+               w2v_filters_sum, pos_filters_sum, ner_filters_sum, sent_nr_filters_sum, tense_filters_sum, w3_sum
 
     def update_monitoring_lists(self, train_cost, train_xentropy, train_errors,
                                 valid_cost, valid_xentropy, valid_errors,
                                 l2_w1_w2v, l2_w1_pos, l2_w1_ner, l2_w1_sent_nr, l2_w1_tense, l2_w2,
                                 w2v_filters_sum, pos_filters_sum, ner_filters_sum, sent_nr_filters_sum,
                                 tense_filters_sum,
+                                w3_sum,
                                 precision, recall, f1_score):
 
         # train stats
@@ -783,6 +824,8 @@ class Convolutional_Neural_Net(A_neural_network):
         self.recall_list.append(recall)
         self.f1_score_list.append(f1_score)
 
+        self.epoch_l2_w3_list.append(w3_sum)
+
         return
 
     def make_plots(self):
@@ -809,6 +852,9 @@ class Convolutional_Neural_Net(A_neural_network):
             'tense_c_mp_filters': self.epoch_l2_tense_filters_list,
             'w2': self.epoch_l2_w2_list
         }
+        if self.using_two_layers:
+            plot_data_dict['w3'] = self.epoch_l2_w3_list
+
         self.plot_penalties_general(plot_data_dict, actual_time=actual_time)
 
         self.plot_cross_entropies(self.train_cross_entropy_list, self.valid_cross_entropy_list, actual_time)
