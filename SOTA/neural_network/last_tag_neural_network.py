@@ -121,7 +121,7 @@ class Last_tag_neural_network_trainer(A_neural_network):
 
         return pred, out_activations, w_x, w_t
 
-    def forward_pass_scan_one_layer(self, weight_x, prev_rep, weight_t):
+    def forward_pass_scan_one_layer(self, weight_x, prev_rep):
         # prev_rep = weight_t[prev_pred, :]
         h = self.hidden_activation_f(T.concatenate([weight_x, prev_rep], axis=0) + self.params['b1'])
         result = self.out_activation_f(T.dot(h, self.params['w2']) + self.params['b2'])
@@ -129,7 +129,7 @@ class Last_tag_neural_network_trainer(A_neural_network):
 
         return [pred, result]
 
-    def forward_pass_scan_two_layers(self, weight_x, prev_rep, weight_t):
+    def forward_pass_scan_two_layers(self, weight_x, prev_rep):
         # prev_rep = weight_t[prev_pred, :]
         h1 = self.hidden_activation_f(T.concatenate([weight_x, prev_rep], axis=0) + self.params['b1'])
         h2 = self.hidden_activation_f(T.dot(h1, self.params['w2']) + self.params['b2'])
@@ -835,7 +835,7 @@ class Last_tag_neural_network_trainer(A_neural_network):
         [y_pred, out], _ = theano.scan(fn=self.forward_pass_function,
                                        sequences=[w_x, w_t],
                                        outputs_info=[None, None],
-                                       non_sequences=wt)
+                                       non_sequences=[])
 
         # TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
         mean_cross_entropy = T.mean(T.nnet.categorical_crossentropy(out[:, -1, :], y))
@@ -1176,7 +1176,7 @@ class Last_tag_neural_network_trainer(A_neural_network):
         [y_pred, out], _ = theano.scan(fn=self.forward_pass_function,
                                        sequences=[w_x, w_t],
                                        outputs_info=[None, None],
-                                       non_sequences=wt)
+                                       non_sequences=[])
 
         # TODO: not passing a 1-hot vector for y. I think its ok! Theano realizes it internally.
         mean_cross_entropy = T.mean(T.nnet.categorical_crossentropy(out[:, -1, :], y))
@@ -1292,7 +1292,7 @@ class Last_tag_neural_network_trainer(A_neural_network):
                                 #     initial_tag: np.int32(36) if INT == 'int32' else 36
                                 # })
 
-        [_, out_predict], _ = theano.scan(fn=self.forward_pass_predict,
+        [_, out_predict], _ = theano.scan(fn=self.forward_pass_predict_function,
                                        sequences=w_x,
                                        outputs_info=[initial_tag, None],
                                        non_sequences=[])
