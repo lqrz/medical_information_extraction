@@ -244,7 +244,10 @@ class Convolutional_Neural_Net(A_neural_network):
             print 'Trainable parameters: ' + ', '.join([param.name for param in tf.trainable_variables()])
             print 'Regularizable parameters: ' + ', '.join([param.name for param in self.regularizables])
 
-        print 'Hidden layer size: %d' % self.n_hidden
+        print '(1st) Hidden layer size: %d' % self.n_hidden
+        if self.using_two_layers:
+            print '(2nd) Hidden layer size: %d' % self.second_layer_n_hidden
+
         self._train_graph(minibatch_size, **kwargs)
 
     def initialize_parameters(self, static):
@@ -527,7 +530,7 @@ class Convolutional_Neural_Net(A_neural_network):
             # two layers
             h2 = tf.nn.xw_plus_b(h_dropout, self.w2, self.b2)
             h2_dropout = tf.nn.dropout(h2, keep_prob)
-            out_logits = tf.nn.xw_plus_b(h_dropout, self.w3, self.b3)
+            out_logits = tf.nn.xw_plus_b(h2_dropout, self.w3, self.b3)
         else:
             # one layer
             out_logits = tf.nn.xw_plus_b(h_dropout, self.w2, self.b2)
@@ -728,7 +731,7 @@ class Convolutional_Neural_Net(A_neural_network):
              str(self.learning_rate_tune), 'filters', 'None', 'regions', 'None'])
 
         cPickle.dump(self.valid_costs_list,
-                     open(self.get_output_path('validation_cost_list-' + output_filename + '.p'), 'wb'))
+                     open(self.get_output_path('valid_cost_list-' + output_filename + '.p'), 'wb'))
         cPickle.dump(self.valid_cross_entropy_list,
                      open(self.get_output_path('valid_cross_entropy_list-' + output_filename + '.p'), 'wb'))
         cPickle.dump(self.train_costs_list,
