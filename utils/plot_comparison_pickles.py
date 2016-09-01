@@ -7,13 +7,7 @@ sys.path.append(os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(
 import cPickle
 import pandas as pd
 from ggplot import *
-
-MAPPING={   'rnn_cell_type': {'name': 'Model', 'pos': 0},
-            'minibatch_size': {'name': 'Mini-batch size', 'pos': 1},
-            'learning_rate': {'name': 'Learning rate', 'pos': 2},
-            'direction': {'name': 'Direction', 'pos': 3},
-            'max_length': {'name': 'Grad clipping', 'pos': 4}
-}
+import numpy as np
 
 MODEL_MAPPING={
     'normal': 'RNN',
@@ -26,7 +20,7 @@ TITLE_MAPPING={
     'f1': 'validation F1 score'
 }
 
-def parse_name(name):
+def parse_name_rnn(name):
     params = name.split('-')[1].split('_')
     rnn_cell_type = params[0]
     minibatch_size = params[1]
@@ -35,6 +29,55 @@ def parse_name(name):
     max_length = params[4]
 
     return rnn_cell_type, minibatch_size, learning_rate, bidirectional, max_length
+
+def parse_name_last_tag(name):
+    params = name.split('-')[1].split('_')
+    window = params[0]
+    using_sentence_update = params[1]
+    using_token_update = params[2]
+    using_two_layers = params[3]
+    tag_dim = params[4]
+
+    return window, using_sentence_update, using_token_update, using_two_layers, tag_dim
+
+def parse_name_cnn(name):
+    params = name[name.find('-') + 1:].split('_')
+    window = params[0]
+    minibatch = params[1]
+    lr_train = params[3]
+    lr_tune = params[5]
+    filters = params[7]
+    regions = params[9].replace('.p', '')
+
+    return window, minibatch, lr_train, lr_tune, filters, regions
+
+
+def feature_mapping_rnn():
+    return {
+            'rnn_cell_type': {'name': 'Model', 'pos': 0},
+            'minibatch_size': {'name': 'Mini-batch size', 'pos': 1},
+            'learning_rate': {'name': 'Learning rate', 'pos': 2},
+            'direction': {'name': 'Direction', 'pos': 3},
+            'max_length': {'name': 'Grad clipping', 'pos': 4}
+            }
+
+def feature_mapping_last_tag():
+    return {
+            'window': {'name': 'Window size', 'pos': 0},
+            'sentence_update': {'name': 'Sentence updates', 'pos': 1},
+            'token_update': {'name': 'Token updates', 'pos': 2},
+            'two_layers': {'name': '2nd layer', 'pos': 3},
+            'tag_dim': {'name': 'Tag dim', 'pos': 4}
+            }
+
+def feature_mapping_cnn():
+    return {
+        'window': {'name': 'Window size', 'pos': 0},
+        'minibatch': {'name': 'Minibatch', 'pos': 1},
+        'lr': {'name': 'Learning rate', 'pos': [2, 3]},
+        'filters': {'name': 'Filters', 'pos': 4},
+        'regions': {'name': 'Region sizes', 'pos': 5}
+    }
 
 def plot(data_dict, output_filename, feat_name, title):
 
@@ -52,15 +95,22 @@ def plot(data_dict, output_filename, feat_name, title):
 def determine_output_path(nnet):
     if nnet == 'rnn':
         from trained_models import get_tf_rnn_path
-        return get_tf_rnn_path
+        return get_tf_rnn_path, parse_name_rnn, feature_mapping_rnn
     elif nnet == 'last_tag':
         from trained_models import get_last_tag_path
-        return get_last_tag_path
+        return get_last_tag_path, parse_name_last_tag, feature_mapping_last_tag
     elif nnet == 'cnn':
         from trained_models import get_tf_cnn_path
-        return get_tf_cnn_path
+        return get_tf_cnn_path, parse_name_cnn, feature_mapping_cnn
 
     return None
+
+def determine_feat_name(parse_name_fn, name, feat_pos):
+    try:
+        type = parse_name_fn(name)[0]
+        return MODEL_MAPPING[type] + ' ' + ' '.join(np.array(parse_name_fn(name))[feat_pos])
+    except KeyError:
+        return ' '.join(np.array(parse_name_fn(name))[feat_pos])
 
 if __name__ == '__main__':
 
@@ -70,10 +120,10 @@ if __name__ == '__main__':
             continue
         elif i == 1:
             nnet = arg
-            get_output_path = determine_output_path(arg)
+            get_output_path, parse_name_fn, feature_mapping_fn = determine_output_path(arg)
         elif i == 2:
-            feat_name = MAPPING[arg]['name']
-            feat_pos = MAPPING[arg]['pos']
+            feat_name = feature_mapping_fn()[arg]['name']
+            feat_pos = feature_mapping_fn()[arg]['pos']
         elif i == 3:
             plot_title = TITLE_MAPPING[arg]
         else:
@@ -83,8 +133,7 @@ if __name__ == '__main__':
 
     data_dict = dict()
     for name, values in params:
-        type = parse_name(name)[0]
-        feat_value = MODEL_MAPPING[type] + ' ' + parse_name(name)[feat_pos]
+        feat_value = determine_feat_name(parse_name_fn, name, feat_pos)
         data_dict[feat_value] = values
     data_dict['epoch'] = range(values.__len__())
 
