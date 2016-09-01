@@ -9,7 +9,6 @@ from collections import OrderedDict
 import time
 from itertools import chain
 
-from trained_models import get_cwnn_path
 from A_neural_network import A_neural_network
 from utils import utils
 from utils.metrics import Metrics
@@ -60,29 +59,44 @@ class Last_tag_neural_network_trainer(A_neural_network):
         else:
             # train with SGD
             if kwargs['update_per_sentence']:
+                # update at end of sentence
                 if kwargs['n_hidden']:
                     # two layers
                     logger.info('Training with SGD two layers at end of sentence')
+                    self.using_sentence_updates = True
+                    self.using_token_updates = False
+                    self.using_two_layers = True
                     self.forward_pass_function = self.forward_pass_scan_two_layers
                     self.forward_pass_predict_function = self.forward_pass_predict_two_layers
                     self.train_with_sgd_updates_at_end_of_sentence_two_layers(**kwargs)
                 else:
                     logger.info('Training with SGD one layer at end of sentence')
+                    self.using_sentence_updates = True
+                    self.using_token_updates = False
+                    self.using_two_layers = False
                     self.forward_pass_function = self.forward_pass_scan_one_layer
                     self.forward_pass_predict_function = self.forward_pass_predict_one_layer
                     self.train_with_sgd_updates_at_end_of_sentence_one_layer(**kwargs)
-            if kwargs['n_hidden']:
-                # two layers
-                logger.info('Training with SGD two layers at each token')
-                self.forward_pass_function = self.forward_pass_noscan_two_layers
-                self.forward_pass_predict_function = self.forward_pass_predict_two_layers
-                self.train_with_sgd_updates_at_each_token_two_layers(**kwargs)
             else:
-                # one layer
-                logger.info('Training with SGD one layer at each token')
-                self.forward_pass_function = self.forward_pass_noscan_one_layer
-                self.forward_pass_predict_function = self.forward_pass_predict_one_layer
-                self.train_with_sgd_updates_at_each_token_one_layer(**kwargs)
+                # update at each token
+                if kwargs['n_hidden']:
+                    # two layers
+                    logger.info('Training with SGD two layers at each token')
+                    self.using_sentence_updates = False
+                    self.using_token_updates = True
+                    self.using_two_layers = True
+                    self.forward_pass_function = self.forward_pass_noscan_two_layers
+                    self.forward_pass_predict_function = self.forward_pass_predict_two_layers
+                    self.train_with_sgd_updates_at_each_token_two_layers(**kwargs)
+                else:
+                    # one layer
+                    logger.info('Training with SGD one layer at each token')
+                    self.using_sentence_updates = False
+                    self.using_token_updates = True
+                    self.using_two_layers = False
+                    self.forward_pass_function = self.forward_pass_noscan_one_layer
+                    self.forward_pass_predict_function = self.forward_pass_predict_one_layer
+                    self.train_with_sgd_updates_at_each_token_one_layer(**kwargs)
 
         return True
 
@@ -439,6 +453,11 @@ class Last_tag_neural_network_trainer(A_neural_network):
         if save_params:
             self.save_params()
 
+        if self.pickle_lists:
+            self.logger.info('Pickling lists')
+            self.perform_pickle_lists(train_costs_list, train_cross_entropy_list, valid_costs_list,
+                                      valid_cross_entropy_list, f1_score_list)
+
         return True
 
     def train_with_sgd_updates_at_each_token_two_layers(self,
@@ -753,6 +772,11 @@ class Last_tag_neural_network_trainer(A_neural_network):
         if save_params:
             self.save_params()
 
+        if self.pickle_lists:
+            self.logger.info('Pickling lists')
+            self.perform_pickle_lists(train_costs_list, train_cross_entropy_list, valid_costs_list,
+                                      valid_cross_entropy_list, f1_score_list)
+
         return True
 
     # deprecated
@@ -925,7 +949,7 @@ class Last_tag_neural_network_trainer(A_neural_network):
                                 #     initial_tag: np.int32(36) if INT == 'int32' else 36
                                 # })
 
-        [_, out_predict], _ = theano.scan(fn=self.forward_pass_predict,
+        [_, out_predict], _ = theano.scan(fn=self.forward_pass_predict_function,
                                        sequences=w_x,
                                        outputs_info=[initial_tag, None],
                                        non_sequences=[])
@@ -1081,6 +1105,11 @@ class Last_tag_neural_network_trainer(A_neural_network):
 
         if save_params:
             self.save_params()
+
+        if self.pickle_lists:
+            self.logger.info('Pickling lists')
+            self.perform_pickle_lists(train_costs_list, train_cross_entropy_list, valid_costs_list,
+                                      valid_cross_entropy_list, f1_score_list)
 
         return True
 
@@ -1425,6 +1454,33 @@ class Last_tag_neural_network_trainer(A_neural_network):
 
         if save_params:
             self.save_params()
+
+        if self.pickle_lists:
+            self.logger.info('Pickling lists')
+            self.perform_pickle_lists(train_costs_list, train_cross_entropy_list, valid_costs_list,
+                                      valid_cross_entropy_list, f1_score_list)
+
+        return True
+
+    def perform_pickle_lists(self, train_costs_list, train_cross_entropy_list, valid_costs_list,
+                             valid_cross_entropy_list, f1_score_list):
+        """
+        This is to make some later plots.
+        """
+        output_filename = '_'.join(
+            [str(self.n_window), str(self.using_sentence_updates), str(self.using_token_updates),
+            str(self.using_two_layers), str(self.tag_dim)])
+
+        cPickle.dump(valid_costs_list,
+                     open(self.get_output_path('valid_cost_list-' + output_filename + '.p'), 'wb'))
+        cPickle.dump(valid_cross_entropy_list,
+                     open(self.get_output_path('valid_cross_entropy_list-' + output_filename + '.p'), 'wb'))
+        cPickle.dump(train_costs_list,
+                     open(self.get_output_path('train_cost_list-' + output_filename + '.p'), 'wb'))
+        cPickle.dump(train_cross_entropy_list,
+                     open(self.get_output_path('train_cross_entropy_list-' + output_filename + '.p'), 'wb'))
+        cPickle.dump(f1_score_list,
+                     open(self.get_output_path('valid_f1_score_list-' + output_filename + '.p'), 'wb'))
 
         return True
 
