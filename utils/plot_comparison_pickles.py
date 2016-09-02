@@ -35,10 +35,14 @@ def parse_name_last_tag(name):
     window = params[0]
     using_sentence_update = params[1]
     using_token_update = params[2]
-    using_two_layers = params[3]
-    tag_dim = params[4]
+    tag_dim = params[4].replace('.p', '')
 
-    return window, using_sentence_update, using_token_update, using_two_layers, tag_dim
+    try:
+        two_layers = params[3]
+    except IndexError:
+        two_layers = None
+
+    return window, using_sentence_update, using_token_update, two_layers, tag_dim
 
 def parse_name_cnn(name):
     params = name[name.find('-') + 1:].split('_')
@@ -47,9 +51,16 @@ def parse_name_cnn(name):
     lr_train = params[3]
     lr_tune = params[5]
     filters = params[7]
-    regions = params[9].replace('.p', '')
 
-    return window, minibatch, lr_train, lr_tune, filters, regions
+    regions = None
+    second_layer = None
+    try:
+        regions = params[9]
+        second_layer = params[10].replace('.p', '')
+    except IndexError:
+        regions = params[9].replace('.p', '')
+
+    return window, minibatch, lr_train, lr_tune, filters, regions, second_layer
 
 
 def feature_mapping_rnn():
@@ -76,7 +87,8 @@ def feature_mapping_cnn():
         'minibatch': {'name': 'Minibatch', 'pos': 1},
         'lr': {'name': 'Learning rate', 'pos': [2, 3]},
         'filters': {'name': 'Filters', 'pos': 4},
-        'regions': {'name': 'Region sizes', 'pos': 5}
+        'regions': {'name': 'Region sizes', 'pos': 5},
+        'two_layers': {'name': '2nd layer', 'pos': 6}
     }
 
 def plot(data_dict, output_filename, feat_name, title):
