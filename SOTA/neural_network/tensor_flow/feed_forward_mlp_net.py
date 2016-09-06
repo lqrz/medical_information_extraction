@@ -36,6 +36,8 @@ class Neural_Net(A_neural_network):
         super(Neural_Net, self).__init__(**kwargs)
 
         self.graph = tf.Graph()
+        with self.graph.as_default():
+            tf.set_random_seed(1234)
 
         self.log_reg = log_reg
         self.n_hidden = n_hidden
@@ -234,7 +236,6 @@ class Neural_Net(A_neural_network):
                     **kwargs):
 
         with self.graph.as_default():
-            tf.set_random_seed(1234)
 
             # Input data
             idxs = tf.placeholder(tf.int32, name='idxs')

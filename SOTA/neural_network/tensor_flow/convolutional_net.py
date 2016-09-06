@@ -8,6 +8,8 @@ import tensorflow as tf
 import numpy as np
 import cPickle
 
+# np.random.seed(1234)
+
 class Convolutional_Neural_Net(A_neural_network):
 
     def __init__(self, pos_embeddings, ner_embeddings, sent_nr_embeddings, tense_embeddings, cnn_features,
@@ -22,6 +24,8 @@ class Convolutional_Neural_Net(A_neural_network):
         super(Convolutional_Neural_Net, self).__init__(**kwargs)
 
         self.graph = tf.Graph()
+        with self.graph.as_default():
+            tf.set_random_seed(1234)
 
         self.second_layer_n_hidden = n_hidden
         self.using_two_layers = self.second_layer_n_hidden > 0
@@ -552,7 +556,6 @@ class Convolutional_Neural_Net(A_neural_network):
         self.minibatch_size = minibatch_size
 
         with self.graph.as_default():
-            tf.set_random_seed(1234)
 
             # tf.trainable_variables()
 
