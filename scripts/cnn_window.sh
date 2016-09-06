@@ -8,6 +8,12 @@
 #	stdbuf -oL sudo python SOTA/neural_network/train_neural_network.py --net tf_cnn --window "$i" --epochs 20 --plot --lrtrain 0.01 --lrtune 0.01 --minibatch 256 --configini cnn_w2v_c_m.cfg --picklelists --logger window_"$i".log
 #done
 
+declare minibatch=32
+
+#declare i=1
+#declare i=3
+#declare i=5
 declare i=7
-sudo python SOTA/neural_network/train_neural_network.py --net tf_cnn --window "$i" --epochs 20 --plot --lrtrain 0.01 --lrtune 0.01 --minibatch 256 --configini cnn_w2v_c_m.cfg --earlystop 2 --logger earlystop_window_"$i".log
-sudo python SOTA/neural_network/train_neural_network.py --net tf_cnn --window "$i" --epochs 20 --plot --lrtrain 0.01 --lrtune 0.01 --minibatch 256 --configini cnn_w2v_c_m.cfg --picklelists --logger window_"$i".log
+
+sudo python SOTA/neural_network/train_neural_network.py --net tf_cnn --window "$i" --epochs 20 --plot --lrtrain 0.01 --lrtune 0.01 --minibatch "$minibatch" --configini cnn_w2v_c_m.cfg --earlystop 2 --logger earlystop_window_"$i".log
+sudo python SOTA/neural_network/train_neural_network.py --net tf_cnn --window "$i" --epochs 20 --plot --lrtrain 0.01 --lrtune 0.01 --minibatch "$minibatch" --configini cnn_w2v_c_m.cfg --picklelists --logger window_"$i".log
