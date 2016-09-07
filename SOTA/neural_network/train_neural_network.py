@@ -105,7 +105,7 @@ def parse_arguments():
     parser.add_argument('--negativesampling', action='store_true', default=False)
     parser.add_argument('--lrtrain', action='store', type=float, default=.1)
     parser.add_argument('--lrtune', action='store', type=float, default=.001)
-    parser.add_argument('--lrdecay', action='store_true', default=False)
+    parser.add_argument('--lrdecay', action='store', default=False, type=int)
     parser.add_argument('--hidden', action='store', type=int, default=False)
     parser.add_argument('--logreg', action='store_true', default=False) #tensorflow. use logistic regression architecture.
 
