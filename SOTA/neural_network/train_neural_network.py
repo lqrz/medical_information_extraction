@@ -824,6 +824,13 @@ def use_testing_dataset(nn_class,
 
     return results, index2label
 
+def load_glove_cache(representations_filename):
+    from data import load_glove_representations
+    representations = load_glove_representations(representations_filename)
+    dims = representations.values()[0].__len__()
+
+    return representations, dims
+
 def initialize_w2v_embeddings(w2v_dims, w2v_model, w2v_vectors, config_embeddings, unique_words):
     if config_embeddings:
         source = config_embeddings['w2v_embeddings']['source']
@@ -831,11 +838,20 @@ def initialize_w2v_embeddings(w2v_dims, w2v_model, w2v_vectors, config_embedding
         if source == 'random':
             n_unique_words = len(unique_words)
             pretrained_embeddings = utils.NeuralNetwork.initialize_weights(n_unique_words, dim, function='tanh')
-        else:
+        elif source.startswith('googlenews'):
             logger.info('Initializing w2v embeddings: cache')
             w2v_vectors, w2v_model, w2v_dims = load_w2v_model_and_vectors_cache({'w2v_vectors_cache': source})
             pretrained_embeddings = nn_class.initialize_w(dim, unique_words, w2v_vectors=w2v_vectors,
                                                           w2v_model=w2v_model)
+        elif source.startswith('glove'):
+            glove_vectors, glove_dims = load_glove_cache(source)
+            pretrained_embeddings = nn_class.initialize_w(dim, unique_words, w2v_vectors=glove_vectors,
+                                                          w2v_model=None)
+        elif source == 'probabilistic':
+            from utils.features_distributions import training_word_tag_distribution
+            representations, dim = training_word_tag_distribution()
+            pretrained_embeddings = nn_class.initialize_w(dim, unique_words, w2v_vectors=representations,
+                                                          w2v_model=None)
     else:
         pretrained_embeddings = nn_class.initialize_w(w2v_dims, unique_words, w2v_vectors=w2v_vectors,
                                                       w2v_model=w2v_model)
