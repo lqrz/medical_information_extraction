@@ -271,6 +271,33 @@ def training_tag_ner_distribution():
 
     return distribution
 
+
+def training_word_tag_distribution():
+    distribution = dict()
+
+    training_data, _, training_words, training_tags = Dataset.get_clef_training_dataset()
+
+    tags = list(chain(*chain(*training_tags.values())))
+
+    label2index = dict(zip(set(tags), range(set(tags).__len__())))
+
+    tokens = list(chain(*chain(*training_words.values())))
+
+    unique_tokens = set(tokens)
+
+    counts = Counter(zip(tokens, tags))
+    word_type_count = Counter(tokens)
+
+    for word_type in unique_tokens:
+        representation = [0.] * label2index.__len__()
+        total = float(word_type_count[word_type])
+        for ix, value in [(label2index[t],v/total) for (w, t), v in counts.iteritems() if w == word_type]:
+            representation[ix] = value
+
+        distribution[word_type] = representation
+
+    return distribution
+
 if __name__ == '__main__':
     # training_tag_tenses_distribution()
     # training_word_tenses_distribution()
@@ -278,4 +305,5 @@ if __name__ == '__main__':
     # training_word_pos_distribution()
     # training_tag_pos_distribution()
     # training_word_ner_distribution()
-    training_word_section_representations(n_sections=6)
+    # training_word_section_representations(n_sections=6)
+    training_word_tag_distribution()
