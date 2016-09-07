@@ -82,5 +82,5 @@ def get_glove_pretrained_vectors_filepath():
 def get_glove_path(file_name):
     return pkg_resources.resource_filename('data', 'glove/%s' % file_name)
 
-def load_glove_representations():
-    return cPickle.load(open(get_glove_path('glove_representations.p'), 'rb'))
+def load_glove_representations(file_name):
+    return cPickle.load(open(get_glove_path(file_name), 'rb'))
