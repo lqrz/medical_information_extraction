@@ -14,13 +14,13 @@ import pandas as pd
 import cPickle
 
 from data.dataset import Dataset
-from trained_models import get_cwnn_path
+from trained_models import get_tf_cwnn_path
 from ggplot_lqrz import ggplot_lqrz
 
 
 def get_data():
     training_data, _, document_sentence_words, document_sentence_tags = \
-        Dataset.get_clef_training_dataset(lowercase=False)
+        Dataset.get_clef_training_dataset(lowercase=True)
 
     return training_data, document_sentence_words, document_sentence_tags
 
@@ -36,25 +36,25 @@ def get_words_per_tag(training_data):
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Test dataset analyser.')
-    parser.add_argument('--w2vvectorscache', action='store', type=str)
+    # parser.add_argument('--w2vvectorscache', action='store', type=str)
     parser.add_argument('--pca', action='store_true', default=False)
     parser.add_argument('--resize', action='store_true', default=False)
-    parser.add_argument('--model', action='store', choices=['hidden_cw'], required=True)
+    parser.add_argument('--model', action='store', choices=['mlp'], required=True)
 
     arguments = parser.parse_args()
 
     args = dict()
-    args['w2v_vectors_cache'] = arguments.w2vvectorscache
+    # args['w2v_vectors_cache'] = arguments.w2vvectorscache
     args['plot_pca'] = arguments.pca
     args['resize'] = arguments.resize
     args['model'] = arguments.model
 
     return args
 
-def check_arguments(args):
-    if args['plot_pca'] and not args['w2v_vectors_cache']:
-        print 'Provide w2v vectors for PCA plotting.'
-        exit()
+# def check_arguments(args):
+#     if args['plot_pca'] and not args['w2v_vectors_cache']:
+#         print 'Provide w2v vectors for PCA plotting.'
+#         exit()
 
 def get_vector_matrix(words_per_tag, word2index, original_embeddings):
 
@@ -68,6 +68,7 @@ def get_vector_matrix(words_per_tag, word2index, original_embeddings):
             rep = original_embeddings[word2index[word]]
             if word in processed_words:
                 representations[word]['count'] += 1
+                representations[word]['tag'] = "overlapped"
                 # if (word,tag) not in repeated:
                     # repeated.append((word,tag))
             else:
@@ -158,9 +159,12 @@ def plot_pca(reps, tags, counts, dimensions, get_output_path, resize=False, titl
                     str(df)
                     p <- ggplot(df, aes(x=x, y=y, colour=tag)) +
                     geom_point() +
+                    scale_colour_manual(values =
+                        c("overlapped"="black")
+                        ) +
                     labs(x='1st-component', y='2nd-component', title='PCA') +
-                    xlim(-5,5) +
-                    ylim(-5,5)
+                    xlim(-1,1) +
+                    ylim(-1,1)
 
                     print(p)
 
@@ -189,8 +193,8 @@ def plot_pca(reps, tags, counts, dimensions, get_output_path, resize=False, titl
 def determine_output_path(args):
     get_output_path = None
 
-    if args['model'] == 'hidden_cw':
-        get_output_path = get_cwnn_path
+    if args['model'] == 'mlp':
+        get_output_path = get_tf_cwnn_path
 
     return get_output_path
 
