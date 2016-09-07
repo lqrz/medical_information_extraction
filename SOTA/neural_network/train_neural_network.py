@@ -793,7 +793,7 @@ def use_testing_dataset(nn_class,
     cPickle.dump(pretrained_embeddings, open(get_output_path('original_vectors.p'), 'wb'))
     try:
         # the CNN might not use this feature, and thus, not have a W1 weight
-        cPickle.dump(nn_trainer.params['w1'].get_value(), open(get_output_path('trained_vectors.p'), 'wb'))
+        cPickle.dump(nn_trainer.get_trained_word_embeddings(), open(get_output_path('trained_vectors.p'), 'wb'))
     except (KeyError, AttributeError):
         pass
     cPickle.dump(word2index, open(get_output_path('word2index.p'), 'wb'))
@@ -852,6 +852,8 @@ def initialize_w2v_embeddings(w2v_dims, w2v_model, w2v_vectors, config_embedding
             representations, dim = training_word_tag_distribution()
             pretrained_embeddings = nn_class.initialize_w(dim, unique_words, w2v_vectors=representations,
                                                           w2v_model=None)
+        else:
+            raise NotImplementedError
     else:
         pretrained_embeddings = nn_class.initialize_w(w2v_dims, unique_words, w2v_vectors=w2v_vectors,
                                                       w2v_model=w2v_model)
