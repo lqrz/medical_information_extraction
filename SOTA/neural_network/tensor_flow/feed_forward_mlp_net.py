@@ -328,6 +328,8 @@ class Neural_Net(A_neural_network):
             early_stopping_min_iteration = None
             model_update = None
 
+            # last_valid_cost = np.inf
+
             for epoch_ix in range(max_epochs):
                 start = time.time()
 
