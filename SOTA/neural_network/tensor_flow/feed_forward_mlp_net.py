@@ -624,6 +624,14 @@ class Neural_Net(A_neural_network):
 
         return output_logits
 
+    def get_trained_word_embeddings(self):
+
+        with tf.Session(graph=self.graph) as session:
+            self.saver.restore(session, self.get_output_path('params.model'))
+            word_embeddings = session.run(self.w1)
+
+        return word_embeddings
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Neural net trainer')
 
