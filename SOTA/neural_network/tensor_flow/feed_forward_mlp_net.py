@@ -15,6 +15,7 @@ import time
 import tensorflow as tf
 import numpy as np
 import argparse
+import cPickle
 
 def get_dataset(n_window, add_words=[], add_tags=[], feat_positions=[], add_feats=[]):
     x_train, y_train, x_train_feats, \
@@ -93,27 +94,27 @@ class Neural_Net(A_neural_network):
             minibatch_size = batch_size
 
         if self.log_reg:
-            print 'Using logistic regression architecture window: %d batch_size: %d learning_rate_train: %f learning_rate_tune: %f' % \
-                  (self.n_window, minibatch_size, kwargs['learning_rate_train'], kwargs['learning_rate_tune'])
+            self.logger.info('Using logistic regression architecture window: %d batch_size: %d learning_rate_train: %f learning_rate_tune: %f' % \
+                  (self.n_window, minibatch_size, kwargs['learning_rate_train'], kwargs['learning_rate_tune']))
             self.forward_function = self.forward_no_hidden_layer
             self.hidden_activations = None
         elif self.n_hidden > 0:
-            print 'Using two hidden layer MLP architecture with window: %d hidden_layer: %d batch_size: %d learning_rate_train: %f learning_rate_tune: %f' % (
-            self.n_window, self.n_hidden, minibatch_size, kwargs['learning_rate_train'], kwargs['learning_rate_tune'])
+            self.logger.info('Using two hidden layer MLP architecture with window: %d hidden_layer: %d batch_size: %d learning_rate_train: %f learning_rate_tune: %f' % (
+            self.n_window, self.n_hidden, minibatch_size, kwargs['learning_rate_train'], kwargs['learning_rate_tune']))
             self.forward_function = self.forward_two_hidden_layer
             self.hidden_activations = self.hidden_activations_two_hidden_layer
         else:
-            print 'Using one hidden layer MLP architecture with window: %d batch_size: %d learning_rate_train: %f learning_rate_tune: %f' % (
-            self.n_window, minibatch_size, kwargs['learning_rate_train'], kwargs['learning_rate_tune'])
+            self.logger.info('Using one hidden layer MLP architecture with window: %d batch_size: %d learning_rate_train: %f learning_rate_tune: %f' % (
+            self.n_window, minibatch_size, kwargs['learning_rate_train'], kwargs['learning_rate_tune']))
             self.forward_function = self.forward_one_hidden_layer
             self.hidden_activations = self.hidden_activations_one_hidden_layer
 
         with self.graph.as_default():
-            print 'Trainable parameters: ' + ', '.join([param.name for param in tf.trainable_variables()])
-            print 'Regularizable parameters: ' + ', '.join([param.name for param in self.regularizables])
+            self.logger.info('Trainable parameters: ' + ', '.join([param.name for param in tf.trainable_variables()]))
+            self.logger.info('Regularizable parameters: ' + ', '.join([param.name for param in self.regularizables]))
 
         if alpha_na is not None:
-            print 'Loss function: decreasing na_prob with alpha %f' % alpha_na
+            self.logger.info('Loss function: decreasing na_prob with alpha %f' % alpha_na)
 
         self.train_graph(minibatch_size, alpha_na=alpha_na, **kwargs)
 
@@ -179,26 +180,36 @@ class Neural_Net(A_neural_network):
 
         return out
 
-    def hidden_activations_one_hidden_layer(self, w1_x_r):
-        return tf.tanh(tf.nn.bias_add(w1_x_r, self.b1))
+    def hidden_activations_one_hidden_layer(self, w1_x_r, keep_prob):
+        h = tf.tanh(tf.nn.bias_add(w1_x_r, self.b1))
 
-    def forward_one_hidden_layer(self, w1_x_r):
+        h_dropout = tf.nn.dropout(h, keep_prob)
+
+        return h_dropout
+
+    def forward_one_hidden_layer(self, w1_x_r, keep_prob):
         # forward pass
-        h = self.hidden_activations(w1_x_r)
+        h = self.hidden_activations(w1_x_r, keep_prob)
         out = tf.matmul(h, self.w2) + self.b2
 
         return out
 
-    def hidden_activations_two_hidden_layer(self, w1_x_r):
+    def hidden_activations_two_hidden_layer(self, w1_x_r, keep_prob):
         h1 = tf.tanh(tf.nn.bias_add(w1_x_r, self.b1))
-        a2 = tf.matmul(h1, self.w2)
+
+        h1_dropout = tf.nn.dropout(h1, keep_prob)
+
+        a2 = tf.matmul(h1_dropout, self.w2)
         h2 = tf.tanh(tf.nn.bias_add(a2, self.b2))
 
         return h2
 
-    def forward_two_hidden_layer(self, w1_x_r):
-        h2 = self.hidden_activations(w1_x_r)
-        a3 = tf.matmul(h2, self.w3)
+    def forward_two_hidden_layer(self, w1_x_r, keep_prob):
+        h2 = self.hidden_activations(w1_x_r, keep_prob)
+
+        h2_dropout = tf.nn.dropout(h2, keep_prob)
+
+        a3 = tf.matmul(h2_dropout, self.w3)
         out = tf.nn.bias_add(a3, self.b3)
 
         return out
@@ -209,10 +220,10 @@ class Neural_Net(A_neural_network):
 
         return w1_x_r
 
-    def compute_output_layer_logits(self, idxs):
+    def compute_output_layer_logits(self, idxs, keep_prob):
         # embedding lookup
         w1_x_r = self.lookup_and_reshape(idxs)
-        out = self.forward_function(w1_x_r)
+        out = self.forward_function(w1_x_r, keep_prob)
 
         return out
 
@@ -231,31 +242,38 @@ class Neural_Net(A_neural_network):
     def train_graph(self, minibatch_size, max_epochs,
                     learning_rate_train, learning_rate_tune, lr_decay,
                     plot,
-                    alpha_l2=0.001,
                     alpha_na=None,
                     **kwargs):
+
+        self.learning_rate_train = learning_rate_train
+        self.learning_rate_tune = learning_rate_tune
+        self.minibatch_size = minibatch_size
+        self.lr_decay = lr_decay
 
         with self.graph.as_default():
 
             # Input data
             idxs = tf.placeholder(tf.int32, name='idxs')
             labels = tf.placeholder(tf.int32, name='labels')
+            keep_prob = tf.placeholder(tf.float32, name="dropout_keep_prob")
 
             na_label = tf.placeholder(tf.int32, name='na_label')
 
-            out_logits = self.compute_output_layer_logits(idxs)
+            out_logits = self.compute_output_layer_logits(idxs, keep_prob)
 
             # note: tf.log computes the natural logarithm
             cross_entropy = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(out_logits, labels))
 
             # l2 regularization
-            l2_regularizers = tf.add_n([tf.nn.l2_loss(param) for param in self.regularizables])
+            # l2_regularizers = tf.add_n([tf.nn.l2_loss(param) for param in self.regularizables])
 
             if alpha_na is not None:
                 na_prob = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(out_logits, na_label))
-                cost = tf.reduce_sum(cross_entropy + alpha_l2 * l2_regularizers + alpha_na * na_prob)
+                # cost = tf.reduce_sum(cross_entropy + alpha_l2 * l2_regularizers + alpha_na * na_prob)
+                cost = tf.reduce_sum(cross_entropy + alpha_na * na_prob)
             else:
-                cost = tf.reduce_sum(cross_entropy + alpha_l2 * l2_regularizers)
+                # cost = tf.reduce_sum(cross_entropy + alpha_l2 * l2_regularizers)
+                cost = tf.reduce_sum(cross_entropy)
 
             # they both do the same: split the learning rate. But the 2nd one is slightly more performant
 
@@ -273,10 +291,10 @@ class Neural_Net(A_neural_network):
             if lr_decay:
                 starter_learning_rate_train = learning_rate_train
                 lr_train = tf.train.exponential_decay(starter_learning_rate_train, global_step,
-                                                                 1, 0.96, staircase=True)
+                                                      lr_decay, 0.96, staircase=True)
                 starter_learning_rate_tune = learning_rate_tune
                 lr_tune = tf.train.exponential_decay(starter_learning_rate_tune, global_step,
-                                                                 1, 0.96, staircase=True)
+                                                     lr_decay, 0.96, staircase=True)
             else:
                 lr_train = tf.Variable(learning_rate_train)
                 lr_tune = tf.Variable(learning_rate_tune)
@@ -305,10 +323,20 @@ class Neural_Net(A_neural_network):
 
             n_batches = np.int(np.ceil(self.x_train.shape[0] / float(minibatch_size)))
 
-            # last_valid_cost = np.inf
+            early_stopping_cnt_since_last_update = 0
+            early_stopping_min_validation_cost = np.inf
+            early_stopping_min_iteration = None
+            model_update = None
 
             for epoch_ix in range(max_epochs):
                 start = time.time()
+
+                if self.early_stopping_threshold is not None:
+                    if early_stopping_cnt_since_last_update >= self.early_stopping_threshold:
+                        assert early_stopping_min_iteration is not None
+                        self.logger.info('Training early stopped at iteration %d' % early_stopping_min_iteration)
+                        break
+
                 train_cost = 0
                 train_xentropy = 0
                 train_errors = 0
@@ -319,11 +347,13 @@ class Neural_Net(A_neural_network):
 
                     if alpha_na is not None:
                         na_sample = [self.na_tag] * x_sample.shape[0]
-                        feed_dict_train = {idxs: x_sample, labels: y_sample, na_label: na_sample}
-                        feed_dict_valid = {idxs: self.x_valid, labels: self.y_valid, na_label: [self.na_tag]*self.x_valid.shape[0]}
+                        feed_dict_train = {idxs: x_sample, labels: y_sample, na_label: na_sample, keep_prob: .5}
+                        feed_dict_valid = {idxs: self.x_valid, labels: self.y_valid,
+                                           na_label: [self.na_tag]*self.x_valid.shape[0],
+                                           keep_prob: 1.}
                     else:
-                        feed_dict_train = {idxs: x_sample, labels: y_sample}
-                        feed_dict_valid = {idxs: self.x_valid, labels: self.y_valid}
+                        feed_dict_train = {idxs: x_sample, labels: y_sample, keep_prob: .5}
+                        feed_dict_valid = {idxs: self.x_valid, labels: self.y_valid, keep_prob: 1.}
 
                     _, cost_val, xentropy, pred, errors = session.run(
                         [optimizer, cost, cross_entropy, predictions, n_errors], feed_dict=feed_dict_train)
@@ -333,8 +363,8 @@ class Neural_Net(A_neural_network):
 
                 session.run(global_step_assign_op)
                 # print('Global step: %d' % session.run(global_step))
-                print('Lr_train: %f' % session.run(lr_train))
-                print('Lr_tune: %f' % session.run(lr_tune))
+                self.logger.info('Lr_train: %f' % session.run(lr_train))
+                self.logger.info('Lr_tune: %f' % session.run(lr_tune))
 
                 # session.run([out, y_valid, cross_entropy, tf.reduce_sum(cross_entropy)], feed_dict=feed_dict)
                 valid_cost, valid_xentropy, pred, valid_errors = session.run(
@@ -357,16 +387,56 @@ class Neural_Net(A_neural_network):
                                                  epoch_l2_w1, epoch_l2_w2, epoch_l2_w3,
                                                  precision, recall, f1_score)
 
-                print 'epoch: %d train_cost: %f train_errors: %d valid_cost: %f valid_errors: %d F1: %f took: %f' \
+                if valid_cost < early_stopping_min_validation_cost:
+                    self.saver = tf.train.Saver(tf.all_variables())
+                    self.saver.save(session, self.get_output_path('params.model'), write_meta_graph=True)
+                    early_stopping_min_iteration = epoch_ix
+                    early_stopping_min_validation_cost = valid_cost
+                    early_stopping_cnt_since_last_update = 0
+                    model_update = True
+                else:
+                    early_stopping_cnt_since_last_update += 1
+                    model_update = False
+
+                assert model_update is not None
+
+                self.logger.info('epoch: %d train_cost: %f train_errors: %d valid_cost: %f valid_errors: %d F1: %f upd: %s took: %f' \
                       % (
-                      epoch_ix, train_cost, train_errors, valid_cost, valid_errors, f1_score, time.time() - start)
+                      epoch_ix, train_cost, train_errors, valid_cost, valid_errors, f1_score, model_update, time.time() - start))
 
             self.saver = tf.train.Saver(self.training_params + self.fine_tuning_params)
             self.saver.save(session, self.get_output_path('params.model'))
 
         if plot:
-            print 'Making plots'
+            self.logger.info('Making plots')
             self.make_plots()
+
+        if self.pickle_lists:
+            self.logger.info('Pickling lists')
+            self.perform_pickle_lists()
+
+        return True
+
+    def perform_pickle_lists(self):
+        """
+        This is to make some later plots.
+        """
+        output_filename = '_'.join(
+            [str(self.n_window), str(self.minibatch_size), 'lrtrain', str(self.learning_rate_train), 'lrtune',
+             str(self.learning_rate_tune), str(self.n_hidden), str(self.lr_decay)])
+
+        cPickle.dump(self.valid_costs_list,
+                     open(self.get_output_path('valid_cost_list-' + output_filename + '.p'), 'wb'))
+        cPickle.dump(self.valid_cross_entropy_list,
+                     open(self.get_output_path('valid_cross_entropy_list-' + output_filename + '.p'), 'wb'))
+        cPickle.dump(self.train_costs_list,
+                     open(self.get_output_path('train_cost_list-' + output_filename + '.p'), 'wb'))
+        cPickle.dump(self.train_cross_entropy_list,
+                     open(self.get_output_path('train_cross_entropy_list-' + output_filename + '.p'), 'wb'))
+        cPickle.dump(self.f1_score_list,
+                     open(self.get_output_path('valid_f1_score_list-' + output_filename + '.p'), 'wb'))
+
+        return True
 
     def predict(self, on_training_set=False, on_validation_set=False, on_testing_set=False, **kwargs):
 
@@ -390,7 +460,9 @@ class Neural_Net(A_neural_network):
             # idxs = tf.placeholder(tf.int32)
             # out_logits = self.compute_output_layer_logits(idxs)
             idxs = self.graph.get_tensor_by_name(name='idxs:0')
-            out_logits = self.compute_output_layer_logits(idxs)
+            keep_prob = self.graph.get_tensor_by_name(name='dropout_keep_prob:0')
+
+            out_logits = self.compute_output_layer_logits(idxs, keep_prob)
 
             predictions = self.compute_predictions(out_logits)
 
@@ -401,7 +473,7 @@ class Neural_Net(A_neural_network):
 
             self.saver.restore(session, self.get_output_path('params.model'))
 
-            feed_dict = {idxs: x_test}
+            feed_dict = {idxs: x_test, keep_prob: 1.}
             pred = session.run(predictions, feed_dict=feed_dict)
 
         results['flat_trues'] = y_test
@@ -507,15 +579,17 @@ class Neural_Net(A_neural_network):
 
         with self.graph.as_default():
             idxs = self.graph.get_tensor_by_name(name='idxs:0')
+            keep_prob = self.graph.get_tensor_by_name(name='dropout_keep_prob:0')
+
             w1_x_r = self.lookup_and_reshape(idxs)
-            h = self.hidden_activations(w1_x_r)
+            h = self.hidden_activations(w1_x_r, keep_prob)
 
         with tf.Session(graph=self.graph) as session:
             # init.run()
 
             self.saver.restore(session, self.get_output_path('params.model'))
 
-            feed_dict = {idxs: x_test}
+            feed_dict = {idxs: x_test, keep_prob: 1.}
             hidden_activations = session.run(h, feed_dict=feed_dict)
 
         return hidden_activations
@@ -535,14 +609,15 @@ class Neural_Net(A_neural_network):
 
         with self.graph.as_default():
             idxs = self.graph.get_tensor_by_name(name='idxs:0')
-            out_logits = self.compute_output_layer_logits(idxs)
+            keep_prob = self.graph.get_tensor_by_name(name='dropout_keep_prob:0')
+            out_logits = self.compute_output_layer_logits(idxs, keep_prob)
 
         with tf.Session(graph=self.graph) as session:
             # init.run()
 
             self.saver.restore(session, self.get_output_path('params.model'))
 
-            feed_dict = {idxs: x_test}
+            feed_dict = {idxs: x_test, keep_prob: 1.}
             output_logits = session.run(out_logits, feed_dict=feed_dict)
 
         return output_logits
