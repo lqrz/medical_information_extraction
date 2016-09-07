@@ -75,3 +75,12 @@ def get_testing_classification_report_labels():
 
 def get_all_classification_report_labels():
     return cPickle.load(open(pkg_resources.resource_filename('data', 'params/classification_report/all_labels_order.p'),'rb'))
+
+def get_glove_pretrained_vectors_filepath():
+    return pkg_resources.resource_filename('data', 'glove/glove.6B.300d.txt')
+
+def get_glove_path(file_name):
+    return pkg_resources.resource_filename('data', 'glove/%s' % file_name)
+
+def load_glove_representations():
+    return cPickle.load(open(get_glove_path('glove_representations.p'), 'rb'))
