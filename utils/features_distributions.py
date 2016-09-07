@@ -296,7 +296,8 @@ def training_word_tag_distribution():
 
         distribution[word_type] = representation
 
-    return distribution
+    # return the distribution and the dimensionality
+    return distribution, label2index.__len__()
 
 if __name__ == '__main__':
     # training_tag_tenses_distribution()
