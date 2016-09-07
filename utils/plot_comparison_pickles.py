@@ -20,6 +20,17 @@ TITLE_MAPPING={
     'f1': 'validation F1 score'
 }
 
+def parse_name_mlp(name):
+    params = name.split('-')[1].split('_')
+    window = params[0]
+    minibatch = params[1]
+    lr_train = params[3]
+    lr_tune = params[5]
+    two_layers = params[6]
+    lr_decay = params[7]
+
+    return window, minibatch, lr_train, lr_tune, two_layers, lr_decay
+
 def parse_name_rnn(name):
     params = name.split('-')[1].split('_')
     rnn_cell_type = params[0]
@@ -62,6 +73,15 @@ def parse_name_cnn(name):
 
     return window, minibatch, lr_train, lr_tune, filters, regions, second_layer
 
+
+def feature_mapping_mlp():
+    return {
+            'window': {'name': 'Window', 'pos': 0},
+            'minibatch': {'name': 'Mini-batch size', 'pos': 1},
+            'lr': {'name': 'Learning rate', 'pos': [2, 3]},
+            'two_layers': {'name': '2nd layer', 'pos': 4},
+            'lr_decay': {'name': 'Learning rate decay', 'pos': 5}
+            }
 
 def feature_mapping_rnn():
     return {
@@ -114,6 +134,9 @@ def determine_output_path(nnet):
     elif nnet == 'cnn':
         from trained_models import get_tf_cnn_path
         return get_tf_cnn_path, parse_name_cnn, feature_mapping_cnn
+    elif nnet == 'mlp':
+        from trained_models import get_tf_cwnn_path
+        return get_tf_cwnn_path, parse_name_mlp, feature_mapping_mlp
 
     return None
 
