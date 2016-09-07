@@ -27,7 +27,7 @@ def parse_name_mlp(name):
     lr_train = params[3]
     lr_tune = params[5]
     two_layers = params[6]
-    lr_decay = params[7]
+    lr_decay = params[7].replace('.p', '')
 
     return window, minibatch, lr_train, lr_tune, two_layers, lr_decay
 
