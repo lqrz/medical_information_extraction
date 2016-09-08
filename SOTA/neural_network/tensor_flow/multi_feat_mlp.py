@@ -792,3 +792,7 @@ class Multi_feat_Neural_Net(A_neural_network):
             hidden_activations = session.run(h, feed_dict=feed_dict)
 
         return hidden_activations
+
+
+    def get_output_logits(self, on_training_set, on_validation_set, on_testing_set, **kwargs):
+        return []
