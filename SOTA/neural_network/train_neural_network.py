@@ -656,8 +656,9 @@ def use_testing_dataset(nn_class,
                                                                    index2label)
 
     if treat_oovs:
-        logger.info('Replacing OOVs in validation set')
+        logger.info('Replacing OOVs in validation and testing set')
         x_valid, index2word, word2index = NeuralNetwork.replace_oovs(x_valid, index2word, word2index, n_window)
+        x_test, index2word, word2index = NeuralNetwork.replace_oovs(x_test, index2word, word2index, n_window)
 
     if normalize_samples:
         logger.info('Normalizing number of samples')
