@@ -6,6 +6,7 @@ from utils.metrics import Metrics
 import time
 import tensorflow as tf
 import numpy as np
+import cPickle
 
 class Multi_feat_Neural_Net(A_neural_network):
 
@@ -384,6 +385,11 @@ class Multi_feat_Neural_Net(A_neural_network):
                      plot, alpha_l2=0.001,
                      **kwargs):
 
+        self.learning_rate_train = learning_rate_train
+        self.learning_rate_tune = learning_rate_tune
+        self.minibatch_size = minibatch_size
+        self.lr_decay = lr_decay
+
         with self.graph.as_default():
 
             # tf.trainable_variables()
@@ -479,6 +485,33 @@ class Multi_feat_Neural_Net(A_neural_network):
         if plot:
             self.logger.info('Making plots')
             self.make_plots()
+
+        if self.pickle_lists:
+            self.logger.info('Pickling lists')
+            self.perform_pickle_lists()
+
+        return True
+
+    def perform_pickle_lists(self):
+        """
+        This is to make some later plots.
+        """
+        output_filename = '_'.join(
+            [str(self.n_window), str(self.minibatch_size), 'lrtrain', str(self.learning_rate_train), 'lrtune',
+             str(self.learning_rate_tune), str(self.n_hidden), str(self.lr_decay), 'filters', 'None', 'regions', 'None'])
+
+        cPickle.dump(self.valid_costs_list,
+                     open(self.get_output_path('valid_cost_list-' + output_filename + '.p'), 'wb'))
+        cPickle.dump(self.valid_cross_entropy_list,
+                     open(self.get_output_path('valid_cross_entropy_list-' + output_filename + '.p'), 'wb'))
+        cPickle.dump(self.train_costs_list,
+                     open(self.get_output_path('train_cost_list-' + output_filename + '.p'), 'wb'))
+        cPickle.dump(self.train_cross_entropy_list,
+                     open(self.get_output_path('train_cross_entropy_list-' + output_filename + '.p'), 'wb'))
+        cPickle.dump(self.f1_score_list,
+                     open(self.get_output_path('valid_f1_score_list-' + output_filename + '.p'), 'wb'))
+
+        return True
 
     def get_feed_dict(self, batch_ix, minibatch_size,
                       w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs,
