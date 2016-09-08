@@ -352,28 +352,37 @@ class Multi_feat_Neural_Net(A_neural_network):
 
         return embeddings_concat
 
-    def hidden_activations_one_hidden_layer(self, w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs):
+    def hidden_activations_one_hidden_layer(self, w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, keep_prob):
         # lookup and reshape
         embeddings_concat = self.perform_embeddings_lookup(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
+
         h = tf.tanh(embeddings_concat)
 
-        return h
+        h_dropout = tf.nn.dropout(h, keep_prob)
 
-    def forward_one_hidden_layer(self, w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs):
-        h = self.hidden_activations_one_hidden_layer(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
+        return h_dropout
+
+    def forward_one_hidden_layer(self, w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, keep_prob):
+        h = self.hidden_activations_one_hidden_layer(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, keep_prob)
 
         return tf.nn.xw_plus_b(h, self.w2, self.b2)
 
-    def hidden_activations_two_hidden_layer(self, w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs):
+    def hidden_activations_two_hidden_layer(self, w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, keep_prob):
         # lookup and reshape
         embeddings_concat = self.perform_embeddings_lookup(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
+
         h1 = tf.tanh(embeddings_concat)
-        h2 = tf.tanh(tf.nn.xw_plus_b(h1, self.w2, self.b2))
 
-        return h2
+        h1_dropout = tf.nn.dropout(h1, keep_prob)
 
-    def forward_two_hidden_layer(self, w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs):
-        h = self.hidden_activations_two_hidden_layer(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
+        h2 = tf.tanh(tf.nn.xw_plus_b(h1_dropout, self.w2, self.b2))
+
+        h2_dropout = tf.nn.dropout(h2, keep_prob)
+
+        return h2_dropout
+
+    def forward_two_hidden_layer(self, w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, keep_prob):
+        h = self.hidden_activations_two_hidden_layer(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, keep_prob)
 
         return tf.nn.xw_plus_b(h, self.w3, self.b3)
 
@@ -401,16 +410,15 @@ class Multi_feat_Neural_Net(A_neural_network):
             tense_idxs = tf.placeholder(tf.int32, shape=[None, self.n_window], name='tense_idxs')
 
             labels = tf.placeholder(tf.int32, name='labels')
+            keep_prob = tf.placeholder(tf.float32, name="dropout_keep_prob")
 
+            out_logits = self.forward_function(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, keep_prob)
 
-            # h_dropout = tf.nn.dropout(embeddings_concat, keep_prob)
-
-            out_logits = self.forward_function(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
-
-            l2 = tf.add_n([tf.nn.l2_loss(param) for param in self.regularizables])
+            # l2 = tf.add_n([tf.nn.l2_loss(param) for param in self.regularizables])
 
             cross_entropy = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=out_logits, labels=labels))
-            cost = cross_entropy + alpha_l2 * l2
+            # cost = cross_entropy + alpha_l2 * l2
+            cost = cross_entropy
 
             predictions = self.compute_predictions(out_logits)
             n_errors = tf.reduce_sum(tf.to_int32(tf.not_equal(predictions, labels)))
@@ -441,7 +449,7 @@ class Multi_feat_Neural_Net(A_neural_network):
                 for batch_ix in range(n_batches):
                     feed_dict = self.get_feed_dict(batch_ix, minibatch_size,
                                                    w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs,
-                                                   labels, dataset='train')
+                                                   labels, keep_prob, keep_prob_value=.5, dataset='train')
                     _, cost_val, xentropy, errors = session.run([optimizer, cost, cross_entropy, n_errors], feed_dict=feed_dict)
                     train_cost += cost_val
                     train_xentropy += xentropy
@@ -449,7 +457,7 @@ class Multi_feat_Neural_Net(A_neural_network):
 
                 feed_dict = self.get_feed_dict(None, minibatch_size,
                                                w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs,
-                                               labels, dataset='valid')
+                                               labels, keep_prob, keep_prob_value=1., dataset='valid')
                 valid_cost, valid_xentropy, pred, valid_errors = session.run([cost, cross_entropy, predictions, n_errors], feed_dict=feed_dict)
 
                 precision, recall, f1_score = self.compute_scores(self.y_valid, pred)
@@ -515,7 +523,7 @@ class Multi_feat_Neural_Net(A_neural_network):
 
     def get_feed_dict(self, batch_ix, minibatch_size,
                       w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs,
-                      labels,
+                      labels, keep_prob, keep_prob_value,
                       dataset):
 
         feed_dict = dict()
@@ -569,6 +577,8 @@ class Multi_feat_Neural_Net(A_neural_network):
         if labels is not None:
             feed_dict[labels] = y[batch_ix * minibatch_size: (batch_ix + 1) * minibatch_size] \
                 if batch_ix is not None else y
+
+        feed_dict[keep_prob] = keep_prob_value
 
         return feed_dict
 
@@ -698,9 +708,10 @@ class Multi_feat_Neural_Net(A_neural_network):
             ner_idxs = self.graph.get_tensor_by_name(name='ner_idxs:0')
             sent_nr_idxs = self.graph.get_tensor_by_name(name='sent_nr_idxs:0')
             tense_idxs = self.graph.get_tensor_by_name(name='tense_idxs:0')
+            keep_prob = self.graph.get_tensor_by_name(name='dropout_keep_prob:0')
             # labels = self.graph.get_tensor_by_name(name='labels:0')
 
-            out_logits = self.forward_function(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
+            out_logits = self.forward_function(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, keep_prob)
 
             predictions = self.compute_predictions(out_logits)
 
@@ -711,7 +722,7 @@ class Multi_feat_Neural_Net(A_neural_network):
 
             feed_dict = self.get_feed_dict(None, None,
                                            w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs,
-                                           labels=None, dataset=dataset)
+                                           None, keep_prob, keep_prob_value=1., dataset=dataset)
             pred = session.run(predictions, feed_dict=feed_dict)
 
         results['flat_trues'] = y_test
@@ -766,6 +777,7 @@ class Multi_feat_Neural_Net(A_neural_network):
             ner_idxs = self.graph.get_tensor_by_name(name='ner_idxs:0')
             sent_nr_idxs = self.graph.get_tensor_by_name(name='sent_nr_idxs:0')
             tense_idxs = self.graph.get_tensor_by_name(name='tense_idxs:0')
+            keep_prob = self.graph.get_tensor_by_name(name='dropout_keep_prob:0')
 
             h = self.hidden_activations(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
 
@@ -776,7 +788,7 @@ class Multi_feat_Neural_Net(A_neural_network):
 
             feed_dict = self.get_feed_dict(None, None,
                                            w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs,
-                                           labels=None, dataset=dataset)
+                                           None, keep_prob, keep_prob_value=1., dataset=dataset)
             hidden_activations = session.run(h, feed_dict=feed_dict)
 
         return hidden_activations
