@@ -73,11 +73,16 @@ def oov_replacement():
 
 
 def get_oovs():
-    _, _, training_tokens, _ = Dataset.get_clef_training_dataset()
-    _, _, validation_tokens, _ = Dataset.get_clef_validation_dataset()
-    training_tokens = [w.lower() for w in list(chain(*chain(*training_tokens.values())))]
-    validation_tokens = [w.lower() for w in list(chain(*chain(*validation_tokens.values())))]
-    oovs = set(validation_tokens).difference(set(training_tokens))
+    _, _, training_tokens, _ = Dataset.get_clef_training_dataset(lowercase=True)
+    _, _, validation_tokens, _ = Dataset.get_clef_validation_dataset(lowercase=True)
+    _, _, testing_tokens, _ = Dataset.get_clef_testing_dataset(lowercase=True)
+
+    training_tokens = list(chain(*chain(*training_tokens.values())))
+    validation_tokens = list(chain(*chain(*validation_tokens.values())))
+    testing_tokens = list(chain(*chain(*testing_tokens.values())))
+
+    oovs = set(validation_tokens+testing_tokens).difference(set(training_tokens))
+
     return oovs
 
 def data_augmentation():
