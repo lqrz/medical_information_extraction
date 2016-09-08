@@ -239,6 +239,10 @@ class NeuralNetwork:
 
         return x_train, y_train, word2index, index2word
 
+    @staticmethod
+    def initialize_one_hot(dims):
+        return np.identity(n=dims, dtype=float)
+
 class Others:
     def __init__(self):
         pass
