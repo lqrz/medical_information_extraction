@@ -391,7 +391,7 @@ class Multi_feat_Neural_Net(A_neural_network):
 
     def _train_graph(self, minibatch_size, max_epochs,
                      learning_rate_train, learning_rate_tune, lr_decay,
-                     plot, alpha_l2=0.001,
+                     plot,
                      **kwargs):
 
         self.learning_rate_train = learning_rate_train
@@ -779,7 +779,7 @@ class Multi_feat_Neural_Net(A_neural_network):
             tense_idxs = self.graph.get_tensor_by_name(name='tense_idxs:0')
             keep_prob = self.graph.get_tensor_by_name(name='dropout_keep_prob:0')
 
-            h = self.hidden_activations(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
+            h = self.hidden_activations(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs, keep_prob)
 
         with tf.Session(graph=self.graph) as session:
             # init.run()
