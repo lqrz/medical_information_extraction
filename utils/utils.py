@@ -165,7 +165,7 @@ class NeuralNetwork:
         return x_train, y_train, x_train_pos, x_train_ner
 
     @staticmethod
-    def replace_oovs(x_valid, index2word, word2index, n_window):
+    def replace_oovs(x_samples, index2word, word2index, n_window):
         from oov import oov_replacement
         from oov import get_oovs
 
@@ -174,7 +174,7 @@ class NeuralNetwork:
 
         next_index = index2word.__len__()
 
-        for i, sample in enumerate(x_valid):
+        for i, sample in enumerate(x_samples):
             word = index2word[sample[n_window / 2]]
             if word in oovs:
                 try:
@@ -189,9 +189,9 @@ class NeuralNetwork:
                     ix = next_index
                     next_index += 1
 
-                x_valid[i][n_window/2] = ix
+                x_samples[i][n_window/2] = ix
 
-        return x_valid, index2word, word2index
+        return x_samples, index2word, word2index
 
     @staticmethod
     def generate_synonyms_samples(x_train, y_train, word2index, index2word, n_window, index2label):
