@@ -21,6 +21,8 @@ class Multi_feat_Neural_Net(A_neural_network):
         super(Multi_feat_Neural_Net, self).__init__(**kwargs)
 
         self.graph = tf.Graph()
+        with self.graph.as_default():
+            tf.set_random_seed(1234)
 
         # parameters
         self.w1_w2v = None
@@ -383,7 +385,6 @@ class Multi_feat_Neural_Net(A_neural_network):
                      **kwargs):
 
         with self.graph.as_default():
-            tf.set_random_seed(1234)
 
             # tf.trainable_variables()
 
