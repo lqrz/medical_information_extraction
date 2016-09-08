@@ -88,12 +88,16 @@ def get_oovs():
 def data_augmentation():
     _, _, training_tokens, training_tags = Dataset.get_clef_training_dataset()
     _, _, validation_tokens, validation_tags = Dataset.get_clef_validation_dataset()
+    _, _, testing_tokens, testing_tags = Dataset.get_clef_testing_dataset()
 
-    training_tokens = [w.lower() for w in list(chain(*(chain(*training_tokens.values()))))]
+    training_tokens = list(chain(*(chain(*training_tokens.values()))))
     training_tags = list(chain(*(chain(*training_tags.values()))))
 
-    validation_tokens = [w.lower() for w in list(chain(*(chain(*validation_tokens.values()))))]
-    validation_tags = list(chain(*(chain(*validation_tags.values()))))
+    # validation_tokens = list(chain(*(chain(*validation_tokens.values()))))
+    # validation_tags = list(chain(*(chain(*validation_tags.values()))))
+    #
+    # testing_tokens = list(chain(*(chain(*validation_tokens.values()))))
+    # testing_tags = list(chain(*(chain(*validation_tags.values()))))
 
     training_tags_tokens = defaultdict(list)
     training_tags_tokens_positions = defaultdict(list)
