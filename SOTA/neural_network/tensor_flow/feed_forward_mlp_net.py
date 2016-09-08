@@ -270,7 +270,7 @@ class Neural_Net(A_neural_network):
             if alpha_na is not None:
                 na_prob = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(out_logits, na_label))
                 # cost = tf.reduce_sum(cross_entropy + alpha_l2 * l2_regularizers + alpha_na * na_prob)
-                cost = tf.reduce_sum(cross_entropy + alpha_na * na_prob)
+                cost = tf.reduce_sum(cross_entropy - alpha_na * na_prob)
             else:
                 # cost = tf.reduce_sum(cross_entropy + alpha_l2 * l2_regularizers)
                 cost = tf.reduce_sum(cross_entropy)
