@@ -207,23 +207,23 @@ class Multi_feat_Neural_Net(A_neural_network):
             minibatch_size = batch_size
 
         if self.n_hidden > 0:
-            print 'Using two hidden layer MLP architecture with window: %d hidden_layer: %d batch_size: %d learning_rate_train: %f learning_rate_tune: %f' % (
-            self.n_window, self.n_hidden, minibatch_size, kwargs['learning_rate_train'], kwargs['learning_rate_tune'])
+            self.logger.info('Using two hidden layer MLP architecture with window: %d hidden_layer: %d batch_size: %d learning_rate_train: %f learning_rate_tune: %f' % (
+            self.n_window, self.n_hidden, minibatch_size, kwargs['learning_rate_train'], kwargs['learning_rate_tune']))
             self.forward_function = self.forward_two_hidden_layer
             self.hidden_activations = self.hidden_activations_two_hidden_layer
         else:
-            print 'Using one hidden layer MLP architecture with window: %d batch_size: %d learning_rate_train: %f learning_rate_tune: %f' % (
-                self.n_window, minibatch_size, kwargs['learning_rate_train'], kwargs['learning_rate_tune'])
+            self.logger.info('Using one hidden layer MLP architecture with window: %d batch_size: %d learning_rate_train: %f learning_rate_tune: %f' % (
+                self.n_window, minibatch_size, kwargs['learning_rate_train'], kwargs['learning_rate_tune']))
             self.forward_function = self.forward_one_hidden_layer
             self.hidden_activations = self.hidden_activations_one_hidden_layer
 
         with self.graph.as_default():
-            print 'Trainable parameters: ' + ', '.join([param.name for param in tf.trainable_variables()])
-            print 'Training-params: ' + ','.join([param.name for param in self.training_params])
-            print 'Tuning-params: ' + ','.join([param.name for param in self.fine_tuning_params])
-            print 'Regularizable parameters: ' + ', '.join([param.name for param in self.regularizables])
+            self.logger.info('Trainable parameters: ' + ', '.join([param.name for param in tf.trainable_variables()]))
+            self.logger.info('Training-params: ' + ','.join([param.name for param in self.training_params]))
+            self.logger.info('Tuning-params: ' + ','.join([param.name for param in self.fine_tuning_params]))
+            self.logger.info('Regularizable parameters: ' + ', '.join([param.name for param in self.regularizables]))
 
-        print 'Hidden layer size: %d' % self.hidden_layer_size
+        self.logger.info('Hidden layer size: %d' % self.hidden_layer_size)
         self._train_graph(minibatch_size, **kwargs)
 
     def initialize_parameters(self, static):
@@ -444,15 +444,15 @@ class Multi_feat_Neural_Net(A_neural_network):
                                                  l2_w1_w2v, l2_w1_pos, l2_w1_ner, l2_w1_sent_nr, l2_w1_tense, l2_w2,
                                                  precision, recall, f1_score)
 
-                print 'epoch: %d train_cost: %f train_errors: %d valid_cost: %f valid_errors: %d F1: %f took: %f' \
+                self.logger.info('epoch: %d train_cost: %f train_errors: %d valid_cost: %f valid_errors: %d F1: %f took: %f' \
                       % (
-                          epoch_ix, train_cost, train_errors, valid_cost, valid_errors, f1_score, time.time() - start)
+                          epoch_ix, train_cost, train_errors, valid_cost, valid_errors, f1_score, time.time() - start))
 
             self.saver = tf.train.Saver(self.training_params + self.fine_tuning_params)
             self.saver.save(session, self.get_output_path('params.model'))
 
         if plot:
-            print 'Making plots'
+            self.logger.info('Making plots')
             self.make_plots()
 
     def get_feed_dict(self, batch_ix, minibatch_size,
