@@ -71,6 +71,9 @@ def determine_output_filename(output_model):
     elif output_model == 'cnn':
         from trained_models import get_tf_cnn_path
         get_output_path = get_tf_cnn_path
+    elif output_model == 'mlp':
+        from trained_models import get_tf_cwnn_path
+        get_output_path = get_tf_cwnn_path
 
     assert get_output_path is not None
 
