@@ -853,6 +853,8 @@ def initialize_w2v_embeddings(w2v_dims, w2v_model, w2v_vectors, config_embedding
             representations, dim = training_word_tag_distribution()
             pretrained_embeddings = nn_class.initialize_w(dim, unique_words, w2v_vectors=representations,
                                                           w2v_model=None)
+        elif source == 'one-hot':
+            pretrained_embeddings = utils.NeuralNetwork.initialize_one_hot(dims=unique_words.__len__())
         else:
             raise NotImplementedError
     else:
