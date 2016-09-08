@@ -413,7 +413,7 @@ class Multi_feat_Neural_Net(A_neural_network):
 
         with tf.Session(graph=self.graph) as session:
             session.run(tf.initialize_all_variables())
-            n_batches = np.int(np.ceil(self.x_train.shape[0] / minibatch_size))
+            n_batches = np.int(np.ceil(self.x_train.shape[0] / float(minibatch_size)))
             for epoch_ix in range(max_epochs):
                 start = time.time()
                 train_cost = 0
