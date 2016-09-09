@@ -578,6 +578,98 @@ def get_training_tuning_embeddings(config_embeddings):
 
     return train_params, tune_params
 
+def get_sent_nr_doc_features(dataset_document_sentences_tokens):
+    doc_features = []
+    for doc in dataset_document_sentences_tokens.values():
+        doc_features.append(map(lambda x: list(range(x.__len__())), doc))
+
+    return doc_features
+
+def get_index_and_dataset(train_doc_features, valid_doc_features, test_doc_features, add_feats, n_window):
+    unique_sent_nrs = set(list(chain(*chain(*train_doc_features))) + list(chain(*chain(*valid_doc_features))) +
+                          list(chain(*chain(*test_doc_features))) + add_feats)
+
+    index2item = dict(zip(range(unique_sent_nrs.__len__()), unique_sent_nrs))
+
+    item2index = dict(zip(unique_sent_nrs, range(unique_sent_nrs.__len__())))
+
+    x_train = A_neural_network.transform_features_with_context_window({0: train_doc_features},
+                                                                              {0: (item2index,
+                                                                                   index2item,
+                                                                                   None)},
+                                                                              n_window)[0]
+
+    x_valid = A_neural_network.transform_features_with_context_window({0: valid_doc_features},
+                                                                              {0: (item2index,
+                                                                                   index2item,
+                                                                                   None)},
+                                                                              n_window)[0]
+
+    x_test = A_neural_network.transform_features_with_context_window({0: test_doc_features},
+                                                                              {0: (item2index,
+                                                                                   index2item,
+                                                                                  None)},
+                                                                             n_window)[0]
+
+    return x_train, x_valid, x_test, item2index, index2item
+
+def get_sent_nr_dataset(n_window, add_feats):
+    _, _, train_document_sentences_tokens, _ = Dataset.get_clef_training_dataset(lowercase=True)
+    _, _, valid_document_sentences_tokens, _ = Dataset.get_clef_validation_dataset(lowercase=True)
+    _, _, test_document_sentences_tokens, _ = Dataset.get_clef_testing_dataset(lowercase=True)
+
+    train_doc_features = get_sent_nr_doc_features(train_document_sentences_tokens)
+    valid_doc_features = get_sent_nr_doc_features(valid_document_sentences_tokens)
+    test_doc_features = get_sent_nr_doc_features(test_document_sentences_tokens)
+
+    x_train_sent_nr, x_valid_sent_nr, x_test_sent_nr, sent_nr2index, index2sent_nr = get_index_and_dataset(train_doc_features, valid_doc_features, test_doc_features, add_feats, n_window)
+
+    return x_train_sent_nr, x_valid_sent_nr, x_test_sent_nr, sent_nr2index, index2sent_nr
+
+def get_tense_dataset(n_window, add_feats):
+    from utils.get_word_tenses import get_dataset_sentence_tenses
+
+    train_data, _, _, _ = Dataset.get_clef_training_dataset()
+    valid_data, _, _, _ = Dataset.get_clef_validation_dataset()
+    test_data, _, _, _ = Dataset.get_clef_testing_dataset()
+
+    train_doc_features = []
+    for doc in train_data.values():
+        train_doc_features.append(get_dataset_sentence_tenses(doc).values())
+
+    valid_doc_features = []
+    for doc in valid_data.values():
+        valid_doc_features.append(get_dataset_sentence_tenses(doc).values())
+
+    test_doc_features = []
+    for doc in test_data.values():
+        test_doc_features.append(get_dataset_sentence_tenses(doc).values())
+
+    x_train_tense, x_valid_tense, x_test_tense, tense2index, index2tense = get_index_and_dataset(train_doc_features, valid_doc_features, test_doc_features, add_feats, n_window)
+
+    return x_train_tense, x_valid_tense, x_test_tense, tense2index, index2tense
+
+def get_sent_nr_tense_features_dataset(config_features, config_embeddings, n_window, add_feats):
+    x_train_sent_nr = None
+    x_valid_sent_nr = None
+    x_test_sent_nr = None
+    sent_nr2index = None
+    index2sent_nr = None
+    x_train_tense = None
+    x_valid_tense = None
+    x_test_tense = None
+    tense2index = None
+    index2tense = None
+
+    for feat in config_features.keys():
+        if feat.startswith('sent_nr'):
+            x_train_sent_nr, x_valid_sent_nr, x_test_sent_nr, sent_nr2index, index2sent_nr = get_sent_nr_dataset(n_window, add_feats)
+        if feat.startswith('tense'):
+            x_train_tense, x_valid_tense, x_test_tense, tense2index, index2tense = get_tense_dataset(n_window, add_feats)
+
+    return x_train_sent_nr, x_valid_sent_nr, x_test_sent_nr, sent_nr2index, index2sent_nr, \
+           x_train_tense, x_valid_tense, x_test_tense, tense2index, index2tense
+
 def use_testing_dataset(nn_class,
                         hidden_f,
                         out_f,
@@ -653,6 +745,10 @@ def use_testing_dataset(nn_class,
                                                                                     x_valid, x_valid_feats,
                                                                                     x_test, x_test_feats)
 
+    x_train_sent_nr, x_valid_sent_nr, x_test_sent_nr, sent_nr2index, index2sent_nr, \
+    x_train_tense, x_valid_tense, x_test_tense, tense2index, index2tense = \
+        get_sent_nr_tense_features_dataset(config_features, config_embeddings, n_window, add_feats)
+
     if augment_data:
         logger.info('Augmenting data')
         x_train, y_train, word2index, index2word = NeuralNetwork.generate_synonyms_samples(x_train, y_train, word2index, index2word, n_window,
@@ -676,7 +772,8 @@ def use_testing_dataset(nn_class,
 
     ner_embeddings, pos_embeddings, pretrained_embeddings, sent_nr_embeddings, tense_embeddings = initialize_embeddings(
         nn_class, unique_words, w2v_dims, w2v_model, w2v_vectors, word2index, config_embeddings, features_indexes,
-        config_features.keys(), feat_names_and_positions)
+        config_features.keys(), feat_names_and_positions,
+        sent_nr2index, tense2index)
 
     if tags:
         tags = get_param(tags)
@@ -729,12 +826,12 @@ def use_testing_dataset(nn_class,
         'train_ner_feats': x_train_ner,
         'valid_ner_feats': x_valid_ner,
         'test_ner_feats': x_test_ner,
-        'train_sent_nr_feats': x_train,    #refers to sentence nr features.
-        'valid_sent_nr_feats': x_valid,    #refers to sentence nr features.
-        'test_sent_nr_feats': x_test,    #refers to sentence nr features.
-        'train_tense_feats': x_train,    #refers to tense features.
-        'valid_tense_feats': x_valid,    #refers to tense features.
-        'test_tense_feats': x_test,    #refers to tense features.
+        'train_sent_nr_feats': x_train_sent_nr,    #refers to sentence nr features.
+        'valid_sent_nr_feats': x_valid_sent_nr,    #refers to sentence nr features.
+        'test_sent_nr_feats': x_test_sent_nr,    #refers to sentence nr features.
+        'train_tense_feats': x_train_tense,    #refers to tense features.
+        'valid_tense_feats': x_valid_tense,    #refers to tense features.
+        'test_tense_feats': x_test_tense,    #refers to tense features.
         # 'tense_probs': tense_probs,
         'n_filters': args['n_filters'],
         'region_sizes': args['region_sizes'],
@@ -911,7 +1008,8 @@ def initialize_feature_embedding(feat_name, word2index, initializer_func, config
     return pretrained_embeddings
 
 def initialize_embeddings(nn_class, unique_words, w2v_dims, w2v_model, w2v_vectors, word2index, config_embeddings,
-                          features_indexes, features, features_positions):
+                          features_indexes, features, features_positions,
+                          sent_nr2index, tense2index):
     pos_embeddings = None
     ner_embeddings = None
     sent_nr_embeddings = None
@@ -933,15 +1031,19 @@ def initialize_embeddings(nn_class, unique_words, w2v_dims, w2v_model, w2v_vecto
         ner_embeddings = initialize_feature_embedding('ner_embeddings', word2index, nn_class.initialize_w_ner,
                                                       config_embeddings, None, ner2index)
 
-    sent_nr_index_position = [feat for feat in features if feat.startswith('sent_nr')]
+    sent_nr_index_position = [feat for feat in features if feat.startswith('sent_nr')].__len__() > 0
     if sent_nr_index_position:
-        logger.info('Initializing sent_nr_embeddings: probabilistic')
-        sent_nr_embeddings = nn_class.initialize_w_sent_nr(word2index)
+        # logger.info('Initializing sent_nr_embeddings: probabilistic')
+        # sent_nr_embeddings = nn_class.initialize_w_sent_nr(word2index)
+        # sent_nr2index, index2sent_nr, prob_dist = features_indexes[sent_nr_index_position[0]]
+        sent_nr_embeddings = initialize_feature_embedding('sent_nr_embeddings', word2index, nn_class.initialize_w_sent_nr,
+                                                            config_embeddings, None, sent_nr2index)
 
-    tense_index_position = [feat for feat in features if feat.startswith('tense')]
+    tense_index_position = [feat for feat in features if feat.startswith('tense')].__len__() > 0
     if tense_index_position:
-        logger.info('Initializing tense_embeddings: probabilistic')
-        tense_embeddings = nn_class.initialize_w_tense(word2index)
+        # logger.info('Initializing tense_embeddings: probabilistic')
+        tense_embeddings = initialize_feature_embedding('tense_embeddings', word2index, nn_class.initialize_w_tense,
+                                                            config_embeddings, None, tense2index)
 
     return ner_embeddings, pos_embeddings, pretrained_embeddings, sent_nr_embeddings, tense_embeddings
 
