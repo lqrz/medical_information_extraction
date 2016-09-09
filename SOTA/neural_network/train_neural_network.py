@@ -120,6 +120,8 @@ def parse_arguments():
 
     parser.add_argument('--logger', action='store', default=None, type=str)
 
+    parser.add_argument('--activations', action='store_true', default=False)
+
     #parse arguments
     arguments = parser.parse_args()
 
@@ -167,6 +169,7 @@ def parse_arguments():
     args['logger_filename'] = arguments.logger
     args['update_per_sentence'] = arguments.sentence
     args['update_per_token'] = arguments.token
+    args['save_activations'] = arguments.activations
 
     return args
 
@@ -797,31 +800,33 @@ def use_testing_dataset(nn_class,
         cPickle.dump(nn_trainer.get_trained_word_embeddings(), open(get_output_path('trained_vectors.p'), 'wb'))
     except (KeyError, AttributeError):
         pass
+
     cPickle.dump(word2index, open(get_output_path('word2index.p'), 'wb'))
 
-    training_hidden_activations = nn_trainer.get_hidden_activations(
-        on_training_set=True, on_validation_set=False, on_testing_set=False)
-    cPickle.dump(training_hidden_activations, open(get_output_path('training_hidden_activations.p'), 'wb'))
+    if args['save_activations'] is True:
+        training_hidden_activations = nn_trainer.get_hidden_activations(
+            on_training_set=True, on_validation_set=False, on_testing_set=False)
+        cPickle.dump(training_hidden_activations, open(get_output_path('training_hidden_activations.p'), 'wb'))
 
-    training_output_logits = nn_trainer.get_output_logits(
-        on_training_set=True, on_validation_set=False, on_testing_set=False)
-    cPickle.dump(training_output_logits, open(get_output_path('training_output_logits.p'), 'wb'))
+        training_output_logits = nn_trainer.get_output_logits(
+            on_training_set=True, on_validation_set=False, on_testing_set=False)
+        cPickle.dump(training_output_logits, open(get_output_path('training_output_logits.p'), 'wb'))
 
-    validation_hidden_activations = nn_trainer.get_hidden_activations(
-        on_training_set=False, on_validation_set=True, on_testing_set=False)
-    cPickle.dump(validation_hidden_activations, open(get_output_path('validation_hidden_activations.p'), 'wb'))
+        validation_hidden_activations = nn_trainer.get_hidden_activations(
+            on_training_set=False, on_validation_set=True, on_testing_set=False)
+        cPickle.dump(validation_hidden_activations, open(get_output_path('validation_hidden_activations.p'), 'wb'))
 
-    validation_output_logits = nn_trainer.get_output_logits(
-        on_training_set=False, on_validation_set=True, on_testing_set=False)
-    cPickle.dump(validation_output_logits, open(get_output_path('validation_output_logits.p'), 'wb'))
+        validation_output_logits = nn_trainer.get_output_logits(
+            on_training_set=False, on_validation_set=True, on_testing_set=False)
+        cPickle.dump(validation_output_logits, open(get_output_path('validation_output_logits.p'), 'wb'))
 
-    testing_hidden_activations = nn_trainer.get_hidden_activations(
-        on_training_set=False, on_validation_set=False, on_testing_set=True)
-    cPickle.dump(testing_hidden_activations, open(get_output_path('testing_hidden_activations.p'), 'wb'))
+        testing_hidden_activations = nn_trainer.get_hidden_activations(
+            on_training_set=False, on_validation_set=False, on_testing_set=True)
+        cPickle.dump(testing_hidden_activations, open(get_output_path('testing_hidden_activations.p'), 'wb'))
 
-    testing_output_logits = nn_trainer.get_output_logits(
-        on_training_set=False, on_validation_set=False, on_testing_set=True)
-    cPickle.dump(testing_output_logits, open(get_output_path('testing_output_logits.p'), 'wb'))
+        testing_output_logits = nn_trainer.get_output_logits(
+            on_training_set=False, on_validation_set=False, on_testing_set=True)
+        cPickle.dump(testing_output_logits, open(get_output_path('testing_output_logits.p'), 'wb'))
 
     return results, index2label
 

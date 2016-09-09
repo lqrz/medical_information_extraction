@@ -8,6 +8,8 @@ import tensorflow as tf
 import numpy as np
 import cPickle
 
+np.random.seed(1234)
+
 class Multi_feat_Neural_Net(A_neural_network):
 
     def __init__(self, pos_embeddings, ner_embeddings, sent_nr_embeddings, tense_embeddings, cnn_features,
