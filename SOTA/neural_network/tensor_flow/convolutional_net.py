@@ -535,13 +535,13 @@ class Convolutional_Neural_Net(A_neural_network):
 
         h_pooled_flat = self.hidden_activations(w2v_idxs, pos_idxs, ner_idxs, sent_nr_idxs, tense_idxs)
 
-        h_dropout = tf.nn.dropout(h_pooled_flat, keep_prob)
+        h_dropout = tf.nn.dropout(h_pooled_flat, keep_prob, seed=tf.set_random_seed(1234))
 
         out_logits = None
         if self.using_two_layers:
             # two layers
             h2 = tf.nn.xw_plus_b(h_dropout, self.w2, self.b2)
-            h2_dropout = tf.nn.dropout(h2, keep_prob)
+            h2_dropout = tf.nn.dropout(h2, keep_prob, seed=tf.set_random_seed(1234))
             out_logits = tf.nn.xw_plus_b(h2_dropout, self.w3, self.b3)
         else:
             # one layer
@@ -877,14 +877,20 @@ class Convolutional_Neural_Net(A_neural_network):
 
     def instantiate_optimizer(self, learning_rate_tune, learning_rate_train, cost):
         # optimizer = tf.train.AdamOptimizer(1e-3)
-        optimizer_fine_tune = tf.train.AdagradOptimizer(learning_rate=learning_rate_tune)
-        optimizer_train = tf.train.AdagradOptimizer(learning_rate=learning_rate_train)
-        grads = tf.gradients(cost, self.fine_tuning_params + self.training_params)
-        fine_tuning_grads = grads[:len(self.fine_tuning_params)]
-        training_grads = grads[-len(self.training_params):]
-        fine_tune_op = optimizer_fine_tune.apply_gradients(zip(fine_tuning_grads, self.fine_tuning_params))
-        train_op = optimizer_train.apply_gradients(zip(training_grads, self.training_params))
-        optimizer = tf.group(fine_tune_op, train_op)
+
+        if self.fine_tuning_params.__len__() == 0:
+            optimizer_train = tf.train.AdagradOptimizer(learning_rate=learning_rate_train)
+            grads = tf.gradients(cost, self.training_params)
+            optimizer = optimizer_train.apply_gradients(zip(grads, self.training_params))
+        else:
+            optimizer_fine_tune = tf.train.AdagradOptimizer(learning_rate=learning_rate_tune)
+            optimizer_train = tf.train.AdagradOptimizer(learning_rate=learning_rate_train)
+            grads = tf.gradients(cost, self.fine_tuning_params + self.training_params)
+            fine_tuning_grads = grads[:len(self.fine_tuning_params)]
+            training_grads = grads[-len(self.training_params):]
+            fine_tune_op = optimizer_fine_tune.apply_gradients(zip(fine_tuning_grads, self.fine_tuning_params))
+            train_op = optimizer_train.apply_gradients(zip(training_grads, self.training_params))
+            optimizer = tf.group(fine_tune_op, train_op)
 
         return optimizer
 
