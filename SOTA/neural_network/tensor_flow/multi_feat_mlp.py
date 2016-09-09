@@ -299,11 +299,11 @@ class Multi_feat_Neural_Net(A_neural_network):
 
             if self.n_hidden > 0:
                 # two hidden layers
-                self.w2 = tf.Variable(tf.truncated_normal(shape=[self.hidden_layer_size, self.n_hidden], stddev=0.1),
+                self.w2 = tf.Variable(tf.truncated_normal(shape=[self.hidden_layer_size, self.n_hidden], stddev=0.1, seed=tf.set_random_seed(1234)),
                                       name='w2')
                 self.b2 = tf.Variable(tf.constant(0.1, shape=[self.n_hidden]), name='b2')
 
-                self.w3 = tf.Variable(initial_value=tf.truncated_normal(shape=[self.n_hidden, self.n_out], stddev=0.1),
+                self.w3 = tf.Variable(initial_value=tf.truncated_normal(shape=[self.n_hidden, self.n_out], stddev=0.1, seed=tf.set_random_seed(1234)),
                                       name='w3')
                 self.b3 = tf.Variable(tf.constant(0.1, shape=[self.n_out]), name='b3')
 
@@ -312,7 +312,7 @@ class Multi_feat_Neural_Net(A_neural_network):
                 self.training_params.append(self.b3)
             else:
                 # one hidden layer
-                self.w2 = tf.Variable(tf.truncated_normal(shape=[self.hidden_layer_size, self.n_out], stddev=0.1),
+                self.w2 = tf.Variable(tf.truncated_normal(shape=[self.hidden_layer_size, self.n_out], stddev=0.1, seed=tf.set_random_seed(1234)),
                                       name='w2')
                 self.b2 = tf.Variable(tf.constant(0.1, shape=[self.n_out]), name='b2')
 

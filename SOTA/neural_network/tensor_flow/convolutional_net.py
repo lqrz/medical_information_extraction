@@ -320,9 +320,13 @@ class Convolutional_Neural_Net(A_neural_network):
 
             if self.using_two_layers:
                 # two layers
-                self.w2 = tf.Variable(tf.truncated_normal(shape=[self.n_hidden, self.second_layer_n_hidden], stddev=0.1), name='w2')
+                self.w2 = tf.Variable(
+                    tf.truncated_normal(shape=[self.n_hidden, self.second_layer_n_hidden], stddev=0.1, seed=tf.set_random_seed(1234))
+                    , name='w2')
                 self.b2 = tf.Variable(tf.constant(0.1, shape=[self.second_layer_n_hidden]), name='b2')
-                self.w3 = tf.Variable(tf.truncated_normal(shape=[self.second_layer_n_hidden, self.n_out], stddev=0.1), name='w3')
+                self.w3 = tf.Variable(
+                    tf.truncated_normal(shape=[self.second_layer_n_hidden, self.n_out], stddev=0.1, seed=tf.set_random_seed(1234))
+                    , name='w3')
                 self.b3 = tf.Variable(tf.constant(0.1, shape=[self.n_out]), name='b3')
 
                 self.regularizables.append(self.w2)
@@ -333,7 +337,9 @@ class Convolutional_Neural_Net(A_neural_network):
                 self.training_params.append(self.b3)
             else:
                 # one layer
-                self.w2 = tf.Variable(tf.truncated_normal(shape=[self.n_hidden, self.n_out], stddev=0.1), name='w2')
+                self.w2 = tf.Variable(
+                    tf.truncated_normal(shape=[self.n_hidden, self.n_out], stddev=0.1, seed=tf.set_random_seed(1234))
+                    , name='w2')
                 self.b2 = tf.Variable(tf.constant(0.1, shape=[self.n_out]), name='b2')
 
                 self.regularizables.append(self.w2)
@@ -386,7 +392,9 @@ class Convolutional_Neural_Net(A_neural_network):
         # this is for the w2v convolution
         for i, rs in enumerate(region_sizes):
             filter_shape = [rs, embedding_size, 1, n_filters]
-            w_filter = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.1), name=name+'_w_filter_shape_' + str(rs))
+            w_filter = tf.Variable(
+                tf.truncated_normal(filter_shape, stddev=0.1, seed=tf.set_random_seed(1234))
+                , name=name+'_w_filter_shape_' + str(rs))
             b_filter = tf.Variable(tf.constant(0.1, shape=[n_filters]), name=name+'_b_filter_shape_' + str(rs))
             filters_list.append(w_filter)
             bias_list.append(b_filter)
