@@ -6,7 +6,6 @@ from ggplot import *
 from collections import Counter
 from copy import copy, deepcopy
 
-
 class Word2Vec:
     def __init__(self):
         pass
@@ -103,6 +102,7 @@ class NeuralNetwork:
         if function=='sigmoid':
             lim *= 4
 
+        np.random.seed(1234)
         return np.random.uniform(-lim,lim,(n_in,n_out))
 
     @staticmethod
