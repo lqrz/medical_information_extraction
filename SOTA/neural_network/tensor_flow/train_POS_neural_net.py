@@ -14,6 +14,7 @@ from collections import defaultdict
 
 from data.dataset import Dataset
 from trained_models import get_POS_nnet_path
+from utils import utils
 # from SOTA.neural_network.A_neural_network import A_neural_network
 # from SOTA.neural_network.two_hidden_Layer_Context_Window_Net import Two_Hidden_Layer_Context_Window_Net
 # from SOTA.neural_network.hidden_Layer_Context_Window_Net import Hidden_Layer_Context_Window_Net
@@ -171,7 +172,9 @@ def train_word_embeddings(batch_size, embedding_size, get_output_path, epochs, b
                                    skip_window=skip_window,
                                    epochs=epochs,
                                    tags_indexes=tags_flat_indexes,
-                                   batch_func=batch_func)
+                                   batch_func=batch_func,
+                                   index2item=index2word,
+                                   word_tags=word_tags)
 
     representations = dict(zip(map(lambda x: index2word[x], range(final_embeddings.shape[0])), final_embeddings))
     cPickle.dump(representations, open(get_output_path('word_final_embeddings.p'), 'wb'))
@@ -209,7 +212,12 @@ def plot_with_labels(final_embeddings, index2tag, filename, plot_only):
     plt.savefig(filename)
 
 def train_graph(tags_flat_indexes, vocabulary_size, embedding_size, batch_size, num_sampled,
-                num_skips, skip_window, epochs, batch_func, tags_indexes=None):
+                num_skips, skip_window, epochs, batch_func, index2item=None, tags_indexes=None,
+                word_tags=None):
+
+    valid_size = 16  # Random set of words to evaluate similarity on.
+    valid_window = 100  # Only pick dev samples in the head of the distribution.
+    valid_examples = np.random.choice(valid_window, valid_size, replace=False)
 
     graph = tf.Graph()
 
@@ -240,13 +248,18 @@ def train_graph(tags_flat_indexes, vocabulary_size, embedding_size, batch_size, 
                          num_sampled, vocabulary_size))
 
         # Construct the SGD optimizer using a learning rate of 1.0.
-        optimizer = tf.train.AdamOptimizer(1.0).minimize(loss)
+        # optimizer = tf.train.AdamOptimizer(1.).minimize(loss)
+        optimizer = tf.train.GradientDescentOptimizer(1.0).minimize(loss)
 
         # Compute the cosine similarity between minibatch examples and all embeddings.
         square_emb = tf.reduce_sum(tf.square(embeddings), keep_dims=False)
 
         norm = tf.sqrt(tf.reduce_sum(tf.square(embeddings), 1, keep_dims=True))
         normalized_embeddings = embeddings / norm
+
+        valid_dataset = tf.constant(valid_examples, dtype=tf.int32)
+        valid_embeddings = tf.nn.embedding_lookup(normalized_embeddings, valid_dataset)
+        similarity = tf.matmul(valid_embeddings, normalized_embeddings, transpose_b=True)
 
         # Add variable initializer.
         init = tf.initialize_all_variables()
@@ -260,11 +273,16 @@ def train_graph(tags_flat_indexes, vocabulary_size, embedding_size, batch_size, 
 
         n_batches = int(np.ceil(tags_flat_indexes.__len__() / float(samples_per_batch)))
 
+        average_loss_list = []
+
+        step = 0
         for epoch_ix in range(epochs):
 
             average_loss = 0
+            total_loss = 0
 
             for batch_ix in xrange(n_batches):
+                step += samples_per_batch
                 batch_inputs, batch_labels = batch_func(tags_flat_indexes,
                                                         batch_size, num_skips, skip_window,
                                                         tags_indexes=tags_indexes)
@@ -274,6 +292,7 @@ def train_graph(tags_flat_indexes, vocabulary_size, embedding_size, batch_size, 
                 # in the list of returned values for session.run()
                 _, loss_val, emb_sum = session.run([optimizer, loss, square_emb], feed_dict=feed_dict)
                 average_loss += loss_val
+                total_loss += loss_val
 
                 if batch_ix % 2000 == 0:
                     if batch_ix > 0:
@@ -287,40 +306,50 @@ def train_graph(tags_flat_indexes, vocabulary_size, embedding_size, batch_size, 
                     average_loss = 0
 
                     # Note that this is expensive (~20% slowdown if computed every 500 steps)
-                    # if step % 10000 == 0:
-                    #   sim = similarity.eval()
-                    #   for i in xrange(valid_size):
-                    #     valid_word = reverse_dictionary[valid_examples[i]]
-                    #     top_k = 8 # number of nearest neighbors
-                    #     nearest = (-sim[i, :]).argsort()[1:top_k+1]
-                    #     log_str = "Nearest to %s:" % valid_word
-                    #     for k in xrange(top_k):
-                    #       close_word = reverse_dictionary[nearest[k]]
-                    #       log_str = "%s %s," % (log_str, close_word)
-                    #     print(log_str)
+                if step % 10000 == 0 and index2item is not None and word_tags is not None:
+                    sim = similarity.eval()
+                    for i in xrange(valid_size):
+                        word = index2item[valid_examples[i]]
+                        valid_word = word + '(' + ','.join(word_tags[word]) + ')'
+                        top_k = 6 # number of nearest neighbors
+                        nearest = (-sim[i, :]).argsort()[1:top_k+1]
+                        log_str = "Nearest to %s:" % valid_word
+                        for k in xrange(top_k):
+                            word = index2item[nearest[k]]
+                            close_word = word + '(' + ','.join(word_tags[word]) + ')'
+                            log_str = "%s %s," % (log_str, close_word)
+                        print(log_str)
+
+            average_loss_list.append(total_loss)
+
         final_embeddings = normalized_embeddings.eval()
+
+        plot_data = {
+            'epoch': np.arange(average_loss_list.__len__(), dtype='int'),
+            'train': average_loss_list
+        }
+
+        utils.NeuralNetwork.plot(plot_data, x_axis='epoch', x_label='Epochs', y_label='Training loss',
+                                 title='Training loss evolution',
+                                 output_filename=get_POS_nnet_path('training_loss'))
 
     return final_embeddings
 
 if __name__ == '__main__':
     train_pos = True
     train_words = False
-    context = 1 # how many words to the left and to the right
-    epochs = 5
-    batch_size = 128
-    embedding_size = 100
-    n_samples = 20  # negative samples
+
     get_output_path = get_POS_nnet_path
 
     if train_pos:
         print 'Training POS embeddings'
-        train_pos_embeddings(batch_size, embedding_size, get_output_path, epochs, skip_window=context,
-                             n_samples=n_samples, batch_func=generate_batch_skipgram_postag)
+        train_pos_embeddings(batch_size=128, embedding_size=100, get_output_path=get_output_path,
+                             epochs=5, skip_window=1, n_samples=20, batch_func=generate_batch_skipgram_postag)
 
     if train_words:
         print 'Training word embeddings'
-        train_word_embeddings(batch_size=32, embedding_size=100, get_output_path=get_output_path,
-                              epochs=4, skip_window=1, n_samples=20, min_count=2, batch_func=generate_batch_skipgram_words)
+        train_word_embeddings(batch_size=128, embedding_size=50, get_output_path=get_output_path,
+                              epochs=4, skip_window=2, n_samples=64, min_count=3, batch_func=generate_batch_skipgram_words)
 
     exit(0)
     # n_window = 5
