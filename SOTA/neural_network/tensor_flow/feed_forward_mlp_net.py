@@ -32,7 +32,7 @@ def get_dataset(n_window, add_words=[], add_tags=[], feat_positions=[], add_feat
 
 
 class Neural_Net(A_neural_network):
-    def __init__(self, log_reg, n_hidden, na_tag, **kwargs):
+    def __init__(self, n_hidden, na_tag, **kwargs):
 
         super(Neural_Net, self).__init__(**kwargs)
 
@@ -40,7 +40,6 @@ class Neural_Net(A_neural_network):
         with self.graph.as_default():
             tf.set_random_seed(1234)
 
-        self.log_reg = log_reg
         self.n_hidden = n_hidden
 
         self.w1 = None
@@ -93,12 +92,7 @@ class Neural_Net(A_neural_network):
         else:
             minibatch_size = batch_size
 
-        if self.log_reg:
-            self.logger.info('Using logistic regression architecture window: %d batch_size: %d learning_rate_train: %f learning_rate_tune: %f' % \
-                  (self.n_window, minibatch_size, kwargs['learning_rate_train'], kwargs['learning_rate_tune']))
-            self.forward_function = self.forward_no_hidden_layer
-            self.hidden_activations = None
-        elif self.n_hidden > 0:
+        if self.n_hidden > 0:
             self.logger.info('Using two hidden layer MLP architecture with window: %d hidden_layer: %d batch_size: %d learning_rate_train: %f learning_rate_tune: %f' % (
             self.n_window, self.n_hidden, minibatch_size, kwargs['learning_rate_train'], kwargs['learning_rate_tune']))
             self.forward_function = self.forward_two_hidden_layer
@@ -134,7 +128,7 @@ class Neural_Net(A_neural_network):
                 self.fine_tuning_params.append(self.w1)
             self.fine_tuning_params.append(self.b1)
 
-            if not self.log_reg and not self.n_hidden > 0:
+            if not self.n_hidden > 0:
                 # one hidden layer
                 self.w2 = tf.Variable(
                     initial_value=NeuralNetwork.initialize_weights(n_in=self.n_window * self.n_emb, n_out=self.n_out,
@@ -149,7 +143,7 @@ class Neural_Net(A_neural_network):
                 self.training_params.append(self.w2)
                 self.training_params.append(self.b2)
 
-            elif not self.log_reg and self.n_hidden > 0:
+            else:
                 # two hidden layer
                 self.w2 = tf.Variable(
                     initial_value=NeuralNetwork.initialize_weights(n_in=self.n_window * self.n_emb, n_out=self.n_hidden,
