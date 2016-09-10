@@ -14,13 +14,14 @@ from collections import Counter
 
 from forests import Forest
 from SOTA.neural_network.A_neural_network import A_neural_network
-from SOTA.neural_network.hidden_Layer_Context_Window_Net import Hidden_Layer_Context_Window_Net
-from SOTA.neural_network.single_Layer_Context_Window_Net import Single_Layer_Context_Window_Net
-from SOTA.neural_network.last_tag_neural_network import Last_tag_neural_network_trainer
-from SOTA.neural_network.vector_Tag_Contex_Window_Net import Vector_Tag_Contex_Window_Net
-from SOTA.neural_network.recurrent_net import Recurrent_net
-from SOTA.neural_network.recurrent_Context_Window_net import Recurrent_Context_Window_net
-from SOTA.neural_network.multi_feature_type_hidden_layer_context_window_net import Multi_Feature_Type_Hidden_Layer_Context_Window_Net
+# from SOTA.neural_network.hidden_Layer_Context_Window_Net import Hidden_Layer_Context_Window_Net
+# from SOTA.neural_network.single_Layer_Context_Window_Net import Single_Layer_Context_Window_Net
+# from SOTA.neural_network.last_tag_neural_network import Last_tag_neural_network_trainer
+# from SOTA.neural_network.vector_Tag_Contex_Window_Net import Vector_Tag_Contex_Window_Net
+# from SOTA.neural_network.recurrent_net import Recurrent_net
+# from SOTA.neural_network.recurrent_Context_Window_net import Recurrent_Context_Window_net
+# from SOTA.neural_network.multi_feature_type_hidden_layer_context_window_net import Multi_Feature_Type_Hidden_Layer_Context_Window_Net
+from SOTA.neural_network.tensor_flow.multi_feat_mlp import Multi_feat_Neural_Net
 from trained_models import get_ensemble_forest_mlp_path
 from data import get_param
 from utils import utils
@@ -30,6 +31,8 @@ from utils.metrics import Metrics
 from utils.plot_confusion_matrix import plot_confusion_matrix
 from data import get_classification_report_labels
 from data.dataset import Dataset
+from SOTA.neural_network.train_neural_network import read_config_file, get_train_features_dataset, \
+    get_sent_nr_tense_features_dataset, initialize_embeddings
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -39,7 +42,7 @@ np.random.seed(1234)
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Neural net trainer')
     parser.add_argument('--net', type=str, action='store', required=True,
-                        choices=['single_cw','hidden_cw','vector_tag','last_tag','rnn', 'cw_rnn'], help='NNet type')
+                        choices=['tf_mlp'], help='NNet type')
     parser.add_argument('--netwindow', type=int, action='store', required=True,
                         help='Context window size. 1 for RNN')
     parser.add_argument('--epochs', type=int, action='store', required=True,
@@ -59,10 +62,20 @@ def parse_arguments():
     parser.add_argument('--tags', action='store', type=str, default=None)
     parser.add_argument('--classifier', action='store', type=str, default=None)
     parser.add_argument('--forestwindow', action='store', type=int, default=None, required=True)
-    parser.add_argument('--multifeats', action='store', type=str, nargs='*', default=[],
-                           choices=Multi_Feature_Type_Hidden_Layer_Context_Window_Net.FEATURE_MAPPING.keys())
+    # parser.add_argument('--multifeats', action='store', type=str, nargs='*', default=[],
+    #                        choices=Multi_Feature_Type_Hidden_Layer_Context_Window_Net.FEATURE_MAPPING.keys())
     parser.add_argument('--normalizesamples', action='store_true', default=False)
     parser.add_argument('--negativesampling', action='store_true', default=False)
+    parser.add_argument('--forestconfig', action='store', required=True)
+    parser.add_argument('--earlystop', action='store', default=None, type=int)
+    parser.add_argument('--hidden', action='store', type=int, default=False)
+    parser.add_argument('--picklelists', action='store_true', default=False)
+    parser.add_argument('--logger', action='store', default=None, type=str)
+    parser.add_argument('--alphana', action='store', type=float, default=None)
+    parser.add_argument('--static', action='store_true', default=False)
+    parser.add_argument('--lrtrain', action='store', type=float, default=.1)
+    parser.add_argument('--lrtune', action='store', type=float, default=.001)
+    parser.add_argument('--lrdecay', action='store', default=False, type=int)
 
     #parse arguments
     arguments = parser.parse_args()
@@ -86,9 +99,19 @@ def parse_arguments():
     args['tags'] = arguments.tags
     args['classifier'] = arguments.classifier
     args['forest_window'] = arguments.forestwindow
-    args['multi_features'] = arguments.multifeats
+    # args['multi_features'] = arguments.multifeats
     args['norm_samples'] = arguments.normalizesamples
     args['negative_sampling'] = arguments.negativesampling
+    args['forest_config'] = arguments.forestconfig
+    args['early_stopping_threshold'] = arguments.earlystop
+    args['n_hidden'] = arguments.hidden
+    args['pickle_lists'] = arguments.picklelists
+    args['logger_filename'] = arguments.logger
+    args['static'] = arguments.static
+    args['alpha_na'] = arguments.alphana
+    args['learning_rate_train'] = arguments.lrtrain
+    args['learning_rate_tune'] = arguments.lrtune
+    args['lr_decay'] = arguments.lrdecay
 
     return args
 
@@ -212,32 +235,12 @@ def determine_nnclass_and_parameters(args):
     multi_feats = []
     normalize_samples = False
 
-    if args['nn_name'] == 'single_cw':
-        nn_class = Single_Layer_Context_Window_Net
-        hidden_f = None #no hidden layer in the single MLP.
+    if args['nn_name'] == 'tf_mlp':
+        from SOTA.neural_network.tensor_flow.feed_forward_mlp_net import Neural_Net
+        nn_class = Neural_Net
         add_words = ['<PAD>']
-    if args['nn_name'] == 'hidden_cw':
-        # one hidden layer with context window. Either minibatch or SGD.
-        nn_class = Hidden_Layer_Context_Window_Net
-        add_words = ['<PAD>']
-        multi_feats = args['multi_features']
-        normalize_samples = args['norm_samples']
         add_feats = ['<PAD>']
-    elif args['nn_name'] == 'vector_tag':
-        nn_class = Vector_Tag_Contex_Window_Net
-        tag_dim = args['tagdim']
-        add_words = ['<PAD>']
-        add_tags = ['<PAD>', '<UNK>']
-    elif args['nn_name'] == 'last_tag':
-        nn_class = Last_tag_neural_network_trainer
-        #TODO: no add tags? or add words?
-    elif args['nn_name'] == 'rnn':
-        #the RNN init function overwrites the n_window param and sets it to 1.
-        nn_class = Recurrent_net
-        net_window = 1
-    elif args['nn_name'] == 'cw_rnn':
-        nn_class = Recurrent_Context_Window_net
-        add_words = ['<PAD>']
+
     return nn_class, hidden_f, out_f, add_words, add_tags, add_feats, tag_dim, net_window, multi_feats, \
            normalize_samples
 
@@ -275,6 +278,7 @@ def use_testing_dataset(nn_class,
                         max_epochs,
                         minibatch_size,
                         regularization,
+                        forest_config,
                         **kwargs
                         ):
 
@@ -284,12 +288,39 @@ def use_testing_dataset(nn_class,
 
     logger.info('Loading CRF training data')
 
-    feat_positions = nn_class.get_features_crf_position(multi_feats)
+    config_features, config_embeddings = read_config_file(forest_config)
+    feat_names_and_positions = Multi_feat_Neural_Net.get_features_crf_position(config_features.keys())
+    feat_positions = [v for _,v in feat_names_and_positions]
 
-    x_train, y_train_all, x_train_feats, x_valid, y_valid_all, x_valid_feats, x_test, y_test_all, x_test_feats, word2index_all, \
-    index2word_all, label2index_all, index2label_all, features_indexes = \
-        nn_class.get_data(clef_training=True, clef_validation=True, clef_testing=True, add_words=add_words,
+    x_train, y_train_all, x_train_feats, \
+    x_valid, y_valid_all, x_valid_feats, \
+    x_test, y_test_all, x_test_feats,\
+    word2index_all, index2word_all, \
+    label2index_all, index2label_all, \
+    features_indexes = \
+        A_neural_network.get_data(clef_training=True, clef_validation=True, clef_testing=True, add_words=add_words,
                           add_tags=add_tags, add_feats=add_feats, x_idx=None, n_window=forest_window, feat_positions=feat_positions)
+
+    x_train_pos, x_train_ner, x_valid_pos, x_valid_ner, x_test_pos, x_test_ner = get_train_features_dataset(Multi_feat_Neural_Net,
+                                                                                                            config_features,
+                                                                                                            config_embeddings,
+                                                                                                            x_train,
+                                                                                                            x_train_feats,
+                                                                                                            x_valid,
+                                                                                                            x_valid_feats,
+                                                                                                            x_test,
+                                                                                                            x_test_feats)
+
+    x_train_sent_nr, x_valid_sent_nr, x_test_sent_nr, sent_nr2index, index2sent_nr, \
+    x_train_tense, x_valid_tense, x_test_tense, tense2index, index2tense = \
+        get_sent_nr_tense_features_dataset(config_features, config_embeddings, forest_window, add_feats)
+
+    # feat_positions = nn_class.get_features_crf_position(multi_feats)
+    #
+    # x_train, y_train_all, x_train_feats, x_valid, y_valid_all, x_valid_feats, x_test, y_test_all, x_test_feats, word2index_all, \
+    # index2word_all, label2index_all, index2label_all, features_indexes = \
+    #     nn_class.get_data(clef_training=True, clef_validation=True, clef_testing=True, add_words=add_words,
+    #                       add_tags=add_tags, add_feats=add_feats, x_idx=None, n_window=forest_window, feat_positions=feat_positions)
 
     if normalize_samples:
         logger.info('Normalizing number of samples')
@@ -297,22 +328,29 @@ def use_testing_dataset(nn_class,
 
     unique_words = word2index_all.keys()
 
-    x_train_sent_nr_feats = None
-    x_valid_sent_nr_feats = None
-    x_test_sent_nr_feats = None
-    if any(map(lambda x: str(x).startswith('sent_nr'), multi_feats)):
-        x_train_sent_nr_feats, x_valid_sent_nr_feats, x_test_sent_nr_feats = \
-            nn_class.get_word_sentence_number_features(clef_training=True, clef_validation=True, clef_testing=True)
+    ner_embeddings, pos_embeddings, pretrained_embeddings, sent_nr_embeddings, tense_embeddings = initialize_embeddings(
+        A_neural_network, unique_words, w2v_dims, w2v_model, w2v_vectors, word2index_all, config_embeddings, features_indexes,
+        config_features.keys(), feat_names_and_positions,
+        sent_nr2index, tense2index)
 
-    x_train_tense_feats = None
-    x_valid_tense_feats = None
-    x_test_tense_feats = None
-    tense_probs = None
-    if any(map(lambda x: str(x).startswith('tense'), multi_feats)):
-        x_train_tense_feats, x_valid_tense_feats, x_test_tense_feats, tense_probs = \
-            nn_class.get_tenses_features(clef_training=True, clef_validation=True, clef_testing=True)
+    unique_words = word2index_all.keys()
 
-    pretrained_embeddings = A_neural_network.initialize_w(w2v_dims, unique_words, w2v_vectors=w2v_vectors, w2v_model=w2v_model)
+    # x_train_sent_nr_feats = None
+    # x_valid_sent_nr_feats = None
+    # x_test_sent_nr_feats = None
+    # if any(map(lambda x: str(x).startswith('sent_nr'), multi_feats)):
+    #     x_train_sent_nr_feats, x_valid_sent_nr_feats, x_test_sent_nr_feats = \
+    #         nn_class.get_word_sentence_number_features(clef_training=True, clef_validation=True, clef_testing=True)
+    #
+    # x_train_tense_feats = None
+    # x_valid_tense_feats = None
+    # x_test_tense_feats = None
+    # tense_probs = None
+    # if any(map(lambda x: str(x).startswith('tense'), multi_feats)):
+    #     x_train_tense_feats, x_valid_tense_feats, x_test_tense_feats, tense_probs = \
+    #         nn_class.get_tenses_features(clef_training=True, clef_validation=True, clef_testing=True)
+    #
+    # pretrained_embeddings = A_neural_network.initialize_w(w2v_dims, unique_words, w2v_vectors=w2v_vectors, w2v_model=w2v_model)
 
     # determine which tags to predict in the first step, and which ones in the second.
     y_train_labels, y_valid_labels, y_test_labels = get_original_labels(y_train_all, y_valid_all, y_test_all, index2label_all)
@@ -322,11 +360,33 @@ def use_testing_dataset(nn_class,
     y_train_1st_step, y_valid_1st_step, y_test_1st_step, label2index_1st_step, index2label_1st_step = \
         filter_tags_to_predict(y_train_labels, y_valid_labels, y_test_labels, tags, default_tag=default_tag)
 
-    forest = Forest(classifier, pretrained_embeddings, forest_window)
-    forest.train(x_train, y_train_1st_step)
-    train_predictions_1st_step = forest.predict(x_train)
-    valid_predictions_1st_step = forest.predict(x_valid)
-    test_predictions_1st_step = forest.predict(x_test)
+    forest = Forest(classifier,
+                    pretrained_embeddings, pos_embeddings,
+                    ner_embeddings, sent_nr_embeddings, tense_embeddings,
+                    forest_window)
+
+    forest.train(x_train,
+                 x_train_pos,
+                 x_train_ner,
+                 x_train_sent_nr,
+                 x_train_tense,
+                 y_train_1st_step)
+
+    train_predictions_1st_step = forest.predict(x_train,
+                                                x_train_pos,
+                                                x_train_ner,
+                                                x_train_sent_nr,
+                                                x_train_tense)
+    valid_predictions_1st_step = forest.predict(x_valid,
+                                                x_valid_pos,
+                                                x_valid_ner,
+                                                x_valid_sent_nr,
+                                                x_valid_tense)
+    test_predictions_1st_step = forest.predict(x_test,
+                                               x_test_pos,
+                                               x_test_ner,
+                                               x_test_sent_nr,
+                                               x_test_tense)
 
     assert y_train_1st_step.__len__() == train_predictions_1st_step.__len__()
     train_score_1st_step = Metrics.compute_all_metrics(y_train_1st_step, train_predictions_1st_step, average=None)
@@ -338,10 +398,15 @@ def use_testing_dataset(nn_class,
     print 'Validation scores'
     print valid_score_1st_step
 
+    assert y_test_1st_step.__len__() == test_predictions_1st_step.__len__()
+    test_score_1st_step = Metrics.compute_all_metrics(y_test_1st_step, test_predictions_1st_step, average=None)
+    print 'Testing scores'
+    print test_score_1st_step
+
     if forest_window != net_window:
         # the forest and the nnet might use different window sizes.
         x_train, _, x_train_feats, x_valid, _, x_valid_feats, x_test, _, x_test_feats, _, _, _, _, features_indexes = \
-        nn_class.get_data(clef_training=True, clef_validation=True, clef_testing=True, add_words=add_words,
+            A_neural_network.get_data(clef_training=True, clef_validation=True, clef_testing=True, add_words=add_words,
                               add_tags=add_tags, add_feats=add_feats, x_idx=None, n_window=net_window, feat_positions=feat_positions)
         # x_train, _, x_test, _, _, _, _, _ = \
         #     A_neural_network.get_data(crf_training_data_filename, test_data_filename, add_words, add_tags,
@@ -405,11 +470,16 @@ def use_testing_dataset(nn_class,
         'train_pos_feats': x_train_feats[2] if x_train_feats else None,  # refers to POS tag features.
         'valid_pos_feats': x_valid_feats[2] if x_train_feats else None,  # refers to POS tag features.
         'test_pos_feats': x_test_feats[2] if x_train_feats else None,  # refers to POS tag features.
-        'train_sent_nr_feats': x_train_sent_nr_feats,  # refers to sentence nr features.
-        'valid_sent_nr_feats': x_valid_sent_nr_feats,  # refers to sentence nr features.
-        'test_sent_nr_feats': x_test_sent_nr_feats,  # refers to sentence nr features.
-        'features_to_use': args['multi_features'],
-        'validation_cost': False
+        'train_sent_nr_feats': x_train_sent_nr,  # refers to sentence nr features.
+        'valid_sent_nr_feats': x_valid_sent_nr,  # refers to sentence nr features.
+        'test_sent_nr_feats': x_test_sent_nr,  # refers to sentence nr features.
+        # 'features_to_use': args['multi_features'],
+        'validation_cost': False,
+        'na_tag': None,
+        'n_hidden': args['n_hidden'],
+        'early_stopping_threshold': args['early_stopping_threshold'],
+        'pickle_lists': args['pickle_lists'],
+        'logger': logger
     }
 
     nn_trainer = nn_class(**params)
@@ -461,7 +531,7 @@ def use_testing_dataset(nn_class,
     # flat_true = y_test_labels
     # flat_predictions = map(lambda x: index2label[x], final_prediction)
 
-    results[0] = (y_valid_labels, valid_final_prediction, train_final_prediction, test_final_prediction)
+    results[0] = (y_train_labels, train_final_prediction, y_valid_labels, valid_final_prediction, y_test_labels, test_final_prediction)
 
     return results
 
@@ -519,7 +589,7 @@ if __name__ == '__main__':
     get_output_path = get_ensemble_forest_mlp_path
 
     logger.info('Using Forest: %s with window size: %d and Neural class: %s with window size: %d for epochs: %d'
-                % ('Random forest' if args['classifier']=='rf' else 'GBDT', args['net_window'], args['nn_name'],
+                % ('Random forest' if args['classifier']=='rf' else 'GBDT', args['forest_window'], args['nn_name'],
                    net_window, args['max_epochs']))
 
     if args['use_leave_one_out']:
@@ -543,45 +613,55 @@ if __name__ == '__main__':
     cPickle.dump(results, open(get_output_path('prediction_results.p'),'wb'))
     # cPickle.dump(index2label, open(get_output_path('index2labels.p'),'wb'))
 
-    valid_y_true = list(chain(*[true for true, _, _, _ in results.values()]))
-    valid_y_pred = list(chain(*[pred for _, pred, _, _ in results.values()]))
-    train_y_pred = list(chain(*[pred for _, _, pred, _ in results.values()]))
-    test_y_pred = list(chain(*[pred for _, _, _, pred in results.values()]))
+    train_y_true = list(chain(*[train_true for train_true, train_pred, valid_true, valid_pred, test_true, test_pred in results.values()]))
+    train_y_pred = list(chain(*[train_pred for train_true, train_pred, valid_true, valid_pred, test_true, test_pred in results.values()]))
+    valid_y_true = list(chain(*[valid_true for train_true, train_pred, valid_true, valid_pred, test_true, test_pred in results.values()]))
+    valid_y_pred = list(chain(*[valid_pred for train_true, train_pred, valid_true, valid_pred, test_true, test_pred in results.values()]))
+    test_y_true = list(chain(*[test_true for train_true, train_pred, valid_true, valid_pred, test_true, test_pred in results.values()]))
+    test_y_pred = list(chain(*[test_pred for train_true, train_pred, valid_true, valid_pred, test_true, test_pred in results.values()]))
+
+    Metrics.print_metric_results(train_y_true=train_y_true, train_y_pred=train_y_pred,
+                                 valid_y_true=valid_y_true, valid_y_pred=valid_y_pred,
+                                 test_y_true=test_y_true, test_y_pred=test_y_pred,
+                                 metatags=args['meta_tags'],
+                                 get_output_path=get_output_path,
+                                 additional_labels=add_tags,
+                                 logger=logger)
 
 
-    print '...Plotting confusion matrix'
-    output_filename = get_ensemble_forest_mlp_path('confusion_matrix.png')
-    # labels_list = list(set(valid_y_true).union(set(valid_y_pred)))
-    labels_list = get_classification_report_labels()
-    cm = Metrics.compute_confusion_matrix(valid_y_true, valid_y_pred, labels=labels_list)
-    plot_confusion_matrix(confusion_matrix=cm, labels=labels_list, output_filename=output_filename)
-
-    report = Metrics.compute_classification_report(valid_y_true, valid_y_pred, labels=get_classification_report_labels())
-
-    # save classification report to file
-    fout = open(get_output_path('classification_report.txt'), 'wb')
-    for i,line in enumerate(report.strip().split('\n')):
-        if line == u'':
-            continue
-        elif i == 0:
-            fout.write("{: >68} {: >20} {: >20} {: >20}".format(*[c for c in line.strip().split('  ') if c != u'']))
-            fout.write('\n')
-        else:
-            fout.write("{: >47} {: >20} {: >20} {: >20} {: >20}".format(*[c for c in line.strip().split('  ') if c != u'']))
-            fout.write('\n')
-
-    fout.close()
-
-    results_micro = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, average='micro')
-    results_macro = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, average='macro')
-
-    print 'MICRO results'
-    print results_micro
-    print 'MACRO results'
-    print results_macro
-
-    print '...Saving predictions to file'
-    save_predictions_to_file(train_y_pred, valid_y_pred, test_y_pred, get_output_path)
+    # print '...Plotting confusion matrix'
+    # output_filename = get_ensemble_forest_mlp_path('confusion_matrix.png')
+    # # labels_list = list(set(valid_y_true).union(set(valid_y_pred)))
+    # labels_list = get_classification_report_labels()
+    # cm = Metrics.compute_confusion_matrix(valid_y_true, valid_y_pred, labels=labels_list)
+    # plot_confusion_matrix(confusion_matrix=cm, labels=labels_list, output_filename=output_filename)
+    #
+    # report = Metrics.compute_classification_report(valid_y_true, valid_y_pred, labels=get_classification_report_labels())
+    #
+    # # save classification report to file
+    # fout = open(get_output_path('classification_report.txt'), 'wb')
+    # for i,line in enumerate(report.strip().split('\n')):
+    #     if line == u'':
+    #         continue
+    #     elif i == 0:
+    #         fout.write("{: >68} {: >20} {: >20} {: >20}".format(*[c for c in line.strip().split('  ') if c != u'']))
+    #         fout.write('\n')
+    #     else:
+    #         fout.write("{: >47} {: >20} {: >20} {: >20} {: >20}".format(*[c for c in line.strip().split('  ') if c != u'']))
+    #         fout.write('\n')
+    #
+    # fout.close()
+    #
+    # results_micro = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, average='micro')
+    # results_macro = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, average='macro')
+    #
+    # print 'MICRO results'
+    # print results_micro
+    # print 'MACRO results'
+    # print results_macro
+    #
+    # print '...Saving predictions to file'
+    # save_predictions_to_file(train_y_pred, valid_y_pred, test_y_pred, get_output_path)
 
     print 'Elapsed time: ', time.time()-start
 
