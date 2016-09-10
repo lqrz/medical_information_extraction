@@ -225,7 +225,10 @@ class Metrics:
             logger.info('Test AVERAGED results')
             logger.info(test_averaged)
 
-            all_labels = get_all_classification_report_labels() + additional_labels
+            if metatags:
+                all_labels = get_aggregated_classification_report_labels() + additional_labels
+            else:
+                all_labels = get_all_classification_report_labels() + additional_labels
 
             # no-average results are computed against all report labels, although it can only have training labels.
             results_noaverage = Metrics.compute_all_metrics(test_y_true, test_y_pred,

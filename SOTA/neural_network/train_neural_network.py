@@ -442,7 +442,7 @@ def determine_key_indexes(label2index, word2index):
     return pad_tag, unk_tag, pad_word
 
 
-def get_aggregated_tags(y_train, y_valid, mapping, index2label):
+def get_aggregated_tags(y_train, y_valid, y_test, mapping, index2label):
 
     y_original_train = map(lambda x: index2label[x], y_train)
     y_aggregated_train_labels = map(lambda x: mapping[x], y_original_train)
@@ -450,15 +450,19 @@ def get_aggregated_tags(y_train, y_valid, mapping, index2label):
     y_original_valid = map(lambda x: index2label[x], y_valid)
     y_aggregated_valid_labels = map(lambda x: mapping[x], y_original_valid)
 
-    used_aggegrated_labels = set(y_aggregated_train_labels).union(set(y_aggregated_valid_labels))
+    y_original_test = map(lambda x: index2label[x], y_test)
+    y_aggregated_test_labels = map(lambda x: mapping[x], y_original_test)
+
+    used_aggegrated_labels = set(y_aggregated_train_labels+y_aggregated_valid_labels+y_aggregated_test_labels)
 
     aggregated_label2index = dict(zip(used_aggegrated_labels, range(used_aggegrated_labels.__len__())))
     aggregated_index2label = dict(zip(range(used_aggegrated_labels.__len__()), used_aggegrated_labels))
 
     y_aggregated_train_indexes = map(lambda x: aggregated_label2index[x], y_aggregated_train_labels)
     y_aggregated_valid_indexes = map(lambda x: aggregated_label2index[x], y_aggregated_valid_labels)
+    y_aggregated_test_indexes = map(lambda x: aggregated_label2index[x], y_aggregated_test_labels)
 
-    return y_aggregated_train_indexes, y_aggregated_valid_indexes, aggregated_label2index, aggregated_index2label
+    return y_aggregated_train_indexes, y_aggregated_valid_indexes, y_aggregated_test_indexes, aggregated_label2index, aggregated_index2label
 
 def read_embeddings_info(config_parser, config_features):
     config_embeddings = defaultdict(lambda : dict())
@@ -783,8 +787,8 @@ def use_testing_dataset(nn_class,
     if meta_tags:
         logger.info('Using aggregated tags')
         tag_mapping = get_hierarchical_mapping()
-        y_train, y_valid, label2index, index2label = \
-            get_aggregated_tags(y_train, y_valid, tag_mapping, index2label)
+        y_train, y_valid, y_test, label2index, index2label = \
+            get_aggregated_tags(y_train, y_valid, y_test, tag_mapping, index2label)
 
     n_out = len(label2index.keys())
 
