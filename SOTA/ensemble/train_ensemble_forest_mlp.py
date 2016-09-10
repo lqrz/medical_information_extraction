@@ -623,7 +623,7 @@ if __name__ == '__main__':
     Metrics.print_metric_results(train_y_true=train_y_true, train_y_pred=train_y_pred,
                                  valid_y_true=valid_y_true, valid_y_pred=valid_y_pred,
                                  test_y_true=test_y_true, test_y_pred=test_y_pred,
-                                 metatags=args['meta_tags'],
+                                 metatags=False,
                                  get_output_path=get_output_path,
                                  additional_labels=add_tags,
                                  logger=logger)
