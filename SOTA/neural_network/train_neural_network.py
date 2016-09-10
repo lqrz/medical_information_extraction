@@ -444,23 +444,38 @@ def determine_key_indexes(label2index, word2index):
 
 def get_aggregated_tags(y_train, y_valid, y_test, mapping, index2label):
 
-    y_original_train = map(lambda x: index2label[x], y_train)
-    y_aggregated_train_labels = map(lambda x: mapping[x], y_original_train)
+    try:
+        y_original_train = map(lambda x: index2label[x], y_train)
+        y_aggregated_train_labels = map(lambda x: mapping[x], y_original_train)
+        y_original_valid = map(lambda x: index2label[x], y_valid)
+        y_aggregated_valid_labels = map(lambda x: mapping[x], y_original_valid)
+        y_original_test = map(lambda x: index2label[x], y_test)
+        y_aggregated_test_labels = map(lambda x: mapping[x], y_original_test)
 
-    y_original_valid = map(lambda x: index2label[x], y_valid)
-    y_aggregated_valid_labels = map(lambda x: mapping[x], y_original_valid)
+        used_aggegrated_labels = set(y_aggregated_train_labels + y_aggregated_valid_labels + y_aggregated_test_labels)
+    except TypeError:
+        mapping['<PAD>'] = '<PAD>'
+        y_original_train = [map(lambda x: index2label[x], sent) for sent in y_train]
+        y_aggregated_train_labels = [map(lambda x: mapping[x], sent) for sent in y_original_train]
+        y_original_valid = [map(lambda x: index2label[x], sent) for sent in y_valid]
+        y_aggregated_valid_labels = [map(lambda x: mapping[x], sent) for sent in y_original_valid]
+        y_original_test = [map(lambda x: index2label[x], sent) for sent in y_test]
+        y_aggregated_test_labels = [map(lambda x: mapping[x], sent) for sent in y_original_test]
 
-    y_original_test = map(lambda x: index2label[x], y_test)
-    y_aggregated_test_labels = map(lambda x: mapping[x], y_original_test)
-
-    used_aggegrated_labels = set(y_aggregated_train_labels+y_aggregated_valid_labels+y_aggregated_test_labels)
+        used_aggegrated_labels = set(list(chain(*y_aggregated_train_labels)) + list(chain(*y_aggregated_valid_labels)) + \
+                                     list(chain(*y_aggregated_test_labels)))
 
     aggregated_label2index = dict(zip(used_aggegrated_labels, range(used_aggegrated_labels.__len__())))
     aggregated_index2label = dict(zip(range(used_aggegrated_labels.__len__()), used_aggegrated_labels))
 
-    y_aggregated_train_indexes = map(lambda x: aggregated_label2index[x], y_aggregated_train_labels)
-    y_aggregated_valid_indexes = map(lambda x: aggregated_label2index[x], y_aggregated_valid_labels)
-    y_aggregated_test_indexes = map(lambda x: aggregated_label2index[x], y_aggregated_test_labels)
+    try:
+        y_aggregated_train_indexes = map(lambda x: aggregated_label2index[x], y_aggregated_train_labels)
+        y_aggregated_valid_indexes = map(lambda x: aggregated_label2index[x], y_aggregated_valid_labels)
+        y_aggregated_test_indexes = map(lambda x: aggregated_label2index[x], y_aggregated_test_labels)
+    except TypeError:
+        y_aggregated_train_indexes = [map(lambda x: aggregated_label2index[x], sent) for sent in y_aggregated_train_labels]
+        y_aggregated_valid_indexes = [map(lambda x: aggregated_label2index[x], sent) for sent in y_aggregated_valid_labels]
+        y_aggregated_test_indexes = [map(lambda x: aggregated_label2index[x], sent) for sent in y_aggregated_test_labels]
 
     return y_aggregated_train_indexes, y_aggregated_valid_indexes, y_aggregated_test_indexes, aggregated_label2index, aggregated_index2label
 
