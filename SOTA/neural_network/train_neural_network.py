@@ -953,7 +953,7 @@ def load_glove_cache(representations_filename):
 
     return representations, dims
 
-def initialize_w2v_embeddings(w2v_dims, w2v_model, w2v_vectors, config_embeddings, unique_words):
+def initialize_w2v_embeddings(w2v_dims, w2v_model, w2v_vectors, config_embeddings, unique_words, nn_class):
     if config_embeddings:
         source = config_embeddings['w2v_embeddings']['source']
         dim = np.int(config_embeddings['w2v_embeddings']['dim'])
@@ -1034,7 +1034,8 @@ def initialize_embeddings(nn_class, unique_words, w2v_dims, w2v_model, w2v_vecto
     sent_nr_embeddings = None
     tense_embeddings = None
 
-    pretrained_embeddings = initialize_w2v_embeddings(w2v_dims, w2v_model, w2v_vectors, config_embeddings, unique_words)
+    pretrained_embeddings = initialize_w2v_embeddings(w2v_dims, w2v_model, w2v_vectors, config_embeddings, unique_words,
+                                                      nn_class)
 
     # features_positions = zip(features, features_positions)
 
