@@ -271,6 +271,9 @@ class CRF:
         features['suffix'] = word[-3:]
 
         if word_idx > 0:
+
+            features['BOS'] = False
+
             previous_word = sentence[word_idx-1]['word']
             previous_word_lemma = sentence[word_idx-1]['features'][0]
             previous_word_ner = sentence[word_idx-1]['features'][1]
@@ -335,7 +338,12 @@ class CRF:
             # features.append('BOS')
             features['BOS'] = True
 
+            for feat_name in features_names:
+                features['previous_' + feat_name] = None
+
         if word_idx < len(sentence)-1:
+            features['EOS'] = False
+
             next_word = sentence[word_idx+1]['word']
             next_word_lemma = sentence[word_idx+1]['features'][0]
             next_word_ner = sentence[word_idx+1]['features'][1]
@@ -400,11 +408,14 @@ class CRF:
             # features.append('EOS')
             features['EOS'] = True
 
+            for feat_name in features_names:
+                features['next_' + feat_name] = None
+
         # word2vec similar words features
         if self.w2v_similar_words and self.w2v_model:
             similar_words = self.get_similar_w2v_words(word, self.similar_words_cache, topn=5)
-            for j,sim_word in enumerate(similar_words):
-                features['w2v_similar_word_'+str(j)] = sim_word
+            for sim_word_ix, sim_word in enumerate(similar_words):
+                features['w2v_similar_word_%d' % sim_word_ix] = sim_word
             # features.extend(similar_words)
 
         # kmeans features
@@ -416,8 +427,8 @@ class CRF:
         # lda features
         if self.lda_features and self.lda_model:
             topics = self.get_lda_topics(word, self.word_lda_topics, topn=5)
-            for j,topic in enumerate(topics):
-                features['lda_topic_'+str(j)] = str(topic)
+            for topic_ix, topic in enumerate(topics):
+                features['lda_topic_%d' % topic_ix] = str(topic)
             # features.extend(topics)
 
         # word2vec dimensions features
@@ -426,16 +437,16 @@ class CRF:
             if rep is None:
                 rep = np.zeros((self.w2v_ndims,))
 
-            for dim_nr,dim_val in enumerate(rep):
+            for dim_nr, dim_val in enumerate(rep):
                 # features['w2v_dim_'+str(j)] = dim_val
-                features['w2v_dim_'+str(dim_nr)] = str(dim_val)[:4] if dim_val > 0 else str(dim_val)[:5]
+                features['w2v_dim_%d' % dim_nr] = dim_val[:4] if dim_val > 0 else dim_val[:5]
                 #TODO: review
 
         if self.knowledge_graph:
             top_n = 3   # 3 works better than 1 and than 5
             # set or directly top_n? list works better
             for entity_nr, entity in enumerate(self.knowledge_graph[word][:top_n]):
-                features['entity_'+str(entity_nr)] = entity
+                features['entity_%d' % entity_nr] = entity
 
         return features
 
