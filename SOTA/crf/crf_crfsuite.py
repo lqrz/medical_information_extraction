@@ -8,6 +8,7 @@ import logging
 from itertools import chain
 import argparse
 import codecs
+import numpy as np
 
 from SOTA.crf.crf_sklearn_crfsuite import CRF
 from data.dataset import Dataset
@@ -110,8 +111,8 @@ def generate_file(x_dataset, y_dataset, output_filename, scale_factor):
         for x_item, y_item in zip(x_seq, y_seq):
             fs = []
             for feat_name, value in x_item.items():
-                if isinstance(value, float):
-                    pass
+                if isinstance(value, np.float32):
+                    fs.append("%s=1: % g" % (feat_name, float(value) * scale_factor))
                 else:
                     fs.append('%s=%s' % (feat_name, value))
             try:
