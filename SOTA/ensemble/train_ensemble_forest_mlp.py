@@ -218,7 +218,7 @@ def get_original_labels(y_train, y_valid, y_test, index2label):
     else:
         y_train_labels = map(lambda x: index2label[x], y_train)
         y_valid_labels = map(lambda x: index2label[x], y_valid)
-        y_test_labels = map(lambda x: index2label[x] if x else None, y_test)
+        y_test_labels = map(lambda x: index2label[x], y_test)
 
     return y_train_labels, y_valid_labels, y_test_labels
 
