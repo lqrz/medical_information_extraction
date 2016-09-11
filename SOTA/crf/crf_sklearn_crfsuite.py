@@ -59,6 +59,7 @@ def memoize(func):
 class CRF:
 
     def __init__(self, training_data,
+                 validation_data,
                  testing_data,
                  output_model_filename,
                  w2v_vector_features=False,
@@ -78,7 +79,7 @@ class CRF:
                  **kwargs):
 
         self.training_data = training_data
-
+        self.validation_data = validation_data
         self.testing_data = testing_data
 
         self.output_model_filename = output_model_filename
@@ -1212,8 +1213,11 @@ def pickle_results(prediction_results,
 def parse_arguments():
 
     parser = argparse.ArgumentParser(description='CRF Sklearn')
-    parser.add_argument('--originalfeatures', action='store_true', default=False)
-    parser.add_argument('--customfeatures', action='store_true', default=False)
+
+    feat_function_group = parser.add_mutually_exclusive_group(required=True)
+    feat_function_group.add_argument('--originalfeatures', action='store_true', default=False)
+    feat_function_group.add_argument('--customfeatures', action='store_true', default=False)
+
     parser.add_argument('--w2vsimwords', action='store_true', default=False)
     parser.add_argument('--w2vvectors', action='store_true', default=False)
     parser.add_argument('--w2vmodel', action='store', type=str, default=None)
