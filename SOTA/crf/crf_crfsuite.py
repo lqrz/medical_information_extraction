@@ -8,7 +8,7 @@ import logging
 from itertools import chain
 import argparse
 
-from SOTA.crf.crf_sklearn_crfsuite import check_arguments_consistency, CRF
+from SOTA.crf.crf_sklearn_crfsuite import CRF
 from data.dataset import Dataset
 from trained_models import get_crf_crfsuite_folder
 from Tools import get_crfsuite_base_call
@@ -178,6 +178,23 @@ def use_testing_dataset(crf_model, feature_function, scale_factor,
 def determine_output_path(**kwargs):
 
     return get_crf_crfsuite_folder
+
+def check_arguments_consistency(args):
+    #TODO: i shouldnt load the model if its for using kmeans or vector-features and a cache-dict is provided
+    if (args['w2v_similar_words'] or args['kmeans_features'] or args['w2v_vector_features']) \
+            and not (args['w2v_model_file'] or args['w2v_vectors_cache']):
+        logger.error('Provide a word2vec model or vector dictionary for vector extraction.')
+        exit()
+
+    if args['kmeans_features'] and not args['kmeans_model_name']:
+        logger.error('Provide a Kmeans model when using Kmeans-features')
+        exit()
+
+    if args['use_custom_features'] and args['metamap']:
+        logger.error('Metamap features are not included in custom features')
+        exit()
+
+    return True
 
 def parse_arguments():
 
