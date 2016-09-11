@@ -453,7 +453,9 @@ class CRF:
         if self.knowledge_graph:
             top_n = 3   # 3 works better than 1 and than 5
             # set or directly top_n? list works better
-            for entity_nr, entity in enumerate(self.knowledge_graph[word.lower()][:top_n]):
+            entities = self.knowledge_graph[word.lower()][:top_n]
+            entities = entities + [None] * (top_n - entities.__len__())
+            for entity_nr, entity in enumerate(entities):
                 features['entity_%d' % entity_nr] = entity
 
         return features
