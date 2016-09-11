@@ -220,10 +220,10 @@ class CRF:
         return document_sentence_tag
 
     def get_custom_word_features(self, sentence, word_idx):
-        features = ordered()
-        previous_features = dict()
-        next_features = dict()
-        word_features = dict()
+        features = OrderedDict()
+        previous_features = OrderedDict()
+        next_features = OrderedDict()
+        word_features = OrderedDict()
 
         features_names = ['word', 'lemma', 'ner', 'pos', 'parse_tree', 'dependents', 'governors', 'has_digit',
                           'is_capitalized']
