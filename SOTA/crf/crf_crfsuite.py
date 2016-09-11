@@ -190,7 +190,7 @@ def check_arguments_consistency(args):
         logger.error('Provide a Kmeans model when using Kmeans-features')
         exit()
 
-    if args['use_custom_features'] and args['metamap']:
+    if args['use_custom_features'] and args['incl_metamap']:
         logger.error('Metamap features are not included in custom features')
         exit()
 
