@@ -154,7 +154,8 @@ class CRF:
 
     def load_w2v_similar_words_cache(self, similar_words_dict):
 
-        self.w2v_similar_words_cache= pickle.load(open(get_w2v_training_data_vectors(similar_words_dict), 'rb'))
+        if similar_words_dict:
+            self.w2v_similar_words_cache= pickle.load(open(get_w2v_training_data_vectors(similar_words_dict), 'rb'))
 
         return
 
@@ -443,12 +444,11 @@ class CRF:
         if self.w2v_vector_features and (self.w2v_model or self.word_vector_cache):
             rep = self.get_w2v_vector(word.lower(), self.word_vector_cache)
             if rep is None:
-                rep = np.zeros((self.w2v_ndims,))
+                rep = np.zeros((self.w2v_ndims if self.w2v_ndims is not None else self.get_w2v_dims(),))
 
             for dim_nr, dim_val in enumerate(rep):
                 # features['w2v_dim_'+str(j)] = dim_val
-                features['w2v_dim_%d' % dim_nr] = dim_val[:4] if dim_val > 0 else dim_val[:5]
-                #TODO: review
+                features['w2v_dim_%d' % dim_nr] = dim_val
 
         if self.knowledge_graph:
             top_n = 3   # 3 works better than 1 and than 5
@@ -459,6 +459,12 @@ class CRF:
                 features['entity_%d' % entity_nr] = entity
 
         return features
+
+    def get_w2v_dims(self):
+        if self.word_vector_cache is not None:
+            self.w2v_ndims = self.word_vector_cache.values()[0].__len__()
+
+        return self.w2v_ndims
 
     @memoize
     def get_similar_w2v_words(self, word, dictionary, topn=5):
@@ -482,7 +488,7 @@ class CRF:
         try:
             word = word.lower()
             rep = self.w2v_model[word]
-        except KeyError:
+        except (KeyError, TypeError):
             pass
 
         return rep
