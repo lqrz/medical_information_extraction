@@ -7,6 +7,7 @@ sys.path.append(os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(
 import logging
 from itertools import chain
 import argparse
+import codecs
 
 from SOTA.crf.crf_sklearn_crfsuite import CRF
 from data.dataset import Dataset
@@ -93,7 +94,7 @@ def run(cmd):
     return True
 
 def generate_file(x_dataset, y_dataset, output_filename, scale_factor):
-    fout = open(output_filename, 'wb')
+    fout = codecs.open(output_filename, 'wb', encoding='utf-8')
 
     n_feats = None
 
@@ -108,12 +109,16 @@ def generate_file(x_dataset, y_dataset, output_filename, scale_factor):
 
         for x_item, y_item in zip(x_seq, y_seq):
             fs = []
-            for feat_name, value in x_item.iteritems():
+            for feat_name, value in x_item.items():
                 if isinstance(value, float):
                     pass
                 else:
                     fs.append('%s=%s' % (feat_name, value))
-            fout.write('%s\t%s\n' % (y_item, '\t'.join(fs)))
+            try:
+                fout.write('%s\t%s\n' % (y_item, '\t'.join(fs)))
+            except:
+                logger.error('Error writing to file')
+                exit()
 
         fout.write('\n')  # it might be the end of a sentence or the end of a document.
 
@@ -204,10 +209,11 @@ def parse_arguments():
     feat_function_group.add_argument('--originalfeatures', action='store_true', default=False)
     feat_function_group.add_argument('--customfeatures', action='store_true', default=False)
 
-    parser.add_argument('--w2vsimwords', action='store_true', default=False)
+    parser.add_argument('--w2vsimilarwords', action='store_true', default=False)
     parser.add_argument('--w2vvectors', action='store_true', default=False)
     parser.add_argument('--w2vmodel', action='store', type=str, default=None)
     parser.add_argument('--w2vvectorscache', action='store', type=str, default=None)
+    parser.add_argument('--w2vsimilarwordscache', action='store', type=str, default=None)
     parser.add_argument('--kmeans', action='store_true', default=False)
     parser.add_argument('--kmeansmodel', action='store', type=str, default=None)
     parser.add_argument('--lda', action='store_true', default=False)
@@ -228,7 +234,7 @@ def parse_arguments():
     args = dict()
     args['use_original_paper_features'] = arguments.originalfeatures
     args['use_custom_features'] = arguments.customfeatures
-    args['w2v_similar_words'] = arguments.w2vsimwords
+    args['w2v_similar_words'] = arguments.w2vsimilarwords
     args['w2v_vector_features'] = arguments.w2vvectors
     args['w2v_model_file'] = arguments.w2vmodel
     args['w2v_vectors_cache'] = arguments.w2vvectorscache
@@ -244,6 +250,7 @@ def parse_arguments():
     args['crf_iters'] = arguments.crfiters
     args['knowledge_graph'] = arguments.knowledgegraph
     args['scale_factor'] = arguments.scalefactor
+    args['w2v_similar_words_cache'] = arguments.w2vsimilarwordscache
 
     return args
 
