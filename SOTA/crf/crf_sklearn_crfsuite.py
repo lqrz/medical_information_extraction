@@ -63,6 +63,7 @@ class CRF:
                  testing_data,
                  output_model_filename,
                  w2v_vector_features=False,
+                 w2v_similar_words_cache=None,
                  w2v_similar_words=False,
                  kmeans_features=False,
                  kmeans_model_name=None,
@@ -101,6 +102,7 @@ class CRF:
         self.w2v_ndims = None   #w2v model dimensions
 
         self.load_w2v_model_and_cache(w2v_model_file, w2v_vectors_cache)
+        self.load_w2v_similar_words_cache(w2v_similar_words_cache)
         # if self.w2v_similar_words or self.kmeans_features or self.w2v_vector_features:
         #     # load w2v model from specified file
         #     #W2V_PRETRAINED_FILENAME = 'GoogleNews-vectors-negative300.bin.gz'
@@ -149,6 +151,12 @@ class CRF:
 
     def load_knowledge_graph_cache(self, path):
         return pickle.load(open(get_google_knowled_graph_cache(path), 'rb'))
+
+    def load_w2v_similar_words_cache(self, similar_words_dict):
+
+        self.w2v_similar_words_cache= pickle.load(open(get_w2v_training_data_vectors(similar_words_dict), 'rb'))
+
+        return
 
     def load_w2v_model_and_cache(self, w2v_model, w2v_vectors_dict):
 
@@ -212,7 +220,7 @@ class CRF:
         return document_sentence_tag
 
     def get_custom_word_features(self, sentence, word_idx):
-        features = dict()
+        features = ordered()
         previous_features = dict()
         next_features = dict()
         word_features = dict()
@@ -412,7 +420,7 @@ class CRF:
                 features['next_' + feat_name] = None
 
         # word2vec similar words features
-        if self.w2v_similar_words and self.w2v_model:
+        if self.w2v_similar_words and (self.w2v_model or self.w2v_similar_words_cache):
             similar_words = self.get_similar_w2v_words(word.lower(), self.similar_words_cache, topn=5)
             for sim_word_ix, sim_word in enumerate(similar_words):
                 features['w2v_similar_word_%d' % sim_word_ix] = sim_word
@@ -452,14 +460,19 @@ class CRF:
 
     @memoize
     def get_similar_w2v_words(self, word, dictionary, topn=5):
+        similar_words = None
         try:
             word = word.lower()
-            similar_words = [sim for sim,_ in self.w2v_model.most_similar(positive=[word], topn=topn)]
-        except:
-            similar_words = []
+            similar_words = self.w2v_similar_words_cache[word][:topn]
+        except (TypeError, KeyError):
+            try:
+                similar_words = [sim for sim,_ in self.w2v_model.most_similar(positive=[word], topn=topn)]
+            except:
+                similar_words = [None] * topn
+
+        assert similar_words is not None
 
         return similar_words
-        # return ['ej1', 'e2', 'e3']
 
     @memoize
     def get_w2v_vector(self, word, dictionary):
@@ -1271,7 +1284,7 @@ def parse_arguments():
     feat_function_group.add_argument('--originalfeatures', action='store_true', default=False)
     feat_function_group.add_argument('--customfeatures', action='store_true', default=False)
 
-    parser.add_argument('--w2vsimwords', action='store_true', default=False)
+    parser.add_argument('--w2vsimilarwords', action='store_true', default=False)
     parser.add_argument('--w2vvectors', action='store_true', default=False)
     parser.add_argument('--w2vmodel', action='store', type=str, default=None)
     parser.add_argument('--w2vvectorscache', action='store', type=str, default=None)
@@ -1294,7 +1307,7 @@ def parse_arguments():
     args = dict()
     args['use_original_paper_features'] = arguments.originalfeatures
     args['use_custom_features'] = arguments.customfeatures
-    args['w2v_similar_words'] = arguments.w2vsimwords
+    args['w2v_similar_words'] = arguments.w2vsimilarwords
     args['w2v_vector_features'] = arguments.w2vvectors
     args['w2v_model_file'] = arguments.w2vmodel
     args['w2v_vectors_cache'] = arguments.w2vvectorscache
