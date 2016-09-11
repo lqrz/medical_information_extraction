@@ -980,10 +980,10 @@ class CRF:
         return sentence_features
 
     def get_custom_word_features_for_nnet(self, sentence, word_idx):
-        features = dict()
-        previous_features = dict()
-        next_features = dict()
-        word_features = dict()
+        features = OrderedDict()
+        previous_features = OrderedDict()
+        next_features = OrderedDict()
+        word_features = OrderedDict()
 
         features_names = ['word', 'lemma', 'ner', 'pos', 'parse_tree', 'dependents', 'governors', 'has_digit',
                           'is_capitalized']
