@@ -419,7 +419,7 @@ class CRF:
             # features.extend(similar_words)
 
         # kmeans features
-        if (self.kmeans_features and self.kmeans_model) and self.w2v_model:
+        if (self.kmeans_features and self.kmeans_model) and (self.word_vector_cache or self.w2v_model):
             cluster = self.get_kmeans_cluster(word.lower())
             features['kmeans_cluster'] = str(cluster)
             # features.append(str(cluster))
