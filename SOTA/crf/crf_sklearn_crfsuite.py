@@ -567,6 +567,9 @@ class CRF:
                 word_basic_dependents, word_basic_governors, word_unk_score, word_phrase])
 
         if word_idx > 0:
+
+            features['BOS'] = 'False'
+
             # U00:%x[-1,0]
             previous_word = sentence[word_idx-1]['word']
             features['previous_word'] = previous_word
@@ -682,7 +685,26 @@ class CRF:
             # features['BOS'] = True
             features['BOS'] = 'True'
 
+            features['previous_word'] = None
+            # U05:%x[-1,1]
+            features['previous_lemma'] = None
+            # U10:%x[-1,2]
+            features['previous_ner'] = None
+            # U15:%x[-1,3]
+            features['previous_pos'] = None
+            # U20:%x[-1,4]
+            features['previous_parse_tree'] = None
+            # U25:%x[-1,5]
+            features['previous_dependents'] = None
+            # U30:%x[-1,6]
+            features['previous_governors'] = None
+            # U35:%x[-1,8]
+            features['previous_phrase'] = None
+
         if word_idx < len(sentence)-1:
+
+            features['EOS'] = 'False'
+
             # U02:%x[1,0]
             next_word = sentence[word_idx+1]['word']
             features['next_word'] = next_word
@@ -791,6 +813,24 @@ class CRF:
         else:
             # features['EOS'] = True
             features['EOS'] = True
+
+            # U02:%x[1,0]
+            next_word = None
+            features['next_word'] = None
+            # U07:%x[1,1]
+            features['next_lemma'] = None
+            # U12:%x[1,2]
+            features['next_ner'] = None
+            # U17:%x[1,3]
+            features['next_pos'] = None
+            # U22:%x[1,4]
+            features['next_parse_tree'] = None
+            # U27:%x[1,5]
+            features['next_dependents'] = None
+            # U32:%x[1,6]
+            features['next_governors'] = None
+            # U37:%x[1,8]
+            features['next_phrase'] = None
 
         return features
 
