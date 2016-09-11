@@ -271,3 +271,11 @@ def get_tf_rnn_path(file_name):
         os.makedirs(dir)
 
     return path
+
+def get_crf_crfsuite_folder(filename):
+    path = pkg_resources.resource_filename('trained_models', 'pycrf/crf_crfsuite/%s' % filename)
+    dir = os.path.dirname(path)
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+    return path
