@@ -74,6 +74,9 @@ def determine_output_filename(output_model):
     elif output_model == 'mlp':
         from trained_models import get_tf_cwnn_path
         get_output_path = get_tf_cwnn_path
+    elif output_model == 'layered':
+        from trained_models import get_ensemble_forest_mlp_path
+        get_output_path = get_ensemble_forest_mlp_path
 
     assert get_output_path is not None
 
