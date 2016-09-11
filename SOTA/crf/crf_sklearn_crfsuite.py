@@ -413,27 +413,27 @@ class CRF:
 
         # word2vec similar words features
         if self.w2v_similar_words and self.w2v_model:
-            similar_words = self.get_similar_w2v_words(word, self.similar_words_cache, topn=5)
+            similar_words = self.get_similar_w2v_words(word.lower(), self.similar_words_cache, topn=5)
             for sim_word_ix, sim_word in enumerate(similar_words):
                 features['w2v_similar_word_%d' % sim_word_ix] = sim_word
             # features.extend(similar_words)
 
         # kmeans features
         if (self.kmeans_features and self.kmeans_model) and self.w2v_model:
-            cluster = self.get_kmeans_cluster(word)
+            cluster = self.get_kmeans_cluster(word.lower())
             features['kmeans_cluster'] = str(cluster)
             # features.append(str(cluster))
 
         # lda features
         if self.lda_features and self.lda_model:
-            topics = self.get_lda_topics(word, self.word_lda_topics, topn=5)
+            topics = self.get_lda_topics(word.lower(), self.word_lda_topics, topn=5)
             for topic_ix, topic in enumerate(topics):
                 features['lda_topic_%d' % topic_ix] = str(topic)
             # features.extend(topics)
 
         # word2vec dimensions features
         if self.w2v_vector_features and (self.w2v_model or self.word_vector_cache):
-            rep = self.get_w2v_vector(word, self.word_vector_cache)
+            rep = self.get_w2v_vector(word.lower(), self.word_vector_cache)
             if rep is None:
                 rep = np.zeros((self.w2v_ndims,))
 
@@ -445,7 +445,7 @@ class CRF:
         if self.knowledge_graph:
             top_n = 3   # 3 works better than 1 and than 5
             # set or directly top_n? list works better
-            for entity_nr, entity in enumerate(self.knowledge_graph[word][:top_n]):
+            for entity_nr, entity in enumerate(self.knowledge_graph[word.lower()][:top_n]):
                 features['entity_%d' % entity_nr] = entity
 
         return features
