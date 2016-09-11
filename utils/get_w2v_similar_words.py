@@ -1,4 +1,11 @@
 __author__ = 'lqrz'
+
+'''
+Loads a w2v model and get the topn=5 most similar words for each token in the dataset.
+This is meant to be run in the server, so as to get a dictionary as cache and avoid querying
+the w2v model every time is needed.
+'''
+
 import os
 import sys
 sys.path.append(os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
@@ -48,15 +55,15 @@ def get_words(training=False, validation=False, testing=False):
     words = []
 
     if training:
-        _, sentences, _, _ = Dataset.get_clef_training_dataset()
+        _, sentences, _, _ = Dataset.get_clef_training_dataset(lowercase=True)
         words.extend(list(chain(*sentences.values())))
 
     if validation:
-        _, sentences, _, _ = Dataset.get_clef_validation_dataset()
+        _, sentences, _, _ = Dataset.get_clef_validation_dataset(lowercase=True)
         words.extend(list(chain(*sentences.values())))
 
     if testing:
-        _, sentences, _, _ = Dataset.get_clef_testing_dataset()
+        _, sentences, _, _ = Dataset.get_clef_testing_dataset(lowercase=True)
         words.extend(list(chain(*sentences.values())))
 
     return set(words)
@@ -65,7 +72,6 @@ def get_similar_words(w2v_model, words, topn=5):
     similar_words = dict()
 
     for word in words:
-        word = word.lower()
         try:
             similar_words[word] = [sim for sim, _ in w2v_model.most_similar(positive=[word], topn=topn)]
         except KeyError:
