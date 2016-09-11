@@ -693,24 +693,26 @@ class CRF:
                         # str(word_location)
 
         else:
-            # features['BOS'] = True
             features['BOS'] = 'True'
 
             features['previous_word'] = None
-            # U05:%x[-1,1]
             features['previous_lemma'] = None
-            # U10:%x[-1,2]
             features['previous_ner'] = None
-            # U15:%x[-1,3]
             features['previous_pos'] = None
-            # U20:%x[-1,4]
             features['previous_parse_tree'] = None
-            # U25:%x[-1,5]
             features['previous_dependents'] = None
-            # U30:%x[-1,6]
             features['previous_governors'] = None
-            # U35:%x[-1,8]
             features['previous_phrase'] = None
+
+            if self.original_include_metamap:
+                features['previous_candidate_1'] = None
+                features['previous_candidate_2'] = None
+                features['previous_candidate_3'] = None
+                features['previous_candidate_4'] = None
+                features['previous_candidate_5'] = None
+                features['previous_mapping'] = None
+                features['previous_medication_score'] = None
+                features['previous_location'] = None
 
         if word_idx < len(sentence)-1:
 
@@ -822,26 +824,26 @@ class CRF:
                         sentence[word_idx+1]['features'][15]
 
         else:
-            # features['EOS'] = True
             features['EOS'] = True
 
-            # U02:%x[1,0]
-            next_word = None
             features['next_word'] = None
-            # U07:%x[1,1]
             features['next_lemma'] = None
-            # U12:%x[1,2]
             features['next_ner'] = None
-            # U17:%x[1,3]
             features['next_pos'] = None
-            # U22:%x[1,4]
             features['next_parse_tree'] = None
-            # U27:%x[1,5]
             features['next_dependents'] = None
-            # U32:%x[1,6]
             features['next_governors'] = None
-            # U37:%x[1,8]
             features['next_phrase'] = None
+
+            if self.original_include_metamap:
+                features['next_candidate_1'] = None
+                features['next_candidate_2'] = None
+                features['next_candidate_3'] = None
+                features['next_candidate_4'] = None
+                features['next_candidate_5'] = None
+                features['next_mapping'] = None
+                features['next_medication_score'] = None
+                features['next_location'] = None
 
         return features
 
