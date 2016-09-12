@@ -58,7 +58,11 @@ def run(cmd):
 class CRF(object):
 
     def __init__(self, pickle_folder,
-                 output_model_filename, output_training_filename, output_validation_filename, output_predictions_filename,
+                 output_model_filename,
+                 output_training_filename,
+                 output_validation_filename,
+                 output_testing_filename,
+                 output_predictions_filename,
                  verbose, metatags,
                  sentence_level, document_level,
                  hidden_layer, output_layer,
@@ -68,14 +72,15 @@ class CRF(object):
         self.sentence_level = sentence_level
         self.document_level = document_level
 
-        self.x_train, self.x_valid = self.load_x_datasets(pickle_folder, hidden_layer, output_layer)
+        self.x_train, self.x_valid, self.x_test = self.load_x_datasets(pickle_folder, hidden_layer, output_layer)
 
         self.output_model_filename = output_model_filename
         self.output_training_filename = output_training_filename
         self.output_validation_filename = output_validation_filename
+        self.output_testing_filename = output_testing_filename
         self.output_predictions_filename = output_predictions_filename
 
-        self.y_train, self.y_valid = self.load_true_labels()
+        self.y_train, self.y_valid, self.y_test = self.load_true_labels()
         self.verbose = verbose
         self.metatags = metatags
 
@@ -115,52 +120,64 @@ class CRF(object):
         if hidden_layer:
             assert os.path.exists(root+'/training_hidden_activations.p')
             assert os.path.exists(root+'/validation_hidden_activations.p')
+            assert os.path.exists(root+'/testing_hidden_activations.p')
 
             training_activations = cPickle.load(open(root+'/training_hidden_activations.p','rb'))
             validation_activations = cPickle.load(open(root+'/validation_hidden_activations.p','rb'))
+            testing_activations = cPickle.load(open(root+'/testing_hidden_activations.p','rb'))
         elif output_layer:
             assert os.path.exists(root+'/training_output_logits.p')
             assert os.path.exists(root+'/validation_output_logits.p')
+            assert os.path.exists(root+'/testing_output_logits.p')
 
             training_activations = cPickle.load(open(root+'/training_output_logits.p','rb'))
             validation_activations = cPickle.load(open(root+'/validation_output_logits.p','rb'))
+            testing_activations = cPickle.load(open(root+'/testing_output_logits.p','rb'))
         else:
             raise Exception()
 
         _, _, _, training_labels = Dataset.get_clef_training_dataset(lowercase=True)
         _, _, _, validation_labels = Dataset.get_clef_validation_dataset(lowercase=True)
+        _, _, _, testing_labels = Dataset.get_clef_testing_dataset(lowercase=True)
 
         if self.sentence_level:
             logger.info('Using sentence level')
             x_train = self.get_sentence_level_features(training_labels, training_activations)
             x_valid = self.get_sentence_level_features(validation_labels, validation_activations)
+            x_test = self.get_sentence_level_features(testing_labels, testing_activations)
         elif self.document_level:
             logger.info('Using document level')
             x_train = self.get_document_level_features(training_labels, training_activations)
             x_valid = self.get_document_level_features(validation_labels, validation_activations)
+            x_test = self.get_document_level_features(testing_labels, testing_activations)
         else:
             raise Exception()
 
-        return x_train, x_valid
+        return x_train, x_valid, x_test
 
     def load_true_labels(self):
         _, _, _, training_labels = Dataset.get_clef_training_dataset(lowercase=True)
         _, _, _, validation_labels = Dataset.get_clef_validation_dataset(lowercase=True)
+        _, _, _, testing_labels = Dataset.get_clef_testing_dataset(lowercase=True)
 
         if self.sentence_level:
             y_train = list(chain(*training_labels.values()))
             y_valid = list(chain(*validation_labels.values()))
+            y_test = list(chain(*testing_labels.values()))
         elif self.document_level:
             y_train = []
             y_valid = []
+            y_test = []
             for doc in training_labels.values():
                 y_train.append(list(chain(*doc)))
             for doc in validation_labels.values():
                 y_valid.append(list(chain(*doc)))
+            for doc in testing_labels.values():
+                y_test.append(list(chain(*doc)))
         else:
             raise Exception()
 
-        return y_train, y_valid
+        return y_train, y_valid, y_test
 
     def generate_file(self, x_dataset, y_dataset, fout):
 
@@ -188,16 +205,34 @@ class CRF(object):
         return True
 
     def generate_training_file(self):
-        fout = open(self.output_training_filename, 'wb')
+        if not os.path.exists(self.output_training_filename):
+            fout = open(self.output_training_filename, 'wb')
 
-        self.generate_file(self.x_train, self.y_train, fout)
+            self.generate_file(self.x_train, self.y_train, fout)
 
         return True
 
     def generate_validation_file(self):
-        fout = open(self.output_validation_filename, 'wb')
+        if not os.path.exists(self.output_validation_filename):
+            fout = open(self.output_validation_filename, 'wb')
 
-        self.generate_file(self.x_valid, self.y_valid, fout)
+            self.generate_file(self.x_valid, self.y_valid, fout)
+
+        return True
+
+    def generate_testing_file(self):
+        if not os.path.exists(self.output_testing_filename):
+            fout = open(self.output_testing_filename, 'wb')
+
+            self.generate_file(self.x_test, self.y_test, fout)
+
+        return True
+
+    def generate_dataset_files(self):
+
+        self.generate_training_file()
+        self.generate_validation_file()
+        self.generate_testing_file()
 
         return True
 
@@ -209,8 +244,7 @@ class CRF(object):
 
         # generate the train.txt file
         logger.info('Using scaling factor %f' % self.scale_factor)
-        self.generate_training_file()
-        self.generate_validation_file()
+        self.generate_dataset_files()
 
         # run the cmd
         cmd = get_crfsuite_base_call()
@@ -238,16 +272,40 @@ class CRF(object):
 
     def predict(self):
 
+        # will check if all CRF .txt files were created.
+        self.generate_dataset_files()
+
+        logger.info('Predicting on training set')
+        train_y_pred = self.predict_dataset(self.output_training_filename)
+        train_y_true = list(chain(*self.y_train))
+
+        logger.info('Predicting on validation set')
+        valid_y_pred = self.predict_dataset(self.output_validation_filename)
+        valid_y_true = list(chain(*self.y_valid))
+
+        logger.info('Predicting on testing set')
+        test_y_pred = self.predict_dataset(self.output_testing_filename)
+        test_y_true = list(chain(*self.y_test))
+
+        assert train_y_true.__len__() == train_y_pred.__len__()
+        assert valid_y_true.__len__() == valid_y_pred.__len__()
+        assert test_y_true.__len__() == test_y_pred.__len__()
+
+        return train_y_true, train_y_pred, valid_y_true, valid_y_pred, test_y_true, test_y_pred
+
+    def predict_dataset(self, dataset_filename):
+
         predictions = []
 
         # run the cmd
         cmd = get_crfsuite_base_call()
         cmd += " tag -m %s %s > %s" % \
-               (self.output_model_filename, self.output_validation_filename, self.output_predictions_filename)
+               (self.output_model_filename, dataset_filename, self.output_predictions_filename)
 
         run(cmd)
 
-        assert os.path.exists(self.output_validation_filename)
+        assert os.path.exists(dataset_filename)
+        assert os.path.exists(self.output_predictions_filename)
 
         fin = open(self.output_predictions_filename, 'rb')
 
@@ -256,12 +314,7 @@ class CRF(object):
             if tag != '':
                 predictions.append(line.strip())
 
-        _, _, _, document_tags = Dataset.get_clef_validation_dataset(lowercase=True)
-        true_values = list(chain(*chain(*document_tags.values())))
-
-        assert predictions.__len__() == true_values.__len__()
-
-        return predictions, true_values
+        return predictions
 
 def convert_metatags(y_dataset):
     pass
@@ -322,44 +375,53 @@ if __name__ == '__main__':
     crf_model = CRF(output_model_filename=get_output_path('crfsuite.model'),
                     output_training_filename=get_output_path('train.txt'),
                     output_validation_filename=get_output_path('validation.txt'),
+                    output_testing_filename=get_output_path('testing.txt'),
                     output_predictions_filename=get_output_path('predictions.txt'),
                     **args)
 
     crf_model.train()
 
-    valid_y_pred, valid_y_true = crf_model.predict()
+    train_y_true, train_y_pred, valid_y_true, valid_y_pred, test_y_true, test_y_pred = crf_model.predict()
 
-    # train_log, valid_y_pred, valid_y_true = use_testing_dataset(crf_model, crf_model.predict, **args)
+    Metrics.print_metric_results(train_y_true=train_y_true, train_y_pred=train_y_pred,
+                                 valid_y_true=valid_y_true, valid_y_pred=valid_y_pred,
+                                 test_y_true=test_y_true, test_y_pred=test_y_pred,
+                                 metatags=False,
+                                 get_output_path=get_output_path,
+                                 additional_labels=[],
+                                 logger=logger)
 
-    assert valid_y_pred is not None
-    assert valid_y_true.__len__() == valid_y_pred.__len__()
-    results_macro = Metrics.compute_all_metrics(y_true=valid_y_true, y_pred=valid_y_pred, average='macro')
-    results_micro = Metrics.compute_all_metrics(y_true=valid_y_true, y_pred=valid_y_pred, average='micro')
-
-    print 'MICRO results'
-    print results_micro
-
-    print 'MACRO results'
-    print results_macro
-
-    if args['metatags']:
-        labels_list = get_aggregated_classification_report_labels()
-    else:
-        labels_list = get_classification_report_labels()
-    assert labels_list is not None
-
-    results_noaverage = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, labels=labels_list, average=None)
-
-    print '...Saving no-averaged results to CSV file'
-    df = pd.DataFrame(results_noaverage, index=labels_list)
-    df.to_csv(get_output_path('no_average_results_' + str(actual_time) + '.csv'))
-
-    print '...Ploting confusion matrix'
-    cm = Metrics.compute_confusion_matrix(valid_y_true, valid_y_pred, labels=labels_list)
-    plot_confusion_matrix(cm, labels=labels_list,
-                          output_filename=get_output_path('confusion_matrix_' + str(actual_time) + '.png'))
-
-    print '...Computing classification stats'
-    stats = Metrics.compute_classification_stats(valid_y_true, valid_y_pred, labels_list)
-    df = pd.DataFrame(stats, index=['tp', 'tn', 'fp', 'fn'], columns=labels_list).transpose()
-    df.to_csv(get_output_path('classification_stats_' + str(actual_time) + '.csv'))
+    # # train_log, valid_y_pred, valid_y_true = use_testing_dataset(crf_model, crf_model.predict, **args)
+    #
+    # assert valid_y_pred is not None
+    # assert valid_y_true.__len__() == valid_y_pred.__len__()
+    # results_macro = Metrics.compute_all_metrics(y_true=valid_y_true, y_pred=valid_y_pred, average='macro')
+    # results_micro = Metrics.compute_all_metrics(y_true=valid_y_true, y_pred=valid_y_pred, average='micro')
+    #
+    # print 'MICRO results'
+    # print results_micro
+    #
+    # print 'MACRO results'
+    # print results_macro
+    #
+    # if args['metatags']:
+    #     labels_list = get_aggregated_classification_report_labels()
+    # else:
+    #     labels_list = get_classification_report_labels()
+    # assert labels_list is not None
+    #
+    # results_noaverage = Metrics.compute_all_metrics(valid_y_true, valid_y_pred, labels=labels_list, average=None)
+    #
+    # print '...Saving no-averaged results to CSV file'
+    # df = pd.DataFrame(results_noaverage, index=labels_list)
+    # df.to_csv(get_output_path('no_average_results_' + str(actual_time) + '.csv'))
+    #
+    # print '...Ploting confusion matrix'
+    # cm = Metrics.compute_confusion_matrix(valid_y_true, valid_y_pred, labels=labels_list)
+    # plot_confusion_matrix(cm, labels=labels_list,
+    #                       output_filename=get_output_path('confusion_matrix_' + str(actual_time) + '.png'))
+    #
+    # print '...Computing classification stats'
+    # stats = Metrics.compute_classification_stats(valid_y_true, valid_y_pred, labels_list)
+    # df = pd.DataFrame(stats, index=['tp', 'tn', 'fp', 'fn'], columns=labels_list).transpose()
+    # df.to_csv(get_output_path('classification_stats_' + str(actual_time) + '.csv'))
