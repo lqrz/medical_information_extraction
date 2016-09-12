@@ -227,6 +227,7 @@ def parse_arguments():
     parser.add_argument('--crfiters', action='store', type=int, default=50)
     parser.add_argument('--knowledgegraph', action='store', type=str, default=False)
     parser.add_argument('--scalefactor', action='store', type=float, required=True)
+    parser.add_argument('--logger', action='store', default=None, type=str)
 
     arguments = parser.parse_args()
 
@@ -252,6 +253,7 @@ def parse_arguments():
     args['knowledge_graph'] = arguments.knowledgegraph
     args['scale_factor'] = arguments.scalefactor
     args['w2v_similar_words_cache'] = arguments.w2vsimilarwordscache
+    args['logger_filename'] = arguments.logger
 
     return args
 
@@ -269,6 +271,12 @@ if __name__ == '__main__':
     output_training_filename = get_crf_crfsuite_folder('train.txt')
     output_validation_filename = get_crf_crfsuite_folder('valid.txt')
     output_testing_filename = get_crf_crfsuite_folder('test.txt')
+
+    if args['logger_filename'] is not None:
+        file_logger = logging.FileHandler(filename=get_output_path(args['logger_filename']))
+        file_logger.setFormatter(logging.Formatter('%(asctime)s : %(levelname)s : %(message)s'))
+        file_logger.setLevel(logging.DEBUG)
+        logging.getLogger().addHandler(file_logger)
 
     crf_model = CRF_Crfsuite(training_data=training_data,
                              validation_data=validation_data,
