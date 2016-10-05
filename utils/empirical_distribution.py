@@ -32,9 +32,16 @@ class Empirical_distribution():
 
         return tags[sample_idxs]
 
-    def get_empirical_distribution(self, document_sentence_tags):
+    def get_frequency_distribution(self, document_sentence_tags):
         tags = list(chain(*(chain(*document_sentence_tags.values()))))
         fd = FreqDist(tags)
+
+        return fd
+
+    def get_empirical_distribution(self, document_sentence_tags):
+
+        fd = self.get_frequency_distribution(document_sentence_tags)
+
         normalized_probs = fd.values() / np.sum(fd.values(), dtype=float)
 
         dist = list(zip(fd.keys(), normalized_probs))
@@ -55,7 +62,7 @@ class Empirical_distribution():
 
         return self.validation_distribution
 
-def plot_empirical_distribution(distribution):
+def plot_empirical_distribution(distribution, token_counts):
     import rpy2.robjects as robj
     import rpy2.robjects.pandas2ri  # for dataframe conversion
     from rpy2.robjects.packages import importr
@@ -65,12 +72,15 @@ def plot_empirical_distribution(distribution):
     # labels = map(lambda x: label2index[x], [tag for tag,_ in distribution])
     labels = get_training_classification_report_labels()
     probs = []
+    counts = []
     for lab in labels:
         probs.extend([p for t,p in distribution if t==lab])
+        counts.append(token_counts[lab])
 
     data = {
         'labels': labels,
-        'probs': probs
+        'probs': probs,
+        'counts': counts
     }
 
     df = pd.DataFrame(data)
@@ -88,7 +98,8 @@ def plot_empirical_distribution(distribution):
             geom_bar(stat="identity") +
             labs(x='Label', y='Probability', title='Empirical distribution') +
             ylim(0,1) +
-            theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust=0.5))
+            theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust=0.5)) +
+            geom_text(aes(label=counts, angle=90), size=3., hjust=-.3, alpha=.7)
 
             print(p)
 
@@ -121,7 +132,7 @@ if __name__ == '__main__':
         try:
             prob = data[tag]
             print tag, "{:10.4f}".format(prob)
-        except:
+        except KeyError:
             continue
 
     _, _, _, document_sentence_tags = Dataset.get_clef_training_dataset(lowercase=False)
@@ -130,6 +141,8 @@ if __name__ == '__main__':
     # label2index = OrderedDict()
     # label2index.update(list(zip(set(tags), range(set(tags).__len__()))))
 
-    plot_empirical_distribution(training_dist)
+    training_counts = ed.get_frequency_distribution(document_sentence_tags)
+
+    plot_empirical_distribution(training_dist, training_counts)
 
     print '...End'
