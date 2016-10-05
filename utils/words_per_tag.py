@@ -28,6 +28,11 @@ def get_validation_words_per_tag():
 
     return get_words_per_tag(document_tokens, document_tags)
 
+def get_testing_words_per_tag():
+    _, _, document_tokens, document_tags = Dataset.get_clef_testing_dataset()
+
+    return get_words_per_tag(document_tokens, document_tags)
+
 def get_words_per_tag(document_tokens, document_tags):
     words_per_tag = defaultdict(list)
 
@@ -41,20 +46,26 @@ def get_words_per_tag(document_tokens, document_tags):
 
     return words_per_tag
 
-def get_word_per_tag_overlap():
+def get_word_per_tag_overlap(dataset_a_words_per_tag, dataset_b_words_per_tag):
+    '''
+    tag overlap in dataset B wrt dataset A.
+    dataset A is meant to be the training dataset.
+    '''
 
     tag_overlap = defaultdict(list)
 
-    training_words_per_tag = get_training_words_per_tag()
-    valid_words_per_tag = get_validation_words_per_tag()
-
-    for tag, tokens in valid_words_per_tag.iteritems():
-        tag_overlap[tag] = [w for w in tokens if w in set(training_words_per_tag[tag])]
+    for tag, tokens in dataset_b_words_per_tag.iteritems():
+        tag_overlap[tag] = [w for w in tokens if w in set(dataset_a_words_per_tag[tag])]
 
     return tag_overlap
 
 def get_validation_tags_per_word():
     _, _, document_tokens, document_tags = Dataset.get_clef_validation_dataset()
+
+    return get_tags_per_word(document_tokens, document_tags)
+
+def get_testing_tags_per_word():
+    _, _, document_tokens, document_tags = Dataset.get_clef_testing_dataset()
 
     return get_tags_per_word(document_tokens, document_tags)
 
@@ -115,38 +126,29 @@ def plot_confusion_matrix(df_melted, output_filename):
 
     return True
 
-if __name__ == '__main__':
-    tag_overlap = get_word_per_tag_overlap()
 
-    training_words_per_tag = get_training_words_per_tag()
-
-    valid_words_per_tag = get_validation_words_per_tag()
-
-    valid_tags_per_word = get_validation_tags_per_word()
-
-    tag_data = []
-    for tag in get_classification_report_labels():
-        tag_data.append((tag, training_words_per_tag[tag].__len__(), [w for w,_ in Counter(training_words_per_tag[tag]).most_common(n=5)]))
-        # print tag + ' & ' + str(training_words_per_tag[tag].__len__()) + ' & ' + ', '.join([w for w,_ in Counter(training_words_per_tag[tag]).most_common(n=5)]) + ' \\\\'
+def training_data_empirical_distribution(tag_data):
 
     print '## TRAINIG DATA EMPIRICAL DISTRIBUTION'
-    total = sum([cnt for _,cnt,_ in tag_data])
+    total = sum([cnt for _, cnt, _ in tag_data])
     acc = 0
     for tag, cnt, words in sorted(tag_data, key=itemgetter(1), reverse=True):
-        acc += float(cnt)/total
-        print tag.replace('_', '\\_') + ' & ' + str(cnt) + ' & ' + '{:6.4f}'.format(float(cnt)/total) + ' & ' + ', '.join(words) + ' \\\\'
+        acc += float(cnt) / total
+        print(tag.replace('_', '\\_') + ' & ' + str(cnt) + ' & ' + '{:6.4f}'.format(
+            float(cnt) / total) + ' & ' + ', '.join(words) + ' \\\\')
 
-    print '## VALIDATION SET TAG OVERLAP'
-    tag2index = dict(zip(get_classification_report_labels(), range(get_classification_report_labels().__len__())))
-    index2tag = dict(zip(range(get_classification_report_labels().__len__()), get_classification_report_labels()))
+    return True
+
+def dataset_tag_overlap(dataset_words_per_tag, dataset_tags_per_word, tag2index, title):
     items = []
     items_array = []
     for tag in get_classification_report_labels():
 
-        tokens = valid_words_per_tag[tag]
+        tokens = dataset_words_per_tag[tag]
 
-        overlap_tags = [t for token in tokens for t in valid_tags_per_word[token] if t != tag]
-        overlap_tokens = [token for token in tokens if list(t for t in valid_tags_per_word[token] if t != tag).__len__()>0]
+        overlap_tags = [t for token in tokens for t in dataset_tags_per_word[token] if t != tag]
+        overlap_tokens = [token for token in tokens if
+                          list(t for t in dataset_tags_per_word[token] if t != tag).__len__() > 0]
 
         tag_items = np.zeros(get_classification_report_labels().__len__())
         counts = Counter(overlap_tags)
@@ -160,34 +162,67 @@ if __name__ == '__main__':
 
         n_overlap = overlap_tokens.__len__()
         common_tag_overlap = Counter(overlap_tags).most_common(n=3)
-        overlap_perc = [(t,float(cnt)/sum(Counter(overlap_tags).values())) for t,cnt in common_tag_overlap]
+        overlap_perc = [(t, float(cnt) / sum(Counter(overlap_tags).values())) for t, cnt in common_tag_overlap]
 
-        print '%s & %d & %d & %6.3f & ' % (tag.replace('_', '\\_'), tokens.__len__(), n_overlap, float(n_overlap)/tokens.__len__())
+        print('%s & %d & %d & %6.3f & ' % (
+        tag.replace('_', '\\_'), tokens.__len__(), n_overlap, float(n_overlap) / tokens.__len__()))
+
         for t, perc in overlap_perc:
-            print '(%s, %6.3f)' % (t.replace('_', '\\_'), perc)
+            print('(%s, %6.3f)' % (t.replace('_', '\\_'), perc))
 
-        print '\\\\'
+        print('\\\\')
 
     # df = pd.DataFrame.from_items(items, columns=get_classification_report_labels())
-    df = pd.DataFrame(np.matrix(items_array)[::-1], index=get_classification_report_labels()[::-1], columns=get_classification_report_labels())
+    df = pd.DataFrame(np.matrix(items_array)[::-1], index=get_classification_report_labels()[::-1],
+                      columns=get_classification_report_labels())
     df['true'] = df.index
     df_melted = pd.melt(df, id_vars=['true'], var_name='prediction')
 
-    plot_confusion_matrix(df_melted, get_analysis_folder_path('tag_overlap.png'))
-    # plot = ggplot(aes(x='prediction', y='true'), df_melted) + \
-    #        scale_color_gradient(low='white', high='blue') + \
-    #     custom_geom_tile(aes(fill='value')) + \
-    #     labs(x='Labels', y='Overlapping labels')
-    #     # scale_color_gradient(low='#E1FA72', high='#F46FEE')
-    # ggsave_lqrz('some name', plot, dpi=100, bbox_inches='tight')
+    plot_confusion_matrix(df_melted, get_analysis_folder_path(title))
 
-    print '## VALIDATION SET TAG NOVELTY'
+    return True
 
+def dataset_tag_novelty(dataset_words_per_tag, reference_dataset_words_per_tag):
     for tag in get_classification_report_labels():
-        n_tokens = valid_words_per_tag[tag].__len__()
+        n_tokens = dataset_words_per_tag[tag].__len__()
         if n_tokens == 0:
             continue
 
-        novel = [w for w in valid_words_per_tag[tag] if w not in set(training_words_per_tag[tag])]
+        novel = [w for w in dataset_words_per_tag[tag] if w not in set(reference_dataset_words_per_tag[tag])]
 
-        print '%s & %d & %d & %6.3f \\\\' % (tag.replace('_', '\\_'), n_tokens, novel.__len__(), novel.__len__()/float(n_tokens))
+        print('%s & %d & %d & %6.3f \\\\' % (
+        tag.replace('_', '\\_'), n_tokens, novel.__len__(), novel.__len__() / float(n_tokens)))
+
+    return True
+
+if __name__ == '__main__':
+
+    train_words_per_tag = get_training_words_per_tag()
+    valid_words_per_tag = get_validation_words_per_tag()
+    test_words_per_tag = get_testing_words_per_tag()
+
+    valid_tag_overlap = get_word_per_tag_overlap(train_words_per_tag, valid_words_per_tag)
+    test_tag_overlap = get_word_per_tag_overlap(train_words_per_tag, test_words_per_tag)
+
+    valid_tags_per_word = get_validation_tags_per_word()
+    test_tags_per_word = get_testing_tags_per_word()
+
+    tag_data = []
+    for tag in get_classification_report_labels():
+        tag_data.append((tag, train_words_per_tag[tag].__len__(), [w for w,_ in Counter(train_words_per_tag[tag]).most_common(n=5)]))
+        # print tag + ' & ' + str(training_words_per_tag[tag].__len__()) + ' & ' + ', '.join([w for w,_ in Counter(training_words_per_tag[tag]).most_common(n=5)]) + ' \\\\'
+
+    training_data_empirical_distribution(tag_data)
+
+    tag2index = dict(zip(get_classification_report_labels(), range(get_classification_report_labels().__len__())))
+    index2tag = dict(zip(range(get_classification_report_labels().__len__()), get_classification_report_labels()))
+
+    print '## VALIDATION SET TAG OVERLAP'
+    dataset_tag_overlap(valid_words_per_tag, valid_tags_per_word, tag2index, title='valid_tag_overlap.png')
+    dataset_tag_overlap(test_words_per_tag, test_tags_per_word, tag2index, title='test_tag_overlap.png')
+
+    print '## VALIDATION SET TAG NOVELTY'
+    dataset_tag_novelty(valid_words_per_tag, train_words_per_tag)
+
+    print '## TESTING SET TAG NOVELTY'
+    dataset_tag_novelty(test_words_per_tag, train_words_per_tag)
