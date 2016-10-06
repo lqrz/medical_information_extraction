@@ -16,6 +16,8 @@ from data.dataset import Dataset
 from data import get_classification_report_labels
 from plot_confusion_matrix import ggsave_lqrz
 from trained_models import get_analysis_folder_path
+from data import get_validation_classification_report_labels
+from data import get_testing_classification_report_labels
 
 def get_training_words_per_tag():
 
@@ -183,6 +185,8 @@ def dataset_tag_overlap(dataset_words_per_tag, dataset_tags_per_word, tag2index,
     return True
 
 def dataset_tag_novelty(dataset_words_per_tag, reference_dataset_words_per_tag):
+    tag_novelty = defaultdict(lambda : defaultdict(int))
+
     for tag in get_classification_report_labels():
         n_tokens = dataset_words_per_tag[tag].__len__()
         if n_tokens == 0:
@@ -193,7 +197,61 @@ def dataset_tag_novelty(dataset_words_per_tag, reference_dataset_words_per_tag):
         print('%s & %d & %d & %6.3f \\\\' % (
         tag.replace('_', '\\_'), n_tokens, novel.__len__(), novel.__len__() / float(n_tokens)))
 
-    return True
+        tag_novelty[tag]['count'] = n_tokens
+        tag_novelty[tag]['novel'] = novel.__len__()
+
+    return tag_novelty
+
+def plot_dataset_tag_novelty(labels, tag_novelty, output_filename):
+    import rpy2.robjects as robj
+    import rpy2.robjects.pandas2ri  # for dataframe conversion
+    from rpy2.robjects.packages import importr
+    from trained_models import get_analysis_folder_path
+
+    perc = []
+    novel_count = []
+    for lab in labels:
+        perc.append(tag_novelty[lab]['novel'] / float(tag_novelty[lab]['count']))
+        novel_count.append(tag_novelty[lab]['novel'])
+
+    data = {
+        'labels': labels,
+        'perc': perc,
+        'novel': novel_count
+    }
+
+    df = pd.DataFrame(data)
+    plotFunc = robj.r("""
+        library(ggplot2)
+
+        function(df, output_filename){
+            str(df)
+            # the following instructions are for the plot to take the order given in the dataframe,
+            # otherwise, ggplot will reorder it alphabetically.
+            df$labels <- as.character(df$labels)
+            df$labels <- factor(df$labels, levels=unique(df$labels))
+            str(df)
+            p <- ggplot(df, aes(x=labels, y=perc)) +
+            geom_bar(stat="identity") +
+            labs(x='Label', y='Percentage', title='Unseen word percentages') +
+            ylim(0,1) +
+            theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust=0.5)) +
+            geom_text(aes(label=novel, angle=90), size=3., hjust=-.3, alpha=.7)
+
+            print(p)
+
+            ggsave(output_filename, plot=p)
+
+            }
+        """)
+
+    gr = importr('grDevices')
+    robj.pandas2ri.activate()
+    conv_df = robj.conversion.py2ri(df)
+
+    plotFunc(conv_df, get_analysis_folder_path(output_filename))
+
+    gr.dev_off()
 
 if __name__ == '__main__':
 
@@ -222,7 +280,13 @@ if __name__ == '__main__':
     dataset_tag_overlap(test_words_per_tag, test_tags_per_word, tag2index, title='test_tag_overlap.png')
 
     print '## VALIDATION SET TAG NOVELTY'
-    dataset_tag_novelty(valid_words_per_tag, train_words_per_tag)
+    validation_tag_novelty = dataset_tag_novelty(valid_words_per_tag, train_words_per_tag)
+    validation_labels = get_validation_classification_report_labels()
+    plot_dataset_tag_novelty(labels=validation_labels, tag_novelty=validation_tag_novelty,
+                             output_filename='validation_set_novelty.png')
 
     print '## TESTING SET TAG NOVELTY'
-    dataset_tag_novelty(test_words_per_tag, train_words_per_tag)
+    testing_tag_novelty = dataset_tag_novelty(test_words_per_tag, train_words_per_tag)
+    testing_labels = get_testing_classification_report_labels()
+    plot_dataset_tag_novelty(labels=testing_labels, tag_novelty=testing_tag_novelty,
+                             output_filename='testing_set_novelty.png')
