@@ -113,7 +113,7 @@ class CRF(object):
         return x
 
     def load_x_datasets(self, pickle_folder, hidden_layer, output_layer):
-        root = os.path.dirname(os.path.dirname(os.path.dirname(__file__))) + '/' + pickle_folder
+        root = os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))) + '/' + pickle_folder
 
         print root
 
@@ -205,26 +205,23 @@ class CRF(object):
         return True
 
     def generate_training_file(self):
-        if not os.path.exists(self.output_training_filename):
-            fout = open(self.output_training_filename, 'wb')
+        fout = open(self.output_training_filename, 'wb')
 
-            self.generate_file(self.x_train, self.y_train, fout)
+        self.generate_file(self.x_train, self.y_train, fout)
 
         return True
 
     def generate_validation_file(self):
-        if not os.path.exists(self.output_validation_filename):
-            fout = open(self.output_validation_filename, 'wb')
+        fout = open(self.output_validation_filename, 'wb')
 
-            self.generate_file(self.x_valid, self.y_valid, fout)
+        self.generate_file(self.x_valid, self.y_valid, fout)
 
         return True
 
     def generate_testing_file(self):
-        if not os.path.exists(self.output_testing_filename):
-            fout = open(self.output_testing_filename, 'wb')
+        fout = open(self.output_testing_filename, 'wb')
 
-            self.generate_file(self.x_test, self.y_test, fout)
+        self.generate_file(self.x_test, self.y_test, fout)
 
         return True
 
@@ -271,9 +268,6 @@ class CRF(object):
         return True
 
     def predict(self):
-
-        # will check if all CRF .txt files were created.
-        self.generate_dataset_files()
 
         logger.info('Predicting on training set')
         train_y_pred = self.predict_dataset(self.output_training_filename)
@@ -350,6 +344,7 @@ def parse_arguments():
     layer_group.add_argument('--hidden', action='store_true', default=False)
     layer_group.add_argument('--output', action='store_true', default=False)
     parser.add_argument('--scalefactor', action='store', type=float, required=True)
+    parser.add_argument('--logger', action='store', default=None, type=str)
 
     arguments = parser.parse_args()
 
@@ -362,6 +357,7 @@ def parse_arguments():
     args['hidden_layer'] = arguments.hidden
     args['output_layer'] = arguments.output
     args['scale_factor'] = arguments.scalefactor
+    args['logger_filename'] = arguments.logger
 
     return args
 
@@ -371,6 +367,12 @@ if __name__ == '__main__':
     args = parse_arguments()
 
     get_output_path = get_pycrf_neuralcrf_crfsuite_folder
+
+    if args['logger_filename'] is not None:
+        file_logger = logging.FileHandler(filename=get_output_path(args['logger_filename']))
+        file_logger.setFormatter(logging.Formatter('%(asctime)s : %(levelname)s : %(message)s'))
+        file_logger.setLevel(logging.DEBUG)
+        logging.getLogger().addHandler(file_logger)
 
     crf_model = CRF(output_model_filename=get_output_path('crfsuite.model'),
                     output_training_filename=get_output_path('train.txt'),
